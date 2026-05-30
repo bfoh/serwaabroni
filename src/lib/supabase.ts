@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Fallback to your Supabase project credentials
+// Supabase project credentials — hardcoded for reliability
 // The anon key is safe to expose — RLS policies protect all data
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qumttowvyujqaubyshjq.supabase.co'
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bXR0b3d2eXVqcWF1YnlzaGpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQwMzI1MjAsImV4cCI6MjA2OTYwODUyMH0.aUdDVEJOWVVDalJQRFV6bUZqd0w'
+const SUPABASE_URL = 'https://qumttowvyujqaubyshjq.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bXR0b3d2eXVqcWF1YnlzaGpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQwMzI1MjAsImV4cCI6MjA2OTYwODUyMH0.aUdDVEJOWVVDalJQRFV6bUZqd0w'
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,

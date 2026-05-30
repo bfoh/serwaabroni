@@ -21,9 +21,15 @@ export async function signUp(email: string, password: string, phone: string, bus
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { phone, business_name: businessName } }
+      options: {
+        data: { phone, business_name: businessName },
+        emailRedirectTo: window.location.origin + '/login'
+      }
     })
-    if (error) throw error
+    if (error) {
+      console.error('Supabase signUp error:', error)
+      throw error
+    }
     if (!data.user) throw new Error('No user returned')
 
     return {
@@ -37,6 +43,7 @@ export async function signUp(email: string, password: string, phone: string, bus
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sign up failed'
+    console.error('Auth signUp catch:', message)
     return { user: null, error: message }
   }
 }
@@ -44,7 +51,10 @@ export async function signUp(email: string, password: string, phone: string, bus
 export async function signIn(email: string, password: string): Promise<{ user: UserState | null; error: string | null }> {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    if (error) {
+      console.error('Supabase signIn error:', error)
+      throw error
+    }
 
     return {
       user: {
@@ -57,6 +67,7 @@ export async function signIn(email: string, password: string): Promise<{ user: U
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Login failed'
+    console.error('Auth signIn catch:', message)
     return { user: null, error: message }
   }
 }

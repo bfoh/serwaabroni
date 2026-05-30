@@ -1,0 +1,667 @@
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { useStore } from '@/lib/store'
+import { formatCurrency, uid, loadData } from '@/lib/data'
+import type { Product } from '@/lib/supabase'
+import ProductIcon from '@/components/ProductIcon'
+
+export default function Inventory() {
+  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct } = useStore()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<string | null>(null)
+  const [editQty, setEditQty] = useState(0)
+  const [addingProduct, setAddingProduct] = useState(false)
+
+  // Inline edit state
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null)
+  const [inlineEditName, setInlineEditName] = useState('')
+  const [inlineEditCost, setInlineEditCost] = useState('')
+  const [inlineEditPrice, setInlineEditPrice] = useState('')
+  const [inlineEditQty, setInlineEditQty] = useState('')
+  const [inlineEditUnit, setInlineEditUnit] = useState('')
+  const [inlineEditCategory, setInlineEditCategory] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [deletingProduct, setDeletingProduct] = useState(false)
+
+  const [newProduct, setNewProduct] = useState({
+    name: '',
+    cost_price: '',
+    selling_price: '',
+    quantity: '',
+    unit: 'piece',
+    category: 'Groceries',
+  })
+
+  // Seed data on first visit if store is empty
+  useEffect(() => {
+    if (state.products.length === 0) {
+      const data = loadData()
+      if (data.products.length > 0) {
+        data.products.forEach((p) => {
+          dispatch({ type: 'ADD_PRODUCT', product: p })
+        })
+      }
+    }
+  }, [state.products.length, dispatch])
+
+  const filteredProducts = state.products.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const totalStockValue = state.products.reduce((s, p) => s + p.cost_price * p.quantity, 0)
+  const projectedProfit = state.products.reduce(
+    (s, p) => s + (p.selling_price - p.cost_price) * p.quantity,
+    0
+  )
+
+  const handleAddProduct = async () => {
+    if (!newProduct.name || !newProduct.cost_price || !newProduct.selling_price || !newProduct.quantity) {
+      showToast(t('fill_fields') || 'Please fill all fields', 'error')
+      return
+    }
+
+    const costPrice = parseFloat(newProduct.cost_price)
+    const sellingPrice = parseFloat(newProduct.selling_price)
+    const qty = parseInt(newProduct.quantity)
+
+    if (sellingPrice <= costPrice) {
+      showToast('Selling price must be higher than cost price', 'error')
+      return
+    }
+
+    setAddingProduct(true)
+
+    try {
+      await addProduct({
+        id: uid(),
+        name: newProduct.name,
+        cost_price: costPrice,
+        selling_price: sellingPrice,
+        quantity: qty,
+        unit: newProduct.unit,
+        category: newProduct.category,
+        low_stock_threshold: Math.max(3, Math.floor(qty * 0.2)),
+        barcode: null,
+        qr_code: null,
+        created_at: new Date().toISOString(),
+      })
+      showToast(t('product_added') || 'Product added!', 'success')
+      setShowAddProduct(false)
+      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries' })
+    } catch {
+      showToast('Failed to add product', 'error')
+    } finally {
+      setAddingProduct(false)
+    }
+  }
+
+  const handleRestock = (productId: string) => {
+    const product = state.products.find((p) => p.id === productId)
+    if (!product) return
+    setEditingProduct(productId)
+    setEditQty(0)
+  }
+
+  const handleSaveRestock = async () => {
+    const product = state.products.find((p) => p.id === editingProduct)
+    if (!product || editQty <= 0) {
+      setEditingProduct(null)
+      return
+    }
+    const newQty = product.quantity + editQty
+    const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
+    dispatch({ type: 'UPDATE_PRODUCT', product: updated })
+    updateProduct(product.id, { quantity: newQty }).catch(() => {})
+    showToast(`Restocked ${editQty} ${product.unit}(s)`, 'success')
+    setEditingProduct(null)
+  }
+
+  const handleOpenEdit = (productId: string) => {
+    const product = state.products.find((p) => p.id === productId)
+    if (!product) return
+    setInlineEditId(product.id)
+    setInlineEditName(product.name)
+    setInlineEditCost(String(product.cost_price))
+    setInlineEditPrice(String(product.selling_price))
+    setInlineEditQty(String(product.quantity))
+    setInlineEditUnit(product.unit || 'piece')
+    setInlineEditCategory(product.category || 'Groceries')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!inlineEditId) return
+    if (!inlineEditName || !inlineEditCost || !inlineEditPrice || !inlineEditQty) {
+      showToast('Please fill all fields', 'error')
+      return
+    }
+
+    const costPrice = parseFloat(inlineEditCost)
+    const sellingPrice = parseFloat(inlineEditPrice)
+    const qty = parseInt(inlineEditQty)
+
+    if (sellingPrice <= costPrice) {
+      showToast('Selling price must be higher than cost price', 'error')
+      return
+    }
+
+    setSavingEdit(true)
+
+    try {
+      const original = state.products.find((p) => p.id === inlineEditId)
+      if (!original) {
+        showToast('Product not found', 'error')
+        setSavingEdit(false)
+        return
+      }
+
+      const updated: Product = {
+        ...original,
+        name: inlineEditName,
+        cost_price: costPrice,
+        selling_price: sellingPrice,
+        quantity: qty,
+        unit: inlineEditUnit,
+        category: inlineEditCategory,
+        updated_at: new Date().toISOString(),
+      }
+
+      dispatch({ type: 'UPDATE_PRODUCT', product: updated })
+      updateProduct(inlineEditId, {
+        name: inlineEditName,
+        cost_price: costPrice,
+        selling_price: sellingPrice,
+        quantity: qty,
+        unit: inlineEditUnit,
+        category: inlineEditCategory,
+      }).catch(() => {})
+
+      showToast('Product updated!', 'success')
+      setInlineEditId(null)
+    } catch {
+      showToast('Failed to update product', 'error')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleDelete = async (productId: string) => {
+    setDeletingProduct(true)
+    try {
+      dispatch({ type: 'DELETE_PRODUCT', id: productId })
+      removeProduct(productId).catch(() => {})
+      setShowDeleteConfirm(null)
+    } catch {
+      showToast('Failed to delete', 'error')
+    } finally {
+      setDeletingProduct(false)
+    }
+  }
+
+  const categories = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
+
+  return (
+    <div className="min-h-screen bg-sand pb-20">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="font-display text-2xl text-ink uppercase tracking-tight">{t('my_stock')}</h1>
+          <button
+            onClick={() => setShowAddProduct(true)}
+            className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
+          >
+            <Plus size={20} strokeWidth={2.5} className="text-white" />
+          </button>
+        </div>
+
+        {/* Summary cards */}
+        <div className="flex gap-2">
+          <div className="flex-1 bg-ink rounded-sm px-3 py-2">
+            <p className="text-[10px] text-white/50 uppercase">{t('stock_value')}</p>
+            <p className="font-display text-sm text-white">{formatCurrency(totalStockValue)}</p>
+          </div>
+          <div className="flex-1 bg-accent-green rounded-sm px-3 py-2">
+            <p className="text-[10px] text-white/50 uppercase">{t('proj_profit')}</p>
+            <p className="font-display text-sm text-white">{formatCurrency(projectedProfit)}</p>
+          </div>
+          <div className="flex-1 bg-warm-gray rounded-sm px-3 py-2">
+            <p className="text-[10px] text-ink/50 uppercase">{t('items')}</p>
+            <p className="font-display text-sm text-ink">{state.products.length}</p>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="relative mt-3">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('search_products')}
+            className="w-full h-10 pl-10 pr-10 bg-light harsh-border rounded-sm text-sm font-body"
+          />
+          <button className="absolute right-3 top-1/2 -translate-y-1/2">
+            <Mic size={14} className="text-muted-text" />
+          </button>
+        </div>
+      </header>
+
+      {/* Product List */}
+      <section className="px-5 pt-4 space-y-3">
+        {filteredProducts.length === 0 && (
+          <div className="text-center py-12">
+            <Package size={40} className="text-muted-text mx-auto mb-3" />
+            <p className="text-muted-text text-sm">
+              {searchQuery ? 'No products found' : 'No products yet'}
+            </p>
+          </div>
+        )}
+        {filteredProducts.map((product, index) => (
+          <motion.div
+            key={product.id}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.03 }}
+            className="bg-light harsh-border rounded-sm overflow-hidden"
+          >
+            {inlineEditId === product.id ? (
+              /* Inline Edit Form */
+              <div className="p-3 space-y-2">
+                <input
+                  type="text"
+                  value={inlineEditName}
+                  onChange={(e) => setInlineEditName(e.target.value)}
+                  className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={inlineEditCost}
+                    onChange={(e) => setInlineEditCost(e.target.value)}
+                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                    placeholder="Cost"
+                  />
+                  <input
+                    type="number"
+                    value={inlineEditPrice}
+                    onChange={(e) => setInlineEditPrice(e.target.value)}
+                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                    placeholder="Price"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    value={inlineEditQty}
+                    onChange={(e) => setInlineEditQty(e.target.value)}
+                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                    placeholder="Qty"
+                  />
+                  <select
+                    value={inlineEditUnit}
+                    onChange={(e) => setInlineEditUnit(e.target.value)}
+                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                  >
+                    <option value="piece">Pc</option>
+                    <option value="tin">Tin</option>
+                    <option value="bag">Bag</option>
+                    <option value="bottle">Btl</option>
+                    <option value="pack">Pack</option>
+                    <option value="loaf">Loaf</option>
+                    <option value="kg">Kg</option>
+                  </select>
+                  <select
+                    value={inlineEditCategory}
+                    onChange={(e) => setInlineEditCategory(e.target.value)}
+                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setInlineEditId(null)}
+                    className="flex-1 h-9 bg-warm-gray rounded-sm font-display text-xs text-ink uppercase tracking-wider"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit}
+                    className="flex-1 h-9 bg-ink rounded-sm font-display text-xs text-white uppercase tracking-wider disabled:opacity-50"
+                  >
+                    {savingEdit ? '...' : 'SAVE'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="p-4 flex items-center gap-3">
+                  <div className="w-12 h-12 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
+                    <ProductIcon category={product.category} size={28} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm truncate">{product.name}</p>
+                      {product.quantity <= product.low_stock_threshold && (
+                        <span className="text-[10px] bg-accent-red text-white px-1.5 py-0.5 rounded-sm font-display">{t('low')}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-muted-text">{product.quantity} {product.unit}(s)</span>
+                      <span className="text-xs text-accent-green">{formatCurrency(product.selling_price)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs text-muted-text">{t('cost')}</p>
+                    <p className="font-display text-sm">{formatCurrency(product.cost_price)}</p>
+                  </div>
+                </div>
+
+                {/* Profit bar */}
+                <div className="px-4 pb-3">
+                  <div className="flex items-center justify-between text-[10px] text-muted-text mb-1">
+                    <span>Profit per unit</span>
+                    <span className="text-accent-green font-medium">
+                      {formatCurrency(product.selling_price - product.cost_price)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-warm-gray rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{
+                        width: `${Math.min(100, ((product.selling_price - product.cost_price) / product.cost_price) * 100)}%`,
+                      }}
+                      transition={{ duration: 0.5, delay: index * 0.05 }}
+                      className="h-full bg-accent-green rounded-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Action buttons row: Re-stock | Edit | Delete */}
+                {editingProduct === product.id ? (
+                  <div className="border-t-2 border-ink px-4 py-3 bg-warm-gray/30">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">Add:</span>
+                      <div className="flex items-center gap-2 flex-1">
+                        <button
+                          onClick={() => setEditQty(Math.max(0, editQty - 1))}
+                          className="btn-tactile w-9 h-9 bg-light harsh-border rounded-sm flex items-center justify-center"
+                        >
+                          <Minus size={16} strokeWidth={2.5} />
+                        </button>
+                        <span className="font-display text-xl w-10 text-center">{editQty}</span>
+                        <button
+                          onClick={() => setEditQty(editQty + 1)}
+                          className="btn-tactile w-9 h-9 bg-light harsh-border rounded-sm flex items-center justify-center"
+                        >
+                          <Plus size={16} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleSaveRestock}
+                        className="btn-tactile w-9 h-9 bg-accent-green rounded-sm flex items-center justify-center"
+                      >
+                        <CheckIcon />
+                      </button>
+                      <button
+                        onClick={() => setEditingProduct(null)}
+                        className="btn-tactile w-9 h-9 bg-light harsh-border rounded-sm flex items-center justify-center"
+                      >
+                        <X size={16} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex border-t border-ink/10">
+                    <button
+                      onClick={() => handleRestock(product.id)}
+                      className="flex-1 py-2.5 text-micro text-accent-red hover:bg-warm-gray/30 transition-colors"
+                    >
+                      {t('re_stock')}
+                    </button>
+                    <div className="w-px bg-ink/10 my-2" />
+                    <button
+                      onClick={() => handleOpenEdit(product.id)}
+                      className="px-4 py-2.5 text-muted-text hover:bg-warm-gray/30 transition-colors flex items-center justify-center"
+                    >
+                      <Pencil size={14} strokeWidth={2} />
+                    </button>
+                    <div className="w-px bg-ink/10 my-2" />
+                    <button
+                      onClick={() => setShowDeleteConfirm(product.id)}
+                      className="px-4 py-2.5 text-accent-red/60 hover:bg-accent-red/5 hover:text-accent-red transition-colors flex items-center justify-center"
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </motion.div>
+        ))}
+      </section>
+
+      {/* Delete Confirmation */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[60]"
+              onClick={() => setShowDeleteConfirm(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 400 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[70] w-[85vw] max-w-sm p-5"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-accent-red/10 rounded-full flex items-center justify-center">
+                  <AlertTriangle size={20} className="text-accent-red" />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg text-ink uppercase tracking-tight">Delete Product?</h3>
+                  <p className="text-xs text-muted-text">This cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-ink mb-5">
+                Are you sure you want to delete <strong>{state.products.find((p) => p.id === showDeleteConfirm)?.name}</strong>?
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="flex-1 h-12 bg-warm-gray rounded-sm font-display text-sm text-ink uppercase tracking-wider"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  onClick={() => showDeleteConfirm && handleDelete(showDeleteConfirm)}
+                  disabled={deletingProduct}
+                  className="flex-1 h-12 bg-accent-red rounded-sm font-display text-sm text-white uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {deletingProduct ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      DELETE
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Add Product Sheet */}
+      <AnimatePresence>
+        {showAddProduct && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setShowAddProduct(false)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet flex flex-col"
+              style={{ maxHeight: '92vh' }}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
+                <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{t('add_product')}</h2>
+                <button onClick={() => setShowAddProduct(false)} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
+                  <X size={20} strokeWidth={2.5} className="text-ink" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+                  <div>
+                    <label className="text-micro text-muted-text mb-1.5 block">{t('product_name')}</label>
+                    <input
+                      type="text"
+                      value={newProduct.name}
+                      onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                      placeholder="e.g. Ideal Milk 320g"
+                      className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('cost_price')} (GH₵)</label>
+                      <input
+                        type="number"
+                        value={newProduct.cost_price}
+                        onChange={(e) => setNewProduct({ ...newProduct, cost_price: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('selling_price')} (GH₵)</label>
+                      <input
+                        type="number"
+                        value={newProduct.selling_price}
+                        onChange={(e) => setNewProduct({ ...newProduct, selling_price: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('quantity')}</label>
+                      <input
+                        type="number"
+                        value={newProduct.quantity}
+                        onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })}
+                        placeholder="0"
+                        className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">UNIT</label>
+                      <select
+                        value={newProduct.unit}
+                        onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
+                        className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
+                      >
+                        <option value="piece">Piece</option>
+                        <option value="tin">Tin</option>
+                        <option value="bag">Bag</option>
+                        <option value="bottle">Bottle</option>
+                        <option value="pack">Pack</option>
+                        <option value="loaf">Loaf</option>
+                        <option value="kg">Kg</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-micro text-muted-text mb-1.5 block">CATEGORY</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {categories.map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setNewProduct({ ...newProduct, category: cat })}
+                          className={`btn-tactile py-2.5 text-xs font-display uppercase tracking-wider rounded-sm border-2 transition-colors ${
+                            newProduct.category === cat
+                              ? 'bg-ink text-white border-ink'
+                              : 'bg-light text-ink border-ink'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Projected profit preview */}
+                  {newProduct.cost_price && newProduct.selling_price && (
+                    <div className="bg-ink rounded-sm p-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-white/60 text-micro">{t('profit_per_unit')}</span>
+                        <span className="font-display text-lg text-accent-green">
+                          {formatCurrency(parseFloat(newProduct.selling_price || '0') - parseFloat(newProduct.cost_price || '0'))}
+                        </span>
+                      </div>
+                      {newProduct.quantity && (
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-white/40 text-xs">{t('total_projected_profit')}</span>
+                          <span className="text-white text-sm font-medium">
+                            {formatCurrency(
+                              (parseFloat(newProduct.selling_price || '0') - parseFloat(newProduct.cost_price || '0')) *
+                                parseInt(newProduct.quantity || '0')
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Save button */}
+                  <div className="pt-2 pb-4">
+                    <button
+                      onClick={handleAddProduct}
+                      disabled={addingProduct}
+                      className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
+                    >
+                      {addingProduct ? '...' : t('add_to_stock')}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8L6.5 11.5L13 4.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}

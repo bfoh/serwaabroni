@@ -37,6 +37,17 @@ type ScanMode = 'camera' | 'keyboard' | 'upload' | 'manual'
 // ============================================================
 // OPEN FOOD FACTS API
 // ============================================================
+// EAN-13, UPC-A and UPC-E encode the same product number with different
+// leading zeros, and a single physical barcode can decode either way on
+// different scans. Normalise (strip leading zeros) so a code saved one scan
+// still matches the next. Non-numeric codes (QR payloads) pass through trimmed.
+function normalizeBarcode(code: string | null | undefined): string {
+  if (!code) return ''
+  const trimmed = String(code).trim()
+  if (!/^\d+$/.test(trimmed)) return trimmed
+  return trimmed.replace(/^0+/, '') || trimmed
+}
+
 type ProductInfo = { name: string; category: string }
 
 // Open Food Facts — strong for packaged food/drinks worldwide.
@@ -398,8 +409,12 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       }
     } catch { /* not JSON */ }
 
-    // 2. Barcode — check local products first
-    const existing = state.products.find((p) => p.barcode === code || p.qr_code === code)
+    // 2. Barcode — check local products first (normalised so leading-zero
+    // EAN/UPC variants of the same product still match)
+    const target = normalizeBarcode(code)
+    const existing = state.products.find(
+      (p) => normalizeBarcode(p.barcode) === target || normalizeBarcode(p.qr_code) === target
+    )
     if (existing) {
       setCurrentItem({
         id: uid(),
@@ -567,7 +582,10 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const saveAllToStock = useCallback(async () => {
     let added = 0, updated = 0
     for (const item of basket) {
-      const existing = state.products.find((p) => p.barcode === item.barcode && item.barcode)
+      const itemKey = normalizeBarcode(item.barcode)
+      const existing = itemKey
+        ? state.products.find((p) => normalizeBarcode(p.barcode) === itemKey)
+        : undefined
       if (existing) {
         await updateProduct(existing.id, { quantity: existing.quantity + item.quantity })
         updated++

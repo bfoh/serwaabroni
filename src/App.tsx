@@ -41,7 +41,6 @@ function MainApp() {
       </main>
       <BottomNav />
       <AddSaleSheet />
-      <Toast />
       {/* Overlay pages */}
       <SalesHistory isOpen={showSalesHistory} onClose={() => setShowSalesHistory(false)} />
       <Expenses isOpen={showExpenses} onClose={() => setShowExpenses(false)} />
@@ -65,23 +64,26 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={state.isAuthenticated ? <Navigate to="/" replace /> : <Login />}
-      />
-      <Route
-        path="/settings"
-        element={state.isAuthenticated ? (
-          <div className="h-screen w-full overflow-hidden bg-sand relative">
-            <SettingsPage onClose={() => window.history.back()} />
-          </div>
-        ) : <Navigate to="/login" replace />}
-      />
-      <Route
-        path="/*"
-        element={state.isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
-      />
-    </Routes>
+    <>
+      <Routes>
+        <Route
+          path="/login"
+          element={state.isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+        />
+        <Route
+          path="/settings"
+          element={state.isAuthenticated ? (
+            <div className="h-screen w-full overflow-hidden bg-sand relative">
+              <SettingsPage onClose={() => window.history.back()} />
+            </div>
+          ) : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/*"
+          element={state.isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
+        />
+      </Routes>
+      <Toast />
+    </>
   )
 }

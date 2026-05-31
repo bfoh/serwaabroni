@@ -103,12 +103,20 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     try {
       const scanner = new Html5Qrcode('scanner-camera', {
         verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       })
       scannerRef.current = scanner
 
       await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 260, height: 200 }, aspectRatio: 1.0 },
+        { facingMode: 'environment', advanced: [{ focusMode: 'continuous' } as any] },
+        { 
+          fps: 15, 
+          // Removing qrbox so the entire camera frame is actively scanned. 
+          // This makes scanning 1D barcodes significantly easier and more reliable.
+          disableFlip: false 
+        },
         onScanSuccess,
         () => { /* silent failure */ }
       )
@@ -441,12 +449,12 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   <defs>
                     <mask id="scan-mask">
                       <rect width="100%" height="100%" fill="white" />
-                      <rect x="50%" y="40%" width="260" height="200" rx="8" fill="black" transform="translate(-130, -100)" />
+                      <rect x="50%" y="40%" width="300" height="150" rx="8" fill="black" transform="translate(-150, -75)" />
                     </mask>
                   </defs>
                   <rect width="100%" height="100%" fill="rgba(0,0,0,0.5)" mask="url(#scan-mask)" />
                 </svg>
-                <div className="absolute left-1/2 top-[40%] w-[260px] h-[200px] -translate-x-1/2 -translate-y-1/2">
+                <div className="absolute left-1/2 top-[40%] w-[300px] h-[150px] -translate-x-1/2 -translate-y-1/2">
                   <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-accent-green rounded-tl-sm" />
                   <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-accent-green rounded-tr-sm" />
                   <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-accent-green rounded-bl-sm" />

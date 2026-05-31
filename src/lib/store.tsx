@@ -245,6 +245,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Auto-persist state to localStorage whenever core data changes
+  useEffect(() => {
+    if (state.dataLoading) return // don't persist during initial load
+    persistFromState(state)
+  }, [state.products, state.sales, state.debts, state.expenses, state.customers])
+
   const setTab = useCallback((tab: Tab) => { dispatch({ type: 'SET_TAB', tab }) }, [])
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
@@ -262,7 +268,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     try {
       const local = loadData()
-      const [remoteProducts, remoteSales, remoteDebts, remoteExpenses, summary, profile, remoteCustomers] = await Promise.all([
+      
+      const results = await Promise.allSettled([
         fetchProducts(),
         fetchSales(),
         fetchDebts(),
@@ -271,6 +278,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchBusinessProfile(),
         fetchCustomers(),
       ])
+
+      const remoteProducts = results[0].status === 'fulfilled' ? results[0].value : []
+      const remoteSales = results[1].status === 'fulfilled' ? results[1].value : []
+      const remoteDebts = results[2].status === 'fulfilled' ? results[2].value : []
+      const remoteExpenses = results[3].status === 'fulfilled' ? results[3].value : []
+      const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0 }
+      const profile = results[5].status === 'fulfilled' ? results[5].value : null
+      const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
 
       // Merge offline-created data that hasn't synced
       const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
@@ -286,17 +301,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts,
         expenses,
         customers,
-        balance: summary.totalSales - summary.totalExpenses,
-        todaySales: summary.todaySales,
-        todayProfit: summary.todayProfit,
-        pendingDebts: summary.pendingDebts,
+        balance: (summary.totalSales || 0) - (summary.totalExpenses || 0),
+        todaySales: summary.todaySales || 0,
+        todayProfit: summary.todayProfit || 0,
+        pendingDebts: summary.pendingDebts || 0,
       })
       
       if (profile) {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
       }
-
-      persistFromState({ products, sales, debts, expenses, customers })
       cacheOfflineData({ products, sales, debts, expenses, lastSync: Date.now() })
     } catch {
       // Fall back to localStorage / seed data
@@ -357,12 +370,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const inserted = await insertProduct(product)
       dispatch({ type: 'ADD_PRODUCT', product: inserted })
-      persistFromState({ ...state, products: [inserted, ...state.products] })
       showToast('Product added', 'success')
     } catch {
       const localProduct: Product = { ...product, user_id: 'local' } as Product
       dispatch({ type: 'ADD_PRODUCT', product: localProduct })
-      persistFromState({ ...state, products: [localProduct, ...state.products] })
       showToast('Saved locally (will sync when online)', 'success')
     }
   }, [state, showToast])
@@ -371,14 +382,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await updateProductDb(id, updates)
       dispatch({ type: 'UPDATE_PRODUCT', product: updated })
-      const newProducts = state.products.map((p) => p.id === id ? updated : p)
-      persistFromState({ ...state, products: newProducts })
     } catch {
       const existing = state.products.find((p) => p.id === id)
       if (existing) {
         const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
         dispatch({ type: 'UPDATE_PRODUCT', product: updated })
-        persistFromState({ ...state, products: state.products.map((p) => p.id === id ? updated : p) })
       }
     }
   }, [state])
@@ -386,7 +394,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removeProduct = useCallback(async (id: string) => {
     try { await deleteProductDb(id) } catch { /* may not exist in db */ }
     dispatch({ type: 'DELETE_PRODUCT', id })
-    persistFromState({ ...state, products: state.products.filter((p) => p.id !== id) })
     showToast('Product deleted', 'success')
   }, [state, showToast])
 
@@ -400,7 +407,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
-      persistFromState({ ...state, products, sales: [recorded, ...state.sales] })
       showToast('Sale recorded!', 'success')
     } catch {
       const localSale: Sale = { ...sale, user_id: 'local' } as Sale
@@ -409,11 +415,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (existing) {
         dispatch({ type: 'UPDATE_PRODUCT', product: { ...existing, quantity: Math.max(0, existing.quantity - quantitySold) } })
       }
-      persistFromState({
-        ...state,
-        products: state.products.map((p) => p.id === productId ? { ...p, quantity: Math.max(0, p.quantity - quantitySold) } : p),
-        sales: [localSale, ...state.sales],
-      })
       showToast('Sale saved locally', 'success')
     }
   }, [state, showToast])
@@ -422,11 +423,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const inserted = await insertDebt(debt)
       dispatch({ type: 'ADD_DEBT', debt: inserted })
-      persistFromState({ ...state, debts: [inserted, ...state.debts] })
     } catch {
       const localDebt: Debt = { ...debt, user_id: 'local' } as Debt
       dispatch({ type: 'ADD_DEBT', debt: localDebt })
-      persistFromState({ ...state, debts: [localDebt, ...state.debts] })
     }
   }, [state])
 
@@ -434,13 +433,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await updateDebtDb(id, updates)
       dispatch({ type: 'UPDATE_DEBT', debt: updated })
-      persistFromState({ ...state, debts: state.debts.map((d) => d.id === id ? updated : d) })
     } catch {
       const existing = state.debts.find((d) => d.id === id)
       if (existing) {
         const updated = { ...existing, ...updates }
         dispatch({ type: 'UPDATE_DEBT', debt: updated })
-        persistFromState({ ...state, debts: state.debts.map((d) => d.id === id ? updated : d) })
       }
     }
   }, [state])
@@ -449,29 +446,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const inserted = await insertExpense(expense)
       dispatch({ type: 'ADD_EXPENSE', expense: inserted })
-      persistFromState({ ...state, expenses: [inserted, ...state.expenses] })
     } catch {
       const localExpense: Expense = { ...expense, user_id: 'local' } as Expense
       dispatch({ type: 'ADD_EXPENSE', expense: localExpense })
-      persistFromState({ ...state, expenses: [localExpense, ...state.expenses] })
     }
   }, [state])
 
   const removeExpense = useCallback(async (id: string) => {
     try { await deleteExpenseDb(id) } catch { /* */ }
     dispatch({ type: 'DELETE_EXPENSE', id })
-    persistFromState({ ...state, expenses: state.expenses.filter((e) => e.id !== id) })
-  }, [state])
+  }, [])
 
   const addCustomer = useCallback(async (customer: Omit<Customer, 'user_id'>) => {
     try {
       const inserted = await insertCustomer(customer)
       dispatch({ type: 'ADD_CUSTOMER', customer: inserted })
-      persistFromState({ ...state, customers: [inserted, ...state.customers] })
     } catch {
       const localCustomer: Customer = { ...customer, user_id: 'local' } as Customer
       dispatch({ type: 'ADD_CUSTOMER', customer: localCustomer })
-      persistFromState({ ...state, customers: [localCustomer, ...state.customers] })
     }
   }, [state])
 
@@ -479,13 +471,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await updateCustomerDb(id, updates)
       dispatch({ type: 'UPDATE_CUSTOMER', customer: updated })
-      persistFromState({ ...state, customers: state.customers.map((c) => c.id === id ? updated : c) })
     } catch {
       const existing = state.customers.find((c) => c.id === id)
       if (existing) {
         const updated = { ...existing, ...updates }
         dispatch({ type: 'UPDATE_CUSTOMER', customer: updated })
-        persistFromState({ ...state, customers: state.customers.map((c) => c.id === id ? updated : c) })
       }
     }
   }, [state])

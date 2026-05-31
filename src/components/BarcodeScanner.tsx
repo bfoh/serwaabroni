@@ -5,7 +5,7 @@ import {
   Mic, ChevronDown, ChevronUp, Trash2, Check, Barcode as BarcodeIcon,
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
@@ -54,6 +54,26 @@ async function lookupOpenFoodFacts(barcode: string): Promise<{ name: string; cat
 }
 
 // ============================================================
+// SUPPORTED CODE FORMATS — all common retail 1D + 2D codes.
+// Limiting the set lets the decoder focus and lock faster.
+// ============================================================
+const SUPPORTED_FORMATS = [
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+  Html5QrcodeSupportedFormats.AZTEC,
+]
+
+// ============================================================
 // COMPONENT
 // ============================================================
 export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps) {
@@ -63,6 +83,9 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
 
   // Scanner state
   const isProcessingRef = useRef(false)
+  // Holds latest scan handler so the running camera always calls fresh logic
+  // (avoids stale product list / processing closure captured at start time).
+  const onScanSuccessRef = useRef<(text: string) => void>(() => {})
   const [isScanning, setIsScanning] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -103,6 +126,10 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     try {
       const scanner = new Html5Qrcode('scanner-camera', {
         verbose: false,
+        // Native BarcodeDetector when available (Android Chrome) — fastest + most reliable.
+        // Falls back to the bundled ZXing decoder elsewhere (e.g. iOS Safari).
+        useBarCodeDetectorIfSupported: true,
+        formatsToSupport: SUPPORTED_FORMATS,
         experimentalFeatures: {
           useBarCodeDetectorIfSupported: true
         }
@@ -110,16 +137,31 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       scannerRef.current = scanner
 
       await scanner.start(
-        { facingMode: 'environment' },
-        { 
-          fps: 15, 
-          // Removing qrbox so the entire camera frame is actively scanned. 
-          // This makes scanning 1D barcodes significantly easier and more reliable.
-          disableFlip: false 
+        // Request a high-res rear camera with continuous autofocus. Sharp, large
+        // frames are the single biggest factor in decoding blurry 1D barcodes.
+        {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          // focusMode isn't in the TS lib types yet, hence the cast.
+          advanced: [{ focusMode: 'continuous' }],
+        } as unknown as MediaTrackConstraints,
+        {
+          fps: 20,
+          // No qrbox: scan the whole frame so the barcode never has to be centred.
+          disableFlip: false,
         },
-        onScanSuccess,
+        (text) => onScanSuccessRef.current(text),
         () => { /* silent failure */ }
       )
+
+      // Best-effort: lock continuous autofocus on the live track once running.
+      // Some devices ignore focusMode in initial constraints but accept it here.
+      try {
+        await scanner.applyVideoConstraints({
+          advanced: [{ focusMode: 'continuous' }],
+        } as unknown as MediaTrackConstraints)
+      } catch { /* device doesn't support focus control */ }
 
       setIsScanning(true)
     } catch (err: unknown) {
@@ -273,6 +315,11 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       isProcessingRef.current = false
     })
   }, [processScannedCode])
+
+  // Keep the running camera pointed at the freshest handler (fresh product list).
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess
+  }, [onScanSuccess])
 
   // ==========================================================
   // HANDLE TYPED BARCODE

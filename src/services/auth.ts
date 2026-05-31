@@ -9,6 +9,7 @@ export interface UserState {
   email: string
   phone?: string
   business_name?: string
+  logo?: string
 }
 
 // Deprecating old interface — keeping for backward compat
@@ -38,6 +39,7 @@ export async function signUp(email: string, password: string, phone: string, bus
         email: data.user.email!,
         phone: data.user.user_metadata?.phone,
         business_name: data.user.user_metadata?.business_name,
+        logo: data.user.user_metadata?.logo,
       },
       error: null,
     }
@@ -62,6 +64,7 @@ export async function signIn(email: string, password: string): Promise<{ user: U
         email: data.user.email!,
         phone: data.user.user_metadata?.phone,
         business_name: data.user.user_metadata?.business_name,
+        logo: data.user.user_metadata?.logo,
       },
       error: null,
     }
@@ -86,13 +89,14 @@ export async function checkAuth(): Promise<UserState | null> {
       email: data.user.email!,
       phone: data.user.user_metadata?.phone,
       business_name: data.user.user_metadata?.business_name,
+      logo: data.user.user_metadata?.logo,
     }
   } catch {
     return null
   }
 }
 
-export async function updateProfile(updates: { business_name?: string; phone?: string }) {
+export async function updateProfile(updates: { business_name?: string; phone?: string; logo?: string }) {
   const { error } = await supabase.auth.updateUser({ data: updates })
   if (error) throw error
 }

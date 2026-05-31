@@ -16,9 +16,9 @@ export default function Settings({ onClose }: SettingsProps) {
   const [showProfile, setShowProfile] = useState(false)
   const [showConfirmReset, setShowConfirmReset] = useState(false)
   const [showConfirmLogout, setShowConfirmLogout] = useState(false)
-  const [businessName, setBusinessName] = useState(state.businessProfile?.business_name || '')
+  const [businessName, setBusinessName] = useState(state.businessProfile?.business_name || state.user?.business_name || '')
   const [ownerName, setOwnerName] = useState(state.businessProfile?.owner_name || '')
-  const [phone, setPhone] = useState(state.businessProfile?.phone || '')
+  const [phone, setPhone] = useState(state.businessProfile?.phone || state.user?.phone || '')
   const [saving, setSaving] = useState(false)
 
   const handleSaveProfile = async () => {
@@ -90,7 +90,7 @@ export default function Settings({ onClose }: SettingsProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-display text-lg text-white uppercase tracking-tight truncate">
-              {state.businessProfile?.business_name || "My Shop"}
+              {state.businessProfile?.business_name || state.user?.business_name || "My Shop"}
             </p>
             <p className="text-xs text-white/50 mt-0.5">{state.user?.email || 'Logged in'}</p>
           </div>

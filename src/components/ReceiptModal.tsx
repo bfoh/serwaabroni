@@ -18,7 +18,7 @@ export default function ReceiptModal({ sale, isOpen, onClose }: ReceiptModalProp
 
   if (!isOpen || !sale) return null
 
-  const businessName = state.businessProfile?.business_name || "SerwaaBroni Shop"
+  const businessName = state.businessProfile?.business_name || state.user?.business_name || "SerwaaBroni Shop"
   const now = new Date()
   const receiptNo = `SB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${sale.id.slice(-4).toUpperCase()}`
 

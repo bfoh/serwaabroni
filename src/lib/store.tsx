@@ -6,7 +6,7 @@ import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData } from './data'
 
-import { checkAuth, signOut as supabaseSignOut } from '@/services/auth'
+import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services/auth'
 import {
   fetchProducts, insertProduct, updateProductDb, deleteProductDb,
   fetchSales, recordSale,
@@ -442,13 +442,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateBusinessProfile = useCallback(async (profile: BusinessProfile) => {
+    // 1. Always save to Supabase Auth user metadata as a bulletproof fallback
+    try {
+      await updateProfile({
+        business_name: profile.business_name,
+        phone: profile.phone || undefined,
+      })
+      // The auth listener will eventually pick this up, but we can optimistically update user state
+      if (state.user) {
+        dispatch({ type: 'SET_USER', user: { ...state.user, business_name: profile.business_name, phone: profile.phone || undefined } })
+      }
+    } catch (e) {
+      console.warn('Auth metadata update failed', e)
+    }
+
+    // 2. Try to save to the dedicated business_profiles table
     try {
       const saved = await upsertBusinessProfile(profile)
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
     } catch {
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile }) // local fallback
     }
-  }, [])
+  }, [state.user])
 
   return (
     <StoreContext.Provider value={{

@@ -20,7 +20,7 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses }: Dashbo
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
 
-  const businessName = state.businessProfile?.business_name || "Maame Doku's Shop"
+  const businessName = state.businessProfile?.business_name || state.user?.business_name || "Maame Doku's Shop"
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 
   const recentSales = useMemo(() => state.sales.slice(0, 6), [state.sales])

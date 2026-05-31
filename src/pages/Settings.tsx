@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield } from 'lucide-react'
+import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield, Camera } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useNavigate } from 'react-router'
 import { exportToCSV } from '@/lib/export'
@@ -19,7 +19,46 @@ export default function Settings({ onClose }: SettingsProps) {
   const [businessName, setBusinessName] = useState(state.businessProfile?.business_name || state.user?.business_name || '')
   const [ownerName, setOwnerName] = useState(state.businessProfile?.owner_name || '')
   const [phone, setPhone] = useState(state.businessProfile?.phone || state.user?.phone || '')
+  const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || '')
   const [saving, setSaving] = useState(false)
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX_SIZE = 200
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width
+            width = MAX_SIZE
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height
+            height = MAX_SIZE
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height)
+          setLogoUrl(canvas.toDataURL('image/jpeg', 0.8))
+        }
+      }
+      img.src = ev.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
 
   const handleSaveProfile = async () => {
     setSaving(true)
@@ -30,6 +69,7 @@ export default function Settings({ onClose }: SettingsProps) {
       owner_name: ownerName || null,
       phone: phone || null,
       email: state.user?.email || null,
+      logo_url: logoUrl || null,
       currency: 'GHS',
       language: state.language,
       created_at: state.businessProfile?.created_at || new Date().toISOString(),
@@ -85,8 +125,12 @@ export default function Settings({ onClose }: SettingsProps) {
       {/* Profile Card */}
       <div className="px-5 pt-5 pb-4">
         <div className="bg-ink rounded-sm p-5 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-accent-red flex items-center justify-center flex-shrink-0">
-            <Store size={28} className="text-white" />
+          <div className="w-14 h-14 rounded-full bg-accent-red flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {state.user?.logo || state.businessProfile?.logo_url ? (
+              <img src={state.user?.logo || state.businessProfile?.logo_url || ''} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <Store size={28} className="text-white" />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-display text-lg text-white uppercase tracking-tight truncate">
@@ -142,6 +186,23 @@ export default function Settings({ onClose }: SettingsProps) {
                 <button onClick={() => setShowProfile(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
               </div>
               <div className="p-4 space-y-3">
+                <div className="flex flex-col items-center mb-4">
+                  <div className="w-20 h-20 rounded-full bg-warm-gray mb-2 flex items-center justify-center overflow-hidden relative border-2 border-ink">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                    ) : (
+                      <Store size={32} className="text-muted-text" />
+                    )}
+                    <label className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer opacity-0 hover:opacity-100 transition-opacity">
+                      <Camera size={20} className="text-white" />
+                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                    </label>
+                  </div>
+                  <label className="text-[10px] text-ink uppercase tracking-wider cursor-pointer btn-tactile bg-light px-3 py-1.5 rounded-sm harsh-border">
+                    Change Logo
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  </label>
+                </div>
                 <div>
                   <label className="text-[10px] text-muted-text uppercase block mb-1">Business Name</label>
                   <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm" />

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Share2, Check, Download } from 'lucide-react'
+import { X, Share2, Check, Download, Printer } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime } from '@/lib/data'
 import type { Sale } from '@/lib/supabase'
@@ -19,6 +19,7 @@ export default function ReceiptModal({ sale, isOpen, onClose }: ReceiptModalProp
   if (!isOpen || !sale) return null
 
   const businessName = state.businessProfile?.business_name || state.user?.business_name || "SerwaaBroni Shop"
+  const logoUrl = state.user?.logo || state.businessProfile?.logo_url
   const now = new Date()
   const receiptNo = `SB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${sale.id.slice(-4).toUpperCase()}`
 
@@ -138,9 +139,38 @@ Thank you for your business!`
             exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] w-[92vw] max-w-sm"
           >
-            <div ref={receiptRef} className="bg-sand harsh-border rounded-sm p-5">
+            <style>{`
+              @media print {
+                body * {
+                  visibility: hidden;
+                }
+                .print-section, .print-section * {
+                  visibility: visible;
+                  color: black !important;
+                  background: white !important;
+                }
+                .print-section {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                  padding: 10px;
+                  margin: 0;
+                  box-shadow: none !important;
+                  border: none !important;
+                }
+                .print-hide {
+                  display: none !important;
+                }
+                @page { margin: 0; }
+              }
+            `}</style>
+            <div ref={receiptRef} className="bg-sand harsh-border rounded-sm p-5 print-section">
               {/* Header */}
-              <div className="text-center border-b-2 border-dashed border-ink/30 pb-3 mb-4">
+              <div className="text-center border-b-2 border-dashed border-ink/30 pb-3 mb-4 flex flex-col items-center">
+                {logoUrl && (
+                  <img src={logoUrl} alt="Logo" className="w-16 h-16 object-contain mb-2 mix-blend-multiply" />
+                )}
                 <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{businessName}</h2>
                 <p className="text-[10px] text-muted-text uppercase tracking-wider mt-1">Receipt</p>
                 <p className="text-[10px] text-muted-text font-mono mt-0.5">{receiptNo}</p>
@@ -187,9 +217,9 @@ Thank you for your business!`
                 <span className="text-sm text-muted-text">Payment</span>
                 <span className="text-sm font-medium uppercase">{sale.payment_method || 'CASH'}</span>
               </div>
-              <div className="flex justify-between items-center bg-ink rounded-sm px-4 py-3">
-                <span className="text-white/70 text-sm uppercase">Total</span>
-                <span className="font-display text-xl text-white">{formatCurrency(sale.total)}</span>
+              <div className="flex justify-between items-center bg-ink rounded-sm px-4 py-3 print:bg-white print:border-y-2 print:border-black print:px-0">
+                <span className="text-white/70 text-sm uppercase print:text-black">Total</span>
+                <span className="font-display text-xl text-white print:text-black">{formatCurrency(sale.total)}</span>
               </div>
 
               {/* Footer */}
@@ -200,7 +230,14 @@ Thank you for your business!`
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-4 gap-2 print-hide">
+              <button
+                onClick={() => window.print()}
+                className="h-11 bg-ink rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
+              >
+                <Printer size={14} />
+                Print
+              </button>
               <button
                 onClick={handleShareWhatsApp}
                 className="h-11 bg-[#25D366] rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
@@ -213,7 +250,7 @@ Thank you for your business!`
                 className="h-11 bg-ink rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
               >
                 <Download size={14} />
-                Save
+                <span className="hidden sm:inline">Save</span>
               </button>
               <button
                 onClick={onClose}

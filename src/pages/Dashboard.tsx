@@ -46,9 +46,13 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses }: Dashbo
           </button>
           <button
             onClick={onOpenSalesHistory}
-            className="w-9 h-9 rounded-full bg-ink flex items-center justify-center"
+            className="w-9 h-9 rounded-full bg-ink flex items-center justify-center overflow-hidden"
           >
-            <span className="font-display text-sm text-white">{initials}</span>
+            {state.user?.logo || state.businessProfile?.logo_url ? (
+              <img src={state.user?.logo || state.businessProfile?.logo_url || ''} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <span className="font-display text-sm text-white">{initials}</span>
+            )}
           </button>
         </div>
       </header>

@@ -23,6 +23,7 @@ export interface UserState {
   email: string
   phone?: string
   business_name?: string
+  logo?: string
 }
 
 export interface AppState {
@@ -147,6 +148,7 @@ function appReducer(state: AppState, action: Action): AppState {
           email: action.user.email,
           phone: action.user.phone,
           business_name: action.user.business_name,
+          logo: action.user.logo,
         },
         isAuthenticated: true,
         authLoading: false,
@@ -208,6 +210,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             email: session.user.email!,
             phone: session.user.user_metadata?.phone,
             business_name: session.user.user_metadata?.business_name,
+            logo: session.user.user_metadata?.logo,
           },
         })
       } else {
@@ -447,10 +450,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await updateProfile({
         business_name: profile.business_name,
         phone: profile.phone || undefined,
+        logo: profile.logo_url || undefined,
       })
       // The auth listener will eventually pick this up, but we can optimistically update user state
       if (state.user) {
-        dispatch({ type: 'SET_USER', user: { ...state.user, business_name: profile.business_name, phone: profile.phone || undefined } })
+        dispatch({ type: 'SET_USER', user: { ...state.user, business_name: profile.business_name, phone: profile.phone || undefined, logo: profile.logo_url || undefined } })
       }
     } catch (e) {
       console.warn('Auth metadata update failed', e)

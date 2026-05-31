@@ -84,6 +84,7 @@ export interface BusinessProfile {
   owner_name: string | null
   phone: string | null
   email: string | null
+  logo_url?: string | null
   currency: string
   language: string
   created_at: string

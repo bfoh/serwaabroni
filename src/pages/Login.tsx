@@ -7,7 +7,7 @@ import { signUp, signIn } from '@/services/auth'
 type AuthMode = 'login' | 'signup'
 
 export default function Login() {
-  const { showToast } = useStore()
+  const { showToast, refreshData } = useStore()
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,7 +25,7 @@ export default function Login() {
       showToast(error, 'error')
     } else if (user) {
       showToast('Welcome back!', 'success')
-      window.location.reload()
+      refreshData()
     }
     setLoading(false)
   }
@@ -42,7 +42,7 @@ export default function Login() {
       showToast(error, 'error')
     } else if (user) {
       showToast('Account created! Welcome to SerwaaBroni!', 'success')
-      window.location.reload()
+      refreshData()
     }
     setLoading(false)
   }

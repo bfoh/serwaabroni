@@ -455,7 +455,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black flex flex-col"
+        className="fixed inset-0 z-[10000] bg-black flex flex-col"
       >
         {/* Hidden scanner for file upload decoding */}
         <div id="upload-scanner-hidden" className="hidden" />
@@ -668,7 +668,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         {/* ======== MANUAL MODE ======== */}
         {scanMode === 'manual' && (
           <div className="flex-1 bg-black overflow-y-auto">
-            <div className="max-w-sm mx-auto px-5 py-6">
+            <div className="max-w-sm mx-auto px-5 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
               {currentItem?.barcode && (
                 <div className="flex items-center gap-2 mb-3 bg-white/5 rounded-sm px-3 py-2">
                   <AlertTriangle size={14} className="text-amber-400" />
@@ -871,10 +871,10 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
               <motion.div
                 initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="absolute bottom-0 left-0 right-0 bg-sand z-[120] rounded-t-2xl max-h-[85vh] overflow-y-auto"
+                className="absolute bottom-0 left-0 right-0 bg-sand z-[120] rounded-t-2xl max-h-[90vh] overflow-y-auto"
               >
                 <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-ink/20 rounded-full" /></div>
-                <div className="px-5 pb-6">
+                <div className="px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
                   <div className="flex items-center gap-2 mb-4">
                     {currentItem.source === 'qr' ? <QrCode size={14} className="text-accent-green" /> : <BarcodeIcon size={14} className="text-accent-green" />}
                     <span className="text-[10px] text-accent-green font-display uppercase tracking-wider">

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package, ChevronDown } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, getProfitForPeriod } from '@/lib/data'
+import { formatCurrency, getProfitForPeriod, formatTime } from '@/lib/data'
 import MazeShader from '@/components/MazeShader'
 import ProductIcon from '@/components/ProductIcon'
 
@@ -19,6 +19,11 @@ export default function Reports() {
   const { state, t } = useStore()
   const [period, setPeriod] = useState<ReportPeriod>('daily')
 
+  const [expandedIncome, setExpandedIncome] = useState(false)
+  const [expandedExpenses, setExpandedExpenses] = useState(false)
+  const [expandedOwed, setExpandedOwed] = useState(false)
+  const [expandedOwing, setExpandedOwing] = useState(false)
+
   const periodDays = {
     daily: 1,
     weekly: 7,
@@ -29,15 +34,19 @@ export default function Reports() {
   const cutoff = new Date(Date.now() - periodDays[period] * 86400000).toISOString()
 
   // Main stats
-  const salesTotal = state.sales.filter((s) => s.created_at >= cutoff).reduce((sum, s) => sum + s.total, 0)
+  const salesList = state.sales.filter((s) => s.created_at >= cutoff)
+  const salesTotal = salesList.reduce((sum, s) => sum + s.total, 0)
   const profitTotal = getProfitForPeriod(state.sales, periodDays[period])
-  const expensesTotal = state.expenses.filter((e) => e.created_at >= cutoff).reduce((sum, e) => sum + e.amount, 0)
+  const expensesList = state.expenses.filter((e) => e.created_at >= cutoff)
+  const expensesTotal = expensesList.reduce((sum, e) => sum + e.amount, 0)
   const netTotal = profitTotal - expensesTotal
 
   // All debts (not filtered by period — same as v14)
   const allDebts = state.debts
-  const totalOwed = allDebts.filter((d) => d.type === 'owed' && !d.is_paid).reduce((s, d) => s + d.amount, 0)
-  const totalOwing = allDebts.filter((d) => d.type === 'owing' && !d.is_paid).reduce((s, d) => s + d.amount, 0)
+  const owedList = allDebts.filter((d) => d.type === 'owed' && !d.is_paid)
+  const totalOwed = owedList.reduce((s, d) => s + d.amount, 0)
+  const owingList = allDebts.filter((d) => d.type === 'owing' && !d.is_paid)
+  const totalOwing = owingList.reduce((s, d) => s + d.amount, 0)
   const debtNet = totalOwed - totalOwing
 
   // Top products (uses same period as main selector)
@@ -161,11 +170,17 @@ export default function Reports() {
             <div className="space-y-3">
               {/* Income */}
               <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-sm">{t('income')}</span>
+                <button 
+                  onClick={() => setExpandedIncome(!expandedIncome)}
+                  className="w-full flex justify-between items-center mb-1.5 focus:outline-none group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{t('income')}</span>
+                    <ChevronDown size={14} className={`text-muted-text transition-transform duration-300 ${expandedIncome ? 'rotate-180' : ''}`} />
+                  </div>
                   <span className="font-display text-base text-accent-green">{formatCurrency(salesTotal)}</span>
-                </div>
-                <div className="h-2 bg-warm-gray rounded-full overflow-hidden">
+                </button>
+                <div className="h-2 bg-warm-gray rounded-full overflow-hidden mb-2">
                   <motion.div
                     key={`inc-bar-${period}`}
                     initial={{ width: 0 }}
@@ -179,14 +194,41 @@ export default function Reports() {
                     className="h-full bg-accent-green rounded-full"
                   />
                 </div>
+                
+                {/* Expanded Income Details */}
+                <motion.div
+                  initial={false}
+                  animate={{ height: expandedIncome ? 'auto' : 0, opacity: expandedIncome ? 1 : 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                    {salesList.length === 0 ? (
+                      <p className="text-[10px] text-muted-text italic">No income in this period.</p>
+                    ) : (
+                      salesList.map(sale => (
+                        <div key={sale.id} className="flex justify-between items-center text-xs">
+                          <div className="truncate flex-1 mr-2 text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{sale.quantity}</span></div>
+                          <span className="font-medium">{formatCurrency(sale.total)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
               </div>
+
               {/* Expenses */}
               <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-sm uppercase">{t('expenses')}</span>
+                <button 
+                  onClick={() => setExpandedExpenses(!expandedExpenses)}
+                  className="w-full flex justify-between items-center mb-1.5 focus:outline-none group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm uppercase">{t('expenses')}</span>
+                    <ChevronDown size={14} className={`text-muted-text transition-transform duration-300 ${expandedExpenses ? 'rotate-180' : ''}`} />
+                  </div>
                   <span className="font-display text-base text-accent-red">{formatCurrency(expensesTotal)}</span>
-                </div>
-                <div className="h-2 bg-warm-gray rounded-full overflow-hidden">
+                </button>
+                <div className="h-2 bg-warm-gray rounded-full overflow-hidden mb-2">
                   <motion.div
                     key={`exp-bar-${period}`}
                     initial={{ width: 0 }}
@@ -200,6 +242,26 @@ export default function Reports() {
                     className="h-full bg-accent-red rounded-full"
                   />
                 </div>
+
+                {/* Expanded Expenses Details */}
+                <motion.div
+                  initial={false}
+                  animate={{ height: expandedExpenses ? 'auto' : 0, opacity: expandedExpenses ? 1 : 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                    {expensesList.length === 0 ? (
+                      <p className="text-[10px] text-muted-text italic">No expenses in this period.</p>
+                    ) : (
+                      expensesList.map(exp => (
+                        <div key={exp.id} className="flex justify-between items-center text-xs">
+                          <div className="truncate flex-1 mr-2 text-ink/80">{exp.description}</div>
+                          <span className="font-medium">{formatCurrency(exp.amount)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
               </div>
               {/* Balance */}
               <div className="border-t border-ink/10 pt-3 flex justify-between items-center">
@@ -219,16 +281,72 @@ export default function Reports() {
             className="bg-light/95 harsh-border rounded-sm p-4"
           >
             <p className="text-micro text-muted-text mb-3">{t('debt_summary')}</p>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">{t('they_owe_you')}</span>
-                <span className="font-display text-base text-accent-green">{formatCurrency(totalOwed)}</span>
+            <div className="space-y-3">
+              <div>
+                <button 
+                  onClick={() => setExpandedOwed(!expandedOwed)}
+                  className="w-full flex justify-between items-center focus:outline-none group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{t('they_owe_you')}</span>
+                    <ChevronDown size={14} className={`text-muted-text transition-transform duration-300 ${expandedOwed ? 'rotate-180' : ''}`} />
+                  </div>
+                  <span className="font-display text-base text-accent-green">{formatCurrency(totalOwed)}</span>
+                </button>
+                
+                <motion.div
+                  initial={false}
+                  animate={{ height: expandedOwed ? 'auto' : 0, opacity: expandedOwed ? 1 : 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                    {owedList.length === 0 ? (
+                      <p className="text-[10px] text-muted-text italic">Nobody owes you.</p>
+                    ) : (
+                      owedList.map(debt => (
+                        <div key={debt.id} className="flex justify-between items-center text-xs">
+                          <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
+                          <span className="font-medium">{formatCurrency(debt.amount)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">{t('you_owe')}</span>
-                <span className="font-display text-base text-accent-red">{formatCurrency(totalOwing)}</span>
+
+              <div>
+                <button 
+                  onClick={() => setExpandedOwing(!expandedOwing)}
+                  className="w-full flex justify-between items-center focus:outline-none group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">{t('you_owe')}</span>
+                    <ChevronDown size={14} className={`text-muted-text transition-transform duration-300 ${expandedOwing ? 'rotate-180' : ''}`} />
+                  </div>
+                  <span className="font-display text-base text-accent-red">{formatCurrency(totalOwing)}</span>
+                </button>
+
+                <motion.div
+                  initial={false}
+                  animate={{ height: expandedOwing ? 'auto' : 0, opacity: expandedOwing ? 1 : 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                    {owingList.length === 0 ? (
+                      <p className="text-[10px] text-muted-text italic">You don't owe anyone.</p>
+                    ) : (
+                      owingList.map(debt => (
+                        <div key={debt.id} className="flex justify-between items-center text-xs">
+                          <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
+                          <span className="font-medium">{formatCurrency(debt.amount)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
               </div>
-              <div className="border-t border-ink/10 pt-2 flex justify-between items-center">
+
+              <div className="border-t border-ink/10 pt-3 flex justify-between items-center mt-1">
                 <span className="text-sm font-medium">{t('net_position')}</span>
                 <span className={`font-display text-lg ${debtNet >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
                   {formatCurrency(debtNet)}

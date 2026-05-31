@@ -639,17 +639,18 @@ export default function Inventory() {
                     </div>
                   )}
 
-                  {/* Save button */}
-                  <div className="pt-2 pb-4">
-                    <button
-                      onClick={handleAddProduct}
-                      disabled={addingProduct}
-                      className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
-                    >
-                      {addingProduct ? '...' : t('add_to_stock')}
+                </div>
+
+                {/* Save button - STICKY AT BOTTOM */}
+                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                  <button
+                    onClick={handleAddProduct}
+                    disabled={addingProduct}
+                    className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
+                  >
+                    {addingProduct ? '...' : t('add_to_stock')}
                   </button>
                 </div>
-              </div>
             </motion.div>
           </>
         )}

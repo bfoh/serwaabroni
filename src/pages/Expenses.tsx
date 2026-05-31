@@ -180,12 +180,15 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
                     </button>
                   ))}
                 </div>
-                <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base" />
-                <button onClick={handleAdd} disabled={saving} className="w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
-                  {saving ? '...' : 'Add Expense'}
-                </button>
-              </div>
-            </motion.div>
+                </div>
+                
+                {/* Save button - STICKY AT BOTTOM */}
+                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                  <button onClick={handleAdd} disabled={saving} className="w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
+                    {saving ? '...' : 'Add Expense'}
+                  </button>
+                </div>
+              </motion.div>
           </>
         )}
       </AnimatePresence>

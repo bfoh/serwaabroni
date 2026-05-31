@@ -167,7 +167,7 @@ export default function Settings({ onClose }: SettingsProps) {
       </div>
 
       {/* Version */}
-      <div className="text-center pb-6">
+      <div className="text-center pb-24 pt-6">
         <p className="text-[10px] text-muted-text">SerwaaBroni v1.0.0</p>
         <p className="text-[9px] text-muted-text mt-0.5">Made for Ghanaian Market Women</p>
       </div>

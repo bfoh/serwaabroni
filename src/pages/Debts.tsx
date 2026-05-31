@@ -327,14 +327,14 @@ export default function Debts() {
                         className="w-full h-12 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body" />
                     </div>
                   </div>
+                </div>
 
-                  {/* Save button */}
-                  <div className="pt-2 pb-4">
-                    <button onClick={handleAddDebt} disabled={saving}
-                      className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
-                      {saving ? '...' : t('save_debt')}
-                    </button>
-                  </div>
+                {/* Save button - STICKY AT BOTTOM */}
+                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                  <button onClick={handleAddDebt} disabled={saving}
+                    className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
+                    {saving ? '...' : t('save_debt')}
+                  </button>
                 </div>
               </motion.div>
           </>

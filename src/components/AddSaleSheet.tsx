@@ -305,19 +305,20 @@ export default function AddSaleSheet() {
                     </div>
                   )}
 
-                  {/* Save button */}
-                  {selectedProduct && (
-                    <div className="pt-4 pb-2">
-                      <button
-                        onClick={handleConfirm}
-                        disabled={!selectedProduct || quantity < 1 || saving}
-                        className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
-                      >
-                        {saving ? '...' : 'CONFIRM SALE'}
-                      </button>
-                    </div>
-                  )}
                 </div>
+
+                {/* Save button - STICKY AT BOTTOM */}
+                {selectedProduct && (
+                  <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                    <button
+                      onClick={handleConfirm}
+                      disabled={!selectedProduct || quantity < 1 || saving}
+                      className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
+                    >
+                      {saving ? '...' : 'CONFIRM SALE'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>

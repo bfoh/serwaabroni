@@ -158,16 +158,17 @@ export default function Customers() {
                       className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                     />
                   </div>
+                </div>
 
-                  <div className="pt-4 pb-2">
-                    <button
-                      onClick={handleAddCustomer}
-                      disabled={!newCustomer.name || adding}
-                      className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
-                    >
-                      {adding ? '...' : 'SAVE CUSTOMER'}
-                    </button>
-                  </div>
+                {/* Save button - STICKY AT BOTTOM */}
+                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                  <button
+                    onClick={handleAddCustomer}
+                    disabled={!newCustomer.name || adding}
+                    className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
+                  >
+                    {adding ? '...' : 'SAVE CUSTOMER'}
+                  </button>
                 </div>
               </div>
             </motion.div>

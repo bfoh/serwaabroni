@@ -148,7 +148,7 @@ function appReducer(state: AppState, action: Action): AppState {
           email: action.user.email,
           phone: action.user.phone,
           business_name: action.user.business_name,
-          logo: action.user.logo,
+          logo: action.user.logo || localStorage.getItem('serwaabroni_logo') || undefined,
         },
         isAuthenticated: true,
         authLoading: false,
@@ -210,7 +210,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             email: session.user.email!,
             phone: session.user.user_metadata?.phone,
             business_name: session.user.user_metadata?.business_name,
-            logo: session.user.user_metadata?.logo,
+            logo: session.user.user_metadata?.logo || localStorage.getItem('serwaabroni_logo') || undefined,
           },
         })
       } else {

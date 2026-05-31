@@ -19,7 +19,7 @@ export default function Settings({ onClose }: SettingsProps) {
   const [businessName, setBusinessName] = useState(state.businessProfile?.business_name || state.user?.business_name || '')
   const [ownerName, setOwnerName] = useState(state.businessProfile?.owner_name || '')
   const [phone, setPhone] = useState(state.businessProfile?.phone || state.user?.phone || '')
-  const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || '')
+  const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || localStorage.getItem('serwaabroni_logo') || '')
   const [saving, setSaving] = useState(false)
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,7 +31,7 @@ export default function Settings({ onClose }: SettingsProps) {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const MAX_SIZE = 200
+        const MAX_SIZE = 96
         let width = img.width
         let height = img.height
 
@@ -52,7 +52,9 @@ export default function Settings({ onClose }: SettingsProps) {
         const ctx = canvas.getContext('2d')
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height)
-          setLogoUrl(canvas.toDataURL('image/jpeg', 0.8))
+          const base64 = canvas.toDataURL('image/jpeg', 0.6)
+          setLogoUrl(base64)
+          localStorage.setItem('serwaabroni_logo', base64)
         }
       }
       img.src = ev.target?.result as string

@@ -15,6 +15,7 @@ export default function AddSaleSheet() {
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const product = useMemo(
     () => state.products.find((p) => p.id === selectedProduct),
@@ -24,7 +25,14 @@ export default function AddSaleSheet() {
   const total = product ? product.selling_price * quantity : 0
   const profit = product ? (product.selling_price - product.cost_price) * quantity : 0
 
-  const recentProducts = state.products.slice(0, 8)
+  const filteredProducts = useMemo(() => {
+    let list = state.products;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(q));
+    }
+    return list.slice(0, 20); // show up to 20 to avoid performance issues
+  }, [state.products, searchQuery]);
 
   const handleClose = () => {
     dispatch({ type: 'TOGGLE_ADD_SHEET', show: false })
@@ -34,6 +42,7 @@ export default function AddSaleSheet() {
     setCustomerPhone('')
     setShowCustomerForm(false)
     setConfirmed(false)
+    setSearchQuery('')
   }
 
   const handleConfirm = async () => {
@@ -150,15 +159,24 @@ export default function AddSaleSheet() {
                   {/* Product Grid */}
                   {!selectedProduct && (
                     <div className="mt-4">
-                      <p className="text-micro text-muted-text mb-3">SELECT PRODUCT</p>
-                      {recentProducts.length === 0 ? (
+                      <div className="mb-4">
+                        <input
+                          type="text"
+                          placeholder="Search products..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body focus:outline-none focus:ring-2 focus:ring-ink"
+                        />
+                      </div>
+                      
+                      {filteredProducts.length === 0 ? (
                         <div className="bg-light harsh-border rounded-sm p-8 text-center">
                           <p className="text-sm font-medium text-ink">No products found</p>
-                          <p className="text-xs text-muted-text mt-1">Add products in Inventory first.</p>
+                          <p className="text-xs text-muted-text mt-1">Try another search or add products in Inventory.</p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                          {recentProducts.map((p) => (
+                        <div className="grid grid-cols-2 gap-3 pb-6">
+                          {filteredProducts.map((p) => (
                             <button
                               key={p.id}
                               onClick={() => setSelectedProduct(p.id)}

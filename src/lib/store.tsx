@@ -287,12 +287,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const profile = results[5].status === 'fulfilled' ? results[5].value : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
 
-      // Merge offline-created data that hasn't synced
+      // Merge offline-created data that hasn't synced and sort newest first
       const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const sales = [...local.sales.filter(s => s.user_id === 'local'), ...remoteSales]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const debts = [...local.debts.filter(d => d.user_id === 'local'), ...remoteDebts]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const expenses = [...local.expenses.filter(e => e.user_id === 'local'), ...remoteExpenses]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
       dispatch({
         type: 'LOAD_ALL_DATA',

@@ -6,6 +6,7 @@ import {
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { scanImageData } from '@undecaf/zbar-wasm'
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
@@ -104,6 +105,9 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const detectorRef = useRef<NativeBarcodeDetector | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  // 'native' = BarcodeDetector (Android); 'zbar' = ZBar WASM (iOS Safari etc.)
+  const decodeModeRef = useRef<'native' | 'zbar'>('zbar')
   const rafRef = useRef<number | null>(null)
   const engineRef = useRef<'native' | 'fallback' | null>(null)
   const isPausedRef = useRef(false)
@@ -168,23 +172,56 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   // NATIVE BarcodeDetector LOOP — decodes every animation frame.
   // Fires the instant a code resolves, i.e. as soon as it's in focus.
   // ==========================================================
+  // Decode one frame. BarcodeDetector when available (Android); otherwise draw
+  // the frame to a canvas and run it through ZBar WASM (works great on iOS).
+  const decodeFromVideo = useCallback(async (): Promise<string | null> => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2) return null
+
+    if (decodeModeRef.current === 'native' && detectorRef.current) {
+      const codes = await detectorRef.current.detect(video)
+      return (codes && codes.length > 0 && codes[0].rawValue) || null
+    }
+
+    // ZBar path
+    const vw = video.videoWidth, vh = video.videoHeight
+    if (!vw || !vh) return null
+    // Downscale large frames — ZBar is fast and a ~1280px longest side keeps
+    // the loop smooth on phones while staying sharp enough to read bars.
+    const scale = Math.min(1, 1280 / Math.max(vw, vh))
+    const w = Math.round(vw * scale), h = Math.round(vh * scale)
+    let canvas = canvasRef.current
+    if (!canvas) { canvas = document.createElement('canvas'); canvasRef.current = canvas }
+    if (canvas.width !== w) canvas.width = w
+    if (canvas.height !== h) canvas.height = h
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.drawImage(video, 0, 0, w, h)
+    const imageData = ctx.getImageData(0, 0, w, h)
+    const symbols = await scanImageData(imageData)
+    if (symbols && symbols.length > 0) {
+      const text = symbols[0].decode()
+      return text || null
+    }
+    return null
+  }, [])
+
+  // ==========================================================
+  // DECODE LOOP — runs every animation frame, fires the instant a code reads.
+  // ==========================================================
   const runDetectLoop = useCallback(() => {
     const tick = async () => {
-      const video = videoRef.current
-      const detector = detectorRef.current
-      if (!video || !detector) return // scanner stopped
-      if (!isProcessingRef.current && !isPausedRef.current && video.readyState >= 2) {
+      if (!streamRef.current) return // scanner stopped
+      if (!isProcessingRef.current && !isPausedRef.current) {
         try {
-          const codes = await detector.detect(video)
-          if (codes && codes.length > 0 && codes[0].rawValue) {
-            onScanSuccessRef.current(codes[0].rawValue)
-          }
-        } catch { /* transient detector error — keep scanning */ }
+          const code = await decodeFromVideo()
+          if (code) onScanSuccessRef.current(code)
+        } catch { /* transient decode error — keep scanning */ }
       }
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
-  }, [])
+  }, [decodeFromVideo])
 
   // ==========================================================
   // START / STOP CAMERA SCANNER
@@ -194,7 +231,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     msg.includes('not allowed') || msg.includes('Permission denied') ||
     msg.includes('NotAllowed')
 
-  const startNativeScanner = useCallback(async (DetectorCtor: BarcodeDetectorCtor) => {
+  const startCameraScanner = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
@@ -219,17 +256,26 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       } as unknown as MediaTrackConstraints)
     } catch { /* device doesn't expose focus control */ }
 
-    // Restrict to the formats we care about (and that the device supports).
-    let formats = NATIVE_FORMATS
-    try {
-      if (DetectorCtor.getSupportedFormats) {
-        const supported = await DetectorCtor.getSupportedFormats()
-        const filtered = NATIVE_FORMATS.filter((f) => supported.includes(f))
-        if (filtered.length) formats = filtered
+    // Pick the decoder: native BarcodeDetector (Android) else ZBar WASM (iOS).
+    const DetectorCtor = getBarcodeDetectorCtor()
+    if (DetectorCtor) {
+      try {
+        let formats = NATIVE_FORMATS
+        if (DetectorCtor.getSupportedFormats) {
+          const supported = await DetectorCtor.getSupportedFormats()
+          const filtered = NATIVE_FORMATS.filter((f) => supported.includes(f))
+          if (filtered.length) formats = filtered
+        }
+        detectorRef.current = new DetectorCtor({ formats })
+        decodeModeRef.current = 'native'
+      } catch {
+        detectorRef.current = null
+        decodeModeRef.current = 'zbar'
       }
-    } catch { /* keep full list */ }
+    } else {
+      decodeModeRef.current = 'zbar'
+    }
 
-    detectorRef.current = new DetectorCtor({ formats })
     engineRef.current = 'native'
     isPausedRef.current = false
     setEngine('native')
@@ -237,63 +283,19 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     runDetectLoop()
   }, [runDetectLoop])
 
-  const startFallbackScanner = useCallback(async () => {
-    const scanner = new Html5Qrcode('scanner-camera', {
-      verbose: false,
-      useBarCodeDetectorIfSupported: true,
-      formatsToSupport: SUPPORTED_FORMATS,
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    })
-    scannerRef.current = scanner
-    engineRef.current = 'fallback'
-    setEngine('fallback')
-
-    await scanner.start(
-      { facingMode: 'environment' },
-      {
-        fps: 25,
-        disableFlip: false,
-        videoConstraints: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          advanced: [{ focusMode: 'continuous' }],
-        } as unknown as MediaTrackConstraints,
-      },
-      (text) => onScanSuccessRef.current(text),
-      () => { /* silent per-frame failure */ }
-    )
-
-    try {
-      await scanner.applyVideoConstraints({
-        advanced: [{ focusMode: 'continuous' }],
-      } as unknown as MediaTrackConstraints)
-    } catch { /* ignore */ }
-
-    isPausedRef.current = false
-    setIsScanning(true)
-  }, [])
-
   const startScanner = useCallback(async () => {
     if (engineRef.current) return // already running — camera stays mounted
     setCameraError(null)
     setCameraBlocked(false)
-    const DetectorCtor = getBarcodeDetectorCtor()
     try {
-      if (DetectorCtor) await startNativeScanner(DetectorCtor)
-      else await startFallbackScanner()
+      await startCameraScanner()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Camera error'
-      const blocked = isPermissionError(message)
-      // Native pipeline failed for a non-permission reason — try the library.
-      if (DetectorCtor && !blocked) {
-        try { await startFallbackScanner(); return } catch { /* fall through */ }
-      }
       setCameraError(message)
-      setCameraBlocked(blocked)
+      setCameraBlocked(isPermissionError(message))
       setIsScanning(false)
     }
-  }, [startNativeScanner, startFallbackScanner])
+  }, [startCameraScanner])
 
   const stopScanner = useCallback(async () => {
     // Native pipeline teardown
@@ -468,7 +470,12 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const handleFileUpload = useCallback(async (file: File) => {
     setIsProcessingUpload(true)
     try {
-      const scanner = new Html5Qrcode('upload-scanner-hidden', { verbose: false })
+      const scanner = new Html5Qrcode('upload-scanner-hidden', {
+        verbose: false,
+        useBarCodeDetectorIfSupported: true,
+        formatsToSupport: SUPPORTED_FORMATS,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      })
       const decodedText = await scanner.scanFile(file, false)
       await processScannedCode(decodedText)
       await scanner.clear()

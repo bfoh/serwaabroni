@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon } from 'lucide-react'
+import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime } from '@/lib/data'
+import { formatCurrency, formatTime, formatDate } from '@/lib/data'
 import Odometer from '@/components/Odometer'
 import ProductIcon from '@/components/ProductIcon'
 import BarcodeScanner from '@/components/BarcodeScanner'
@@ -177,7 +177,14 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{sale.product_name}</p>
-                <p className="text-xs text-muted-text">{formatTime(sale.created_at)}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-muted-text">{formatDate(sale.created_at)} {formatTime(sale.created_at)}</span>
+                  {sale.customer_name && (
+                    <span className="text-[10px] text-accent-green flex items-center gap-0.5">
+                      <User size={8} /> {sale.customer_name}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="font-display text-base text-accent-green">+{formatCurrency(sale.total)}</p>

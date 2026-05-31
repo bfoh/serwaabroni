@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { X, Search, Receipt, User } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime } from '@/lib/data'
+import { formatCurrency, formatTime, formatDate } from '@/lib/data'
 import ProductIcon from '@/components/ProductIcon'
 import ReceiptModal from '@/components/ReceiptModal'
 import type { Sale } from '@/lib/supabase'
@@ -17,7 +17,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   const [search, setSearch] = useState('')
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
-  const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
 
   const filteredSales = useMemo(() => {
     let sales = state.sales
@@ -33,6 +33,9 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
       sales = sales.filter((s) => new Date(s.created_at) >= start)
     } else if (filterPeriod === 'month') {
       const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      sales = sales.filter((s) => new Date(s.created_at) >= start)
+    } else if (filterPeriod === 'year') {
+      const start = new Date(now.getFullYear(), 0, 1)
       sales = sales.filter((s) => new Date(s.created_at) >= start)
     }
 
@@ -87,7 +90,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
 
       {/* Period Filters */}
       <div className="px-5 pb-2 flex gap-1.5 flex-shrink-0">
-        {(['all', 'today', 'week', 'month'] as const).map((p) => (
+        {(['all', 'today', 'week', 'month', 'year'] as const).map((p) => (
           <button
             key={p}
             onClick={() => setFilterPeriod(p)}
@@ -142,7 +145,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{sale.product_name}</p>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] text-muted-text">{formatTime(sale.created_at)}</span>
+                <span className="text-[10px] text-muted-text">{formatDate(sale.created_at)} {formatTime(sale.created_at)}</span>
                 {sale.customer_name && (
                   <span className="text-[10px] text-accent-green flex items-center gap-0.5">
                     <User size={8} /> {sale.customer_name}

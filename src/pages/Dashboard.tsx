@@ -7,6 +7,7 @@ import Odometer from '@/components/Odometer'
 import ProductIcon from '@/components/ProductIcon'
 import BarcodeScanner from '@/components/BarcodeScanner'
 import ReceiptModal from '@/components/ReceiptModal'
+import NotificationsSheet from '@/components/NotificationsSheet'
 import type { Sale } from '@/lib/supabase'
 
 interface DashboardProps {
@@ -16,10 +17,11 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
-  const { state, t } = useStore()
+  const { state, t, setTab } = useStore()
   const [showScanner, setShowScanner] = useState(false)
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
 
   const businessName = state.businessProfile?.business_name || state.user?.business_name || "Maame Doku's Shop"
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
@@ -39,10 +41,10 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
           <p className="text-micro text-muted-text">{businessName.toUpperCase()}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="btn-tactile relative w-10 h-10 flex items-center justify-center">
+          <button onClick={() => setShowNotifications(true)} className="btn-tactile relative w-10 h-10 flex items-center justify-center">
             <Bell size={20} strokeWidth={2} className="text-ink" />
-            {lowStockItems.length > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-accent-red rounded-full" />
+            {state.alerts?.length > 0 && (
+              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-accent-red rounded-full border-2 border-sand" />
             )}
           </button>
           <button
@@ -129,19 +131,40 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         </button>
       </section>
 
-      {/* Low Stock Alert */}
-      {lowStockItems.length > 0 && (
+      {/* Action Required Section (Top Alerts) */}
+      {(state.alerts || []).length > 0 && (
         <section className="px-5 mb-5">
-          <div className="bg-accent-red/10 harsh-border border-accent-red rounded-sm p-4">
-            <p className="text-micro text-accent-red mb-2">{t('low_stock_warning')}</p>
-            <div className="space-y-2">
-              {lowStockItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{item.name}</span>
-                  <span className="text-xs text-accent-red font-display">{item.quantity} {t('left')}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display text-base text-accent-red uppercase tracking-tight flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-accent-red animate-pulse" /> Action Required
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {(state.alerts || []).slice(0, 2).map((alert) => (
+              <div key={alert.id} className="bg-light harsh-border rounded-sm p-4 border-l-4 border-l-accent-red">
+                <h3 className="font-display text-sm text-ink uppercase">{alert.title}</h3>
+                <p className="text-xs text-ink/80 mt-1">{alert.message}</p>
+                {alert.actionLabel && (
+                  <button
+                    onClick={() => {
+                      if (alert.actionPhone) window.location.href = `tel:${alert.actionPhone}`
+                      else if (alert.actionLink) setTab(alert.actionLink as any)
+                    }}
+                    className="mt-3 text-xs font-display uppercase tracking-wider text-ink bg-warm-gray px-3 py-1.5 rounded-sm inline-flex items-center gap-2 hover:bg-ink hover:text-white transition-colors"
+                  >
+                    {alert.actionLabel}
+                  </button>
+                )}
+              </div>
+            ))}
+            {(state.alerts || []).length > 2 && (
+              <button 
+                onClick={() => setShowNotifications(true)}
+                className="w-full text-center text-[10px] uppercase font-display text-muted-text mt-2 hover:text-ink"
+              >
+                View {(state.alerts || []).length - 2} more alerts
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -206,6 +229,12 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
       />
+      {/* Notifications Overlay */}
+      {showNotifications && (
+        <div className="absolute inset-0 z-[60] bg-sand">
+          <NotificationsSheet onClose={() => setShowNotifications(false)} />
+        </div>
+      )}
     </div>
   )
 }

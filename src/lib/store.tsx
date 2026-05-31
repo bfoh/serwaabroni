@@ -5,6 +5,7 @@ import { cacheOfflineData } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData } from './data'
+import { generateAlerts, type Alert } from './alerts'
 
 import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services/auth'
 import {
@@ -38,6 +39,7 @@ export interface AppState {
   debts: Debt[]
   expenses: Expense[]
   customers: Customer[]
+  alerts: Alert[]
   showAddSheet: boolean
   selectedProductId: string | null
   toast: { message: string; type: 'success' | 'error' } | null
@@ -80,7 +82,8 @@ type Action =
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
-  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
+  | { type: 'SET_ALERTS'; alerts: Alert[] }
+  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
 function getStoredLang(): Language {
   try { return (localStorage.getItem('serwaabroni_language') as Language) || 'en' }
@@ -98,6 +101,7 @@ const initialState: AppState = {
   debts: [],
   expenses: [],
   customers: [],
+  alerts: [],
   showAddSheet: false,
   selectedProductId: null,
   toast: null,
@@ -168,7 +172,8 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
-    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
+    case 'SET_ALERTS': return { ...state, alerts: action.alerts }
+    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
     default: return state
   }
 }
@@ -300,6 +305,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
+      const generatedAlerts = generateAlerts(products, sales, debts, expenses, customers)
+
       dispatch({
         type: 'LOAD_ALL_DATA',
         products,
@@ -307,6 +314,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts,
         expenses,
         customers,
+        alerts: generatedAlerts,
         balance: (summary.totalSales || 0) - (summary.totalExpenses || 0),
         todaySales: summary.todaySales || 0,
         todayProfit: summary.todayProfit || 0,
@@ -327,6 +335,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const totalSales = local.sales.reduce((s, sale) => s + sale.total, 0)
       const totalExpenses = local.expenses.reduce((s, e) => s + e.amount, 0)
 
+      const localAlerts = generateAlerts(local.products, local.sales, local.debts, local.expenses, local.customers || [])
+
       dispatch({
         type: 'LOAD_ALL_DATA',
         products: local.products,
@@ -334,6 +344,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        alerts: localAlerts,
         balance: totalSales - totalExpenses,
         todaySales,
         todayProfit: todaySales * 0.2,
@@ -363,6 +374,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        alerts: generateAlerts(local.products, local.sales, local.debts, local.expenses, local.customers || []),
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }

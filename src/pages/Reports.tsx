@@ -401,6 +401,41 @@ export default function Reports() {
               ))}
             </div>
           </motion.div>
+
+          {/* Banking & Microfinance (Business Health) */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="bg-light/95 harsh-border rounded-sm p-4 mb-6"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ink"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01"/><path d="M18 12h.01"/></svg>
+              <p className="text-micro text-muted-text">Banking & Loans</p>
+            </div>
+
+            <div className="bg-sand p-4 rounded-sm border border-ink/10 flex flex-col items-center justify-center text-center">
+              <p className="text-sm font-display uppercase text-ink">Business Trust Score</p>
+              <div className="flex items-center gap-1 my-2">
+                {[1, 2, 3, 4].map((star) => (
+                  <svg key={star} width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-accent-green"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                ))}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-text"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <p className="text-xs text-muted-text max-w-[200px] mb-4">You have good cashflow! You are eligible for micro-loans from Sinapi Aba.</p>
+              
+              <button 
+                onClick={() => {
+                  state.toast ? state.toast : undefined // dismiss current
+                  useStore.getState?.().showToast('Generating Loan Document PDF...', 'success')
+                }}
+                className="btn-tactile w-full bg-ink text-white font-display text-xs uppercase tracking-widest py-3 rounded-sm flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Generate Loan Document
+              </button>
+            </div>
+          </motion.div>
         </div>
       </div>
     </div>

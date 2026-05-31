@@ -98,7 +98,7 @@ export default function AddSaleSheet() {
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
             className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet"
-            style={{ maxHeight: '90vh' }}
+            style={{ maxHeight: '90dvh' }}
           >
             {confirmed ? (
               <div className="flex flex-col items-center justify-center py-20 px-6">
@@ -115,7 +115,7 @@ export default function AddSaleSheet() {
                 {customerPhone && <p className="text-xs text-accent-green mt-1">Receipt sent via SMS</p>}
               </div>
             ) : (
-              <div className="flex flex-col h-full" style={{ maxHeight: '92vh' }}>
+              <div className="flex flex-col h-full" style={{ maxHeight: '92dvh' }}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
                   <h2 className="font-display text-2xl text-ink uppercase tracking-tight">New Sale</h2>
@@ -130,19 +130,26 @@ export default function AddSaleSheet() {
                   {!selectedProduct && (
                     <div className="mt-4">
                       <p className="text-micro text-muted-text mb-3">SELECT PRODUCT</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {recentProducts.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => setSelectedProduct(p.id)}
-                            className="btn-tactile bg-light harsh-border rounded-sm p-3 flex flex-col items-center gap-2 active:bg-warm-gray"
-                          >
-                            <ProductIcon category={p.category} size={36} />
-                            <span className="text-sm font-medium text-center leading-tight">{p.name}</span>
-                            <span className="text-xs text-muted-text">{formatCurrency(p.selling_price)}</span>
-                          </button>
-                        ))}
-                      </div>
+                      {recentProducts.length === 0 ? (
+                        <div className="bg-light harsh-border rounded-sm p-8 text-center">
+                          <p className="text-sm font-medium text-ink">No products found</p>
+                          <p className="text-xs text-muted-text mt-1">Add products in Inventory first.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {recentProducts.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => setSelectedProduct(p.id)}
+                              className="btn-tactile bg-light harsh-border rounded-sm p-3 flex flex-col items-center gap-2 active:bg-warm-gray"
+                            >
+                              <ProductIcon category={p.category} size={36} />
+                              <span className="text-sm font-medium text-center leading-tight">{p.name}</span>
+                              <span className="text-xs text-muted-text">{formatCurrency(p.selling_price)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

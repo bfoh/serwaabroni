@@ -524,7 +524,7 @@ export default function Inventory() {
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
               className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet flex flex-col"
-              style={{ maxHeight: '92vh' }}
+              style={{ maxHeight: '92dvh' }}
             >
               <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
                 <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{t('add_product')}</h2>

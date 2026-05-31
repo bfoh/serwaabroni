@@ -13,6 +13,7 @@ import {
   fetchDebts, insertDebt, updateDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
   getDashboardSummary,
+  fetchBusinessProfile, upsertBusinessProfile,
 } from '@/services/supabaseApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
@@ -179,6 +180,7 @@ interface StoreContextType {
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
   removeExpense: (id: string) => Promise<void>
+  updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -244,12 +246,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_DATA_LOADING', loading: true })
 
     try {
-      const [products, sales, debts, expenses, summary] = await Promise.all([
+      const [products, sales, debts, expenses, summary, profile] = await Promise.all([
         fetchProducts(),
         fetchSales(),
         fetchDebts(),
         fetchExpenses(),
         getDashboardSummary(),
+        fetchBusinessProfile(),
       ])
 
       dispatch({
@@ -263,6 +266,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         todayProfit: summary.todayProfit,
         pendingDebts: summary.pendingDebts,
       })
+      
+      if (profile) {
+        dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+      }
 
       persistFromState({ products, sales, debts, expenses })
       cacheOfflineData({ products, sales, debts, expenses, lastSync: Date.now() })
@@ -434,11 +441,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_USER', user: null })
   }, [])
 
+  const updateBusinessProfile = useCallback(async (profile: BusinessProfile) => {
+    try {
+      const saved = await upsertBusinessProfile(profile)
+      dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+    } catch {
+      dispatch({ type: 'SET_BUSINESS_PROFILE', profile }) // local fallback
+    }
+  }, [])
+
   return (
     <StoreContext.Provider value={{
       state, dispatch, setTab, showToast, t, refreshData,
       addProduct, updateProduct, removeProduct,
       addSale, addDebt, updateDebt, addExpense, removeExpense,
+      updateBusinessProfile,
       logout,
     }}>
       {children}

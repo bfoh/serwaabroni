@@ -11,7 +11,7 @@ interface SettingsProps {
 }
 
 export default function Settings({ onClose }: SettingsProps) {
-  const { state, dispatch, showToast, logout } = useStore()
+  const { state, dispatch, showToast, logout, updateBusinessProfile } = useStore()
   const navigate = useNavigate()
   const [showProfile, setShowProfile] = useState(false)
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -21,21 +21,21 @@ export default function Settings({ onClose }: SettingsProps) {
   const [phone, setPhone] = useState(state.businessProfile?.phone || '')
   const [saving, setSaving] = useState(false)
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     setSaving(true)
     const profile: BusinessProfile = {
-      id: state.user?.phone || 'local',
-      user_id: state.user?.phone || 'local',
+      id: state.user?.id || 'local',
+      user_id: state.user?.id || 'local',
       business_name: businessName,
       owner_name: ownerName || null,
       phone: phone || null,
       email: state.user?.email || null,
       currency: 'GHS',
       language: state.language,
-      created_at: new Date().toISOString(),
+      created_at: state.businessProfile?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+    await updateBusinessProfile(profile)
     showToast('Profile saved!', 'success')
     setShowProfile(false)
     setSaving(false)

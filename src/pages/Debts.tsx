@@ -266,7 +266,7 @@ export default function Debts() {
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setShowAddDebt(false)} />
             <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet flex flex-col" style={{ maxHeight: '92vh' }}>
+              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet flex flex-col" style={{ maxHeight: '92dvh' }}>
               <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
                 <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{t('debts')}</h2>
                 <button onClick={() => setShowAddDebt(false)} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">

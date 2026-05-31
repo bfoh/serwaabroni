@@ -268,3 +268,34 @@ export async function getDashboardSummary(): Promise<{
 
   return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, stockValue, projectedProfit }
 }
+
+// ============================================
+// BUSINESS PROFILE (scoped to user)
+// ============================================
+export async function fetchBusinessProfile(): Promise<any> {
+  const uid = await getCurrentUserId()
+  if (!uid) return null
+
+  const { data, error } = await supabase
+    .from('business_profiles')
+    .select('*')
+    .eq('user_id', uid)
+    .single()
+
+  if (error && error.code !== 'PGRST116') throw error
+  return data
+}
+
+export async function upsertBusinessProfile(profile: any): Promise<any> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('business_profiles')
+    .upsert({ ...profile, user_id: uid })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}

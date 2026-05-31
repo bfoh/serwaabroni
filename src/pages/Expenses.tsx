@@ -158,11 +158,16 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[110] p-5"
+              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[110] flex flex-col shadow-sheet"
+              style={{ maxHeight: '92dvh' }}
             >
-              <div className="w-10 h-1 bg-ink/20 rounded-full mx-auto mb-4" />
-              <h2 className="font-display text-xl text-ink uppercase tracking-tight mb-4">Add Expense</h2>
-              <div className="space-y-3">
+              <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
+                <h2 className="font-display text-2xl text-ink uppercase tracking-tight">Add Expense</h2>
+                <button onClick={() => setShowAdd(false)} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
+                  <X size={20} strokeWidth={2.5} className="text-ink" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="What did you spend on?" className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base" />
                 <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (GH₵)" className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base" />
                 <div className="grid grid-cols-4 gap-1.5">

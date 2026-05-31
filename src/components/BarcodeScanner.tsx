@@ -6,7 +6,7 @@ import {
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
-import { scanImageData } from '@undecaf/zbar-wasm'
+import { scanImageData, getInstance } from '@undecaf/zbar-wasm'
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
@@ -232,6 +232,10 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     msg.includes('NotAllowed')
 
   const startCameraScanner = useCallback(async () => {
+    // Warm up the ZBar WASM in parallel with the camera so the first decode is
+    // instant rather than paying the ~240KB instantiation cost on first scan.
+    getInstance().catch(() => { /* loads lazily on first decode otherwise */ })
+
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },

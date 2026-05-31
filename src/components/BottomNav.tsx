@@ -14,7 +14,7 @@ export default function BottomNav() {
   const { state, setTab, dispatch } = useStore()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-ink z-50 flex items-center justify-around select-none">
+    <nav className="w-full h-full bg-ink flex items-center justify-around select-none">
       {mainTabs.map((item) => {
         const isActive = state.activeTab === item.key
 

@@ -118,7 +118,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
       </div>
 
       {/* Sales List */}
-      <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-2">
+      <div className="flex-1 overflow-y-auto px-5 pb-24 space-y-2">
         {filteredSales.length === 0 && (
           <div className="text-center py-16">
             <Receipt size={40} strokeWidth={1} className="text-ink/20 mx-auto mb-3" />

@@ -18,7 +18,6 @@ function MainApp() {
   const { state } = useStore()
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showCustomers, setShowCustomers] = useState(false)
 
   const renderPage = () => {
@@ -45,25 +44,25 @@ function MainApp() {
   }
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-sand relative">
-      <main className="h-full overflow-y-auto no-scrollbar">
+    <div className="h-full w-full overflow-hidden relative">
+      <main className="h-full overflow-y-auto no-scrollbar pb-10">
         {renderPage()}
       </main>
-      <BottomNav />
+      
       <AddSaleSheet />
+      
       {/* Overlay pages */}
       <SalesHistory isOpen={showSalesHistory} onClose={() => setShowSalesHistory(false)} />
       <Expenses isOpen={showExpenses} onClose={() => setShowExpenses(false)} />
-      {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
       
       {showCustomers && (
-        <div className="absolute inset-0 z-50 bg-sand">
-          <div className="flex justify-end p-2 border-b-2 border-ink">
+        <div className="absolute inset-0 z-40 bg-sand flex flex-col">
+          <div className="flex justify-end p-2 border-b-2 border-ink flex-shrink-0">
             <button onClick={() => setShowCustomers(false)} className="btn-tactile p-2 bg-warm-gray rounded-sm">
               Back to Home
             </button>
           </div>
-          <div className="h-[calc(100%-60px)] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pb-24">
             <Customers />
           </div>
         </div>
@@ -87,26 +86,35 @@ export default function App() {
   }
 
   return (
-    <>
-      <Routes>
-        <Route
-          path="/login"
-          element={state.isAuthenticated ? <Navigate to="/" replace /> : <Login />}
-        />
-        <Route
-          path="/settings"
-          element={state.isAuthenticated ? (
-            <div className="h-screen w-full overflow-hidden bg-sand relative">
-              <SettingsPage onClose={() => window.history.back()} />
-            </div>
-          ) : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/*"
-          element={state.isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
-        />
-      </Routes>
+    <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative">
+        <Routes>
+          <Route
+            path="/login"
+            element={state.isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+          />
+          <Route
+            path="/settings"
+            element={state.isAuthenticated ? (
+              <div className="h-full w-full overflow-hidden bg-sand relative">
+                <SettingsPage onClose={() => window.history.back()} />
+              </div>
+            ) : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/*"
+            element={state.isAuthenticated ? <MainApp /> : <Navigate to="/login" replace />}
+          />
+        </Routes>
+      </div>
+      
+      {state.isAuthenticated && (
+        <div className="flex-shrink-0 h-16 w-full z-[9999] relative border-t-2 border-ink">
+          <BottomNav />
+        </div>
+      )}
+      
       <Toast />
-    </>
+    </div>
   )
 }

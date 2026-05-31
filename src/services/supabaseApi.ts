@@ -276,14 +276,22 @@ export async function fetchBusinessProfile(): Promise<any> {
   const uid = await getCurrentUserId()
   if (!uid) return null
 
-  const { data, error } = await supabase
-    .from('business_profiles')
-    .select('*')
-    .eq('user_id', uid)
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .select('*')
+      .eq('user_id', uid)
+      .single()
 
-  if (error && error.code !== 'PGRST116') throw error
-  return data
+    if (error) {
+      console.warn('Supabase business_profiles error:', error.message)
+      return null
+    }
+    return data
+  } catch (err) {
+    console.warn('fetchBusinessProfile catch:', err)
+    return null
+  }
 }
 
 export async function upsertBusinessProfile(profile: any): Promise<any> {

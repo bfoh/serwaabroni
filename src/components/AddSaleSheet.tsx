@@ -6,7 +6,7 @@ import { formatCurrency, uid } from '@/lib/data'
 import ProductIcon from './ProductIcon'
 
 export default function AddSaleSheet() {
-  const { state, dispatch, showToast, addSale, updateCustomer } = useStore()
+  const { state, dispatch, showToast, addSale, updateCustomer, addCustomer } = useStore()
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [customerName, setCustomerName] = useState('')
@@ -58,11 +58,25 @@ export default function AddSaleSheet() {
 
       await addSale(saleData, product.id, quantity)
 
-      // Automatically increment customer total_purchases if they exist
-      const existingCustomer = state.customers.find(c => c.name === customerName)
-      if (existingCustomer) {
-        // We don't await this so it doesn't block the UI
-        updateCustomer(existingCustomer.id, { total_purchases: existingCustomer.total_purchases + total }).catch(() => {})
+      // Automatically save or update customer
+      if (customerName) {
+        const existingCustomer = state.customers.find(c => c.name.toLowerCase() === customerName.trim().toLowerCase())
+        if (existingCustomer) {
+          // We don't await this so it doesn't block the UI
+          updateCustomer(existingCustomer.id, { 
+            total_purchases: (existingCustomer.total_purchases || 0) + total,
+            phone: customerPhone || existingCustomer.phone
+          }).catch(() => {})
+        } else {
+          addCustomer({
+            id: uid(),
+            name: customerName.trim(),
+            phone: customerPhone || null,
+            email: null,
+            total_purchases: total,
+            created_at: new Date().toISOString()
+          }).catch(() => {})
+        }
       }
 
       setConfirmed(true)

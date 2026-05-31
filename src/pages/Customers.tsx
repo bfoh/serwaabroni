@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Users, X, User } from 'lucide-react'
+import { Plus, Search, Users, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, uid } from '@/lib/data'
 
 export default function Customers() {
-  const { state, showToast, addCustomer, t } = useStore()
+  const { state, showToast, addCustomer } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddCustomer, setShowAddCustomer] = useState(false)
   const [adding, setAdding] = useState(false)

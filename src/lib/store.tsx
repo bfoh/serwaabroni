@@ -13,7 +13,8 @@ import {
   fetchDebts, insertDebt, updateDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
   fetchBusinessProfile, upsertBusinessProfile,
-  fetchCustomers, insertCustomer, updateCustomer,
+  fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
+  getDashboardSummary,
 } from '@/services/supabaseApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
@@ -476,7 +477,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const updateCustomer = useCallback(async (id: string, updates: Partial<Customer>) => {
     try {
-      const updated = await updateCustomer(id, updates)
+      const updated = await updateCustomerDb(id, updates)
       dispatch({ type: 'UPDATE_CUSTOMER', customer: updated })
       persistFromState({ ...state, customers: state.customers.map((c) => c.id === id ? updated : c) })
     } catch {

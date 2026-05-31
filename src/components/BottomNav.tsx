@@ -1,5 +1,5 @@
 import { LayoutGrid, Package, CirclePlus, ScrollText, BarChart3, Settings } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useNavigate, useLocation } from 'react-router'
 import { useStore } from '@/lib/store'
 import type { Tab } from '@/lib/store'
 
@@ -12,6 +12,22 @@ const mainTabs: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
 
 export default function BottomNav() {
   const { state, setTab, dispatch } = useStore()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const handleTabClick = (key: Tab) => {
+    setTab(key)
+    if (location.pathname !== '/') {
+      navigate('/')
+    }
+  }
+
+  const handleAddSaleClick = () => {
+    if (location.pathname !== '/') {
+      navigate('/')
+    }
+    dispatch({ type: 'TOGGLE_ADD_SHEET', show: true })
+  }
 
   return (
     <nav className="w-full h-full bg-ink flex items-center justify-around select-none">
@@ -21,7 +37,7 @@ export default function BottomNav() {
         return (
           <button
             key={item.key}
-            onClick={() => setTab(item.key)}
+            onClick={() => handleTabClick(item.key)}
             className="btn-tactile flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative"
           >
             <item.icon
@@ -42,7 +58,7 @@ export default function BottomNav() {
 
       {/* Add Sale Button */}
       <button
-        onClick={() => dispatch({ type: 'TOGGLE_ADD_SHEET', show: true })}
+        onClick={handleAddSaleClick}
         className="btn-tactile flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative"
       >
         <div className="w-11 h-11 rounded-full bg-accent-red flex items-center justify-center -mt-4 shadow-lg">

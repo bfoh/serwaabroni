@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
@@ -19,6 +19,13 @@ function MainApp() {
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
   const [showCustomers, setShowCustomers] = useState(false)
+
+  // Automatically close overlays when the active tab changes
+  useEffect(() => {
+    setShowSalesHistory(false)
+    setShowExpenses(false)
+    setShowCustomers(false)
+  }, [state.activeTab])
 
   const renderPage = () => {
     switch (state.activeTab) {

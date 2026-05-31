@@ -305,7 +305,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-      const generatedAlerts = generateAlerts(products, sales, debts, expenses, customers)
+      const generatedAlerts = generateAlerts(products, sales, debts, expenses)
 
       dispatch({
         type: 'LOAD_ALL_DATA',
@@ -335,7 +335,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const totalSales = local.sales.reduce((s, sale) => s + sale.total, 0)
       const totalExpenses = local.expenses.reduce((s, e) => s + e.amount, 0)
 
-      const localAlerts = generateAlerts(local.products, local.sales, local.debts, local.expenses, local.customers || [])
+      const localAlerts = generateAlerts(local.products, local.sales, local.debts, local.expenses)
 
       dispatch({
         type: 'LOAD_ALL_DATA',
@@ -374,7 +374,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
-        alerts: generateAlerts(local.products, local.sales, local.debts, local.expenses, local.customers || []),
+        alerts: generateAlerts(local.products, local.sales, local.debts, local.expenses),
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }

@@ -28,11 +28,6 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
 
   const recentSales = useMemo(() => state.sales.slice(0, 6), [state.sales])
 
-  const lowStockItems = useMemo(
-    () => state.products.filter((p) => p.quantity <= p.low_stock_threshold),
-    [state.products]
-  )
-
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}

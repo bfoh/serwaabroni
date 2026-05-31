@@ -16,7 +16,7 @@ const periodLabels: Record<ReportPeriod, string> = {
 }
 
 export default function Reports() {
-  const { state, t } = useStore()
+  const { state, t, showToast } = useStore()
   const [period, setPeriod] = useState<ReportPeriod>('daily')
 
   const [expandedIncome, setExpandedIncome] = useState(false)
@@ -426,8 +426,7 @@ export default function Reports() {
               
               <button 
                 onClick={() => {
-                  state.toast ? state.toast : undefined // dismiss current
-                  useStore.getState?.().showToast('Generating Loan Document PDF...', 'success')
+                  showToast('Generating Loan Document PDF...', 'success')
                 }}
                 className="btn-tactile w-full bg-ink text-white font-display text-xs uppercase tracking-widest py-3 rounded-sm flex items-center justify-center gap-2"
               >

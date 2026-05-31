@@ -1,4 +1,4 @@
-import type { Product, Sale, Debt, Expense, Customer } from './supabase'
+import type { Product, Sale, Debt, Expense } from './supabase'
 
 export type AlertType = 'warning' | 'danger' | 'info' | 'success'
 
@@ -13,15 +13,13 @@ export interface Alert {
   isCritical?: boolean
 }
 
-// Generate a quick unique ID for alerts
-const uid = () => Math.random().toString(36).substring(2, 9)
+// Alert Generator
 
 export function generateAlerts(
   products: Product[],
   sales: Sale[],
   debts: Debt[],
-  expenses: Expense[],
-  customers: Customer[]
+  expenses: Expense[]
 ): Alert[] {
   const alerts: Alert[] = []
 
@@ -106,7 +104,6 @@ export function generateAlerts(
   const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00'
   const todayExpenses = expenses.filter(e => e.created_at >= todayStart).reduce((sum, e) => sum + e.amount, 0)
   const todayProfit = sales.filter(s => s.created_at >= todayStart).reduce((sum, s) => sum + s.profit, 0)
-  const todaySales = sales.filter(s => s.created_at >= todayStart).reduce((sum, s) => sum + s.total, 0)
 
   if (todayExpenses > todayProfit && todayExpenses > 0) {
     alerts.push({

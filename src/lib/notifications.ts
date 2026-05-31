@@ -6,13 +6,6 @@ import type { Customer } from './supabase'
  * NOTE: This is a stub for demonstration purposes until production API keys are provided.
  */
 
-// Define the shape of our notification payload
-interface NotificationPayload {
-  to: string // Phone number
-  message: string
-  type: 'sms' | 'whatsapp' | 'both'
-}
-
 /**
  * Send an SMS via Arkesel API
  * Documentation: https://arkesel.com/api/v2/sms

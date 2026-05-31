@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package, ChevronDown } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, getProfitForPeriod, formatTime } from '@/lib/data'
+import { formatCurrency, getProfitForPeriod } from '@/lib/data'
 import MazeShader from '@/components/MazeShader'
 import ProductIcon from '@/components/ProductIcon'
 

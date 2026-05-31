@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package, ChevronDown } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, getProfitForPeriod } from '@/lib/data'
+import { generateLoanDocument } from '@/lib/pdfGenerator'
 import MazeShader from '@/components/MazeShader'
 import ProductIcon from '@/components/ProductIcon'
 
@@ -425,8 +426,13 @@ export default function Reports() {
               <p className="text-xs text-muted-text max-w-[200px] mb-4">You have good cashflow! You are eligible for micro-loans from Sinapi Aba.</p>
               
               <button 
-                onClick={() => {
-                  showToast('Generating Loan Document PDF...', 'success')
+                onClick={async () => {
+                  try {
+                    showToast('Generating Loan Document PDF...', 'success')
+                    await generateLoanDocument(state)
+                  } catch (e) {
+                    showToast('Failed to generate PDF', 'error')
+                  }
                 }}
                 className="btn-tactile w-full bg-ink text-white font-display text-xs uppercase tracking-widest py-3 rounded-sm flex items-center justify-center gap-2"
               >

@@ -110,7 +110,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       scannerRef.current = scanner
 
       await scanner.start(
-        { facingMode: 'environment', advanced: [{ focusMode: 'continuous' } as any] },
+        { facingMode: 'environment' },
         { 
           fps: 15, 
           // Removing qrbox so the entire camera frame is actively scanned. 

@@ -71,4 +71,4 @@ The `vercel.json` file in this project handles React Router. All routes redirect
 | Blank page on `/login` | Check `vercel.json` is in the project root |
 | Supabase connection fails | Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in Vercel |
 | Camera not working | Must use HTTPS (Vercel provides this). Also check phone permissions |
-| Data not persisting | Check migrations are run. Run `migration_002.sql` in Supabase SQL Editor |
+| Data not persisting | Check migrations are run. Run `migration_002.sql` and `migration_003_customers.sql` in Supabase SQL Editor |

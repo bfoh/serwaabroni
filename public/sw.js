@@ -1,5 +1,5 @@
 // SerwaaBroni Service Worker - Simple cache-first strategy
-const CACHE_NAME = 'serwaabroni-v2'
+const CACHE_NAME = 'serwaabroni-v3'
 const STATIC_ASSETS = [
   '/',
   '/index.html',

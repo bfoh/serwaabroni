@@ -245,7 +245,7 @@ export default function Debts() {
         {markingPaid && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setMarkingPaid(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+            <motion.div initial={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }} animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }} exit={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm p-6 z-50 w-[85vw] max-w-sm">
               <p className="font-display text-lg text-ink uppercase text-center mb-4">{t('mark_as_paid')}</p>
               <p className="text-sm text-muted-text text-center mb-6">

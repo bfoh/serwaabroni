@@ -61,9 +61,9 @@ export default function QRDisplay({ isOpen, onClose, type, data }: QRDisplayProp
             onClick={onClose}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            initial={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
+            animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+            exit={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm p-6 z-50 w-[90vw] max-w-sm"
           >
             <div className="flex items-center justify-between mb-4">

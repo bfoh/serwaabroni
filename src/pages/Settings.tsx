@@ -11,7 +11,7 @@ interface SettingsProps {
 }
 
 export default function Settings({ onClose }: SettingsProps) {
-  const { state, dispatch, showToast, logout, updateBusinessProfile } = useStore()
+  const { state, dispatch, showToast, logout, updateBusinessProfile, resetAllData } = useStore()
   const navigate = useNavigate()
   const [showProfile, setShowProfile] = useState(false)
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -88,13 +88,12 @@ export default function Settings({ onClose }: SettingsProps) {
     showToast('Data exported!', 'success')
   }
 
-  const handleReset = () => {
-    dispatch({ type: 'SET_PRODUCTS', products: [] })
-    dispatch({ type: 'SET_SALES', sales: [] })
-    dispatch({ type: 'SET_DEBTS', debts: [] })
-    dispatch({ type: 'SET_EXPENSES', expenses: [] })
+  const handleReset = async () => {
+    setSaving(true)
+    await resetAllData()
     showToast('All data cleared!', 'success')
     setShowConfirmReset(false)
+    setSaving(false)
   }
 
   const handleLogout = async () => {

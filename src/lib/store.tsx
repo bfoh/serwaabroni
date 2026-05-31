@@ -14,7 +14,7 @@ import {
   fetchExpenses, insertExpense, deleteExpenseDb,
   fetchBusinessProfile, upsertBusinessProfile,
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
-  getDashboardSummary,
+  getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
@@ -195,6 +195,7 @@ interface StoreContextType {
   addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
+  resetAllData: () => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -515,6 +516,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state.user])
 
+  const resetAllData = useCallback(async () => {
+    try {
+      await resetAllUserData()
+      dispatch({ type: 'SET_PRODUCTS', products: [] })
+      dispatch({ type: 'SET_SALES', sales: [] })
+      dispatch({ type: 'SET_DEBTS', debts: [] })
+      dispatch({ type: 'SET_EXPENSES', expenses: [] })
+      dispatch({ type: 'SET_CUSTOMERS', customers: [] })
+      dispatch({ type: 'SET_BALANCE', value: 0 })
+      dispatch({ type: 'SET_TODAY_SALES', value: 0 })
+      dispatch({ type: 'SET_TODAY_PROFIT', value: 0 })
+      dispatch({ type: 'SET_PENDING_DEBTS', value: 0 })
+    } catch {
+      showToast('Failed to reset data', 'error')
+    }
+  }, [])
+
   return (
     <StoreContext.Provider value={{
       state, dispatch, setTab, showToast, t, refreshData,
@@ -522,6 +540,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addSale, addDebt, updateDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
       updateBusinessProfile,
+      resetAllData,
       logout,
     }}>
       {children}

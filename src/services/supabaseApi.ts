@@ -354,3 +354,20 @@ export async function upsertBusinessProfile(profile: any): Promise<any> {
   if (error) throw error
   return data
 }
+
+// ============================================
+// RESET DATA (scoped to user)
+// ============================================
+export async function resetAllUserData(): Promise<void> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  // Due to RLS, we can just blindly delete all rows matching user_id
+  await Promise.all([
+    supabase.from('sales').delete().eq('user_id', uid),
+    supabase.from('products').delete().eq('user_id', uid),
+    supabase.from('debts').delete().eq('user_id', uid),
+    supabase.from('expenses').delete().eq('user_id', uid),
+    supabase.from('customers').delete().eq('user_id', uid),
+  ])
+}

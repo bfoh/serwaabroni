@@ -12,9 +12,10 @@ import type { Sale } from '@/lib/supabase'
 interface DashboardProps {
   onOpenSalesHistory: () => void
   onOpenExpenses: () => void
+  onOpenCustomers: () => void
 }
 
-export default function Dashboard({ onOpenSalesHistory, onOpenExpenses }: DashboardProps) {
+export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
   const { state, t } = useStore()
   const [showScanner, setShowScanner] = useState(false)
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null)
@@ -95,20 +96,27 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses }: Dashbo
       </section>
 
       {/* Quick Actions */}
-      <section className="px-5 mb-5 grid grid-cols-2 gap-3">
+      <section className="px-5 mb-5 grid grid-cols-3 gap-3">
         <button
           onClick={onOpenSalesHistory}
-          className="btn-tactile bg-warm-gray rounded-sm px-4 py-3 flex items-center gap-3"
+          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
         >
-          <Receipt size={18} className="text-accent-green" />
-          <span className="font-display text-xs text-ink uppercase tracking-wider">Sales History</span>
+          <Receipt size={24} className="text-accent-green" />
+          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Sales<br/>History</span>
         </button>
         <button
           onClick={onOpenExpenses}
-          className="btn-tactile bg-warm-gray rounded-sm px-4 py-3 flex items-center gap-3"
+          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
         >
-          <ExpenseIcon size={18} className="text-accent-red" />
-          <span className="font-display text-xs text-ink uppercase tracking-wider">Expenses</span>
+          <ExpenseIcon size={24} className="text-accent-red" />
+          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Expenses</span>
+        </button>
+        <button
+          onClick={onOpenCustomers}
+          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Customers</span>
         </button>
       </section>
 

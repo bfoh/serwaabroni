@@ -30,6 +30,7 @@ interface StoredData {
   sales: Sale[]
   debts: Debt[]
   expenses: Expense[]
+  customers: any[]
   businessName: string
   ownerName: string
 }
@@ -287,6 +288,7 @@ export function loadData(): StoredData {
     sales: seedSales,
     debts: seedDebts,
     expenses: seedExpenses,
+    customers: [],
     businessName: "Maame Doku's Shop",
     ownerName: 'Maame Doku',
     version: DATA_VERSION,

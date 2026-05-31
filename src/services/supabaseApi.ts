@@ -3,7 +3,7 @@
 // Every fetch is scoped to the authenticated user
 // ============================================
 import { supabase } from '@/lib/supabase'
-import type { Product, Sale, Debt, Expense } from '@/lib/supabase'
+import type { Product, Sale, Debt, Expense, Customer } from '@/lib/supabase'
 
 // Get the real Supabase user UUID — this is the tenant key
 async function getCurrentUserId(): Promise<string | null> {
@@ -221,6 +221,53 @@ export async function deleteExpenseDb(id: string): Promise<void> {
     .eq('user_id', uid)
 
   if (error) throw error
+}
+
+// ============================================
+// CUSTOMERS (scoped to user)
+// ============================================
+export async function fetchCustomers(): Promise<Customer[]> {
+  const uid = await getCurrentUserId()
+  if (!uid) return []
+
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('user_id', uid)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return (data as Customer[]) || []
+}
+
+export async function insertCustomer(customer: Omit<Customer, 'user_id'>): Promise<Customer> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('customers')
+    .insert({ ...customer, user_id: uid })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as Customer
+}
+
+export async function updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('customers')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', uid)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as Customer
 }
 
 // ============================================

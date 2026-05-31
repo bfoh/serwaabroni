@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
-import type { Product, Sale, Debt, Expense, BusinessProfile } from './supabase'
+import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
 import { cacheOfflineData } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
@@ -12,8 +12,8 @@ import {
   fetchSales, recordSale,
   fetchDebts, insertDebt, updateDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
-  getDashboardSummary,
   fetchBusinessProfile, upsertBusinessProfile,
+  fetchCustomers, insertCustomer, updateCustomer,
 } from '@/services/supabaseApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
@@ -36,6 +36,7 @@ export interface AppState {
   sales: Sale[]
   debts: Debt[]
   expenses: Expense[]
+  customers: Customer[]
   showAddSheet: boolean
   selectedProductId: string | null
   toast: { message: string; type: 'success' | 'error' } | null
@@ -66,6 +67,9 @@ type Action =
   | { type: 'SET_EXPENSES'; expenses: Expense[] }
   | { type: 'ADD_EXPENSE'; expense: Expense }
   | { type: 'DELETE_EXPENSE'; id: string }
+  | { type: 'SET_CUSTOMERS'; customers: Customer[] }
+  | { type: 'ADD_CUSTOMER'; customer: Customer }
+  | { type: 'UPDATE_CUSTOMER'; customer: Customer }
   | { type: 'TOGGLE_ADD_SHEET'; show: boolean }
   | { type: 'SELECT_PRODUCT'; id: string | null }
   | { type: 'SHOW_TOAST'; message: string; toastType: 'success' | 'error' }
@@ -75,7 +79,7 @@ type Action =
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
-  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
+  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
 function getStoredLang(): Language {
   try { return (localStorage.getItem('serwaabroni_language') as Language) || 'en' }
@@ -92,6 +96,7 @@ const initialState: AppState = {
   sales: [],
   debts: [],
   expenses: [],
+  customers: [],
   showAddSheet: false,
   selectedProductId: null,
   toast: null,
@@ -105,12 +110,13 @@ const initialState: AppState = {
 }
 
 // Helper: persist current data to localStorage (for offline access)
-function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses'>) {
+function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses' | 'customers'>) {
   saveData({
     products: state.products,
     sales: state.sales,
     debts: state.debts,
     expenses: state.expenses,
+    customers: state.customers,
     businessName: '',
     ownerName: '',
   })
@@ -135,6 +141,9 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_EXPENSES': return { ...state, expenses: action.expenses }
     case 'ADD_EXPENSE': return { ...state, expenses: [action.expense, ...state.expenses] }
     case 'DELETE_EXPENSE': return { ...state, expenses: state.expenses.filter((e) => e.id !== action.id) }
+    case 'SET_CUSTOMERS': return { ...state, customers: action.customers }
+    case 'ADD_CUSTOMER': return { ...state, customers: [action.customer, ...state.customers] }
+    case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map((c) => (c.id === action.customer.id ? action.customer : c)) }
     case 'TOGGLE_ADD_SHEET': return { ...state, showAddSheet: action.show }
     case 'SELECT_PRODUCT': return { ...state, selectedProductId: action.id }
     case 'SHOW_TOAST': return { ...state, toast: { message: action.message, type: action.toastType } }
@@ -158,7 +167,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
-    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
+    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
     default: return state
   }
 }
@@ -182,6 +191,8 @@ interface StoreContextType {
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
   removeExpense: (id: string) => Promise<void>
+  addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   logout: () => Promise<void>
 }
@@ -249,14 +260,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_DATA_LOADING', loading: true })
 
     try {
-      const [products, sales, debts, expenses, summary, profile] = await Promise.all([
+      const local = loadData()
+      const [remoteProducts, remoteSales, remoteDebts, remoteExpenses, summary, profile, remoteCustomers] = await Promise.all([
         fetchProducts(),
         fetchSales(),
         fetchDebts(),
         fetchExpenses(),
         getDashboardSummary(),
         fetchBusinessProfile(),
+        fetchCustomers(),
       ])
+
+      // Merge offline-created data that hasn't synced
+      const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
+      const sales = [...local.sales.filter(s => s.user_id === 'local'), ...remoteSales]
+      const debts = [...local.debts.filter(d => d.user_id === 'local'), ...remoteDebts]
+      const expenses = [...local.expenses.filter(e => e.user_id === 'local'), ...remoteExpenses]
+      const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
 
       dispatch({
         type: 'LOAD_ALL_DATA',
@@ -264,6 +284,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sales,
         debts,
         expenses,
+        customers,
         balance: summary.totalSales - summary.totalExpenses,
         todaySales: summary.todaySales,
         todayProfit: summary.todayProfit,
@@ -274,7 +295,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
       }
 
-      persistFromState({ products, sales, debts, expenses })
+      persistFromState({ products, sales, debts, expenses, customers })
       cacheOfflineData({ products, sales, debts, expenses, lastSync: Date.now() })
     } catch {
       // Fall back to localStorage / seed data
@@ -292,6 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sales: local.sales,
         debts: local.debts,
         expenses: local.expenses,
+        customers: local.customers || [],
         balance: totalSales - totalExpenses,
         todaySales,
         todayProfit: todaySales * 0.2,
@@ -320,6 +342,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sales: local.sales,
         debts: local.debts,
         expenses: local.expenses,
+        customers: local.customers || [],
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
@@ -439,6 +462,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     persistFromState({ ...state, expenses: state.expenses.filter((e) => e.id !== id) })
   }, [state])
 
+  const addCustomer = useCallback(async (customer: Omit<Customer, 'user_id'>) => {
+    try {
+      const inserted = await insertCustomer(customer)
+      dispatch({ type: 'ADD_CUSTOMER', customer: inserted })
+      persistFromState({ ...state, customers: [inserted, ...state.customers] })
+    } catch {
+      const localCustomer: Customer = { ...customer, user_id: 'local' } as Customer
+      dispatch({ type: 'ADD_CUSTOMER', customer: localCustomer })
+      persistFromState({ ...state, customers: [localCustomer, ...state.customers] })
+    }
+  }, [state])
+
+  const updateCustomer = useCallback(async (id: string, updates: Partial<Customer>) => {
+    try {
+      const updated = await updateCustomer(id, updates)
+      dispatch({ type: 'UPDATE_CUSTOMER', customer: updated })
+      persistFromState({ ...state, customers: state.customers.map((c) => c.id === id ? updated : c) })
+    } catch {
+      const existing = state.customers.find((c) => c.id === id)
+      if (existing) {
+        const updated = { ...existing, ...updates }
+        dispatch({ type: 'UPDATE_CUSTOMER', customer: updated })
+        persistFromState({ ...state, customers: state.customers.map((c) => c.id === id ? updated : c) })
+      }
+    }
+  }, [state])
+
   const logout = useCallback(async () => {
     await supabaseSignOut()
     dispatch({ type: 'SET_USER', user: null })
@@ -474,6 +524,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state, dispatch, setTab, showToast, t, refreshData,
       addProduct, updateProduct, removeProduct,
       addSale, addDebt, updateDebt, addExpense, removeExpense,
+      addCustomer, updateCustomer,
       updateBusinessProfile,
       logout,
     }}>

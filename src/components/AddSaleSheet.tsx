@@ -6,7 +6,7 @@ import { formatCurrency, uid } from '@/lib/data'
 import ProductIcon from './ProductIcon'
 
 export default function AddSaleSheet() {
-  const { state, dispatch, showToast, addSale } = useStore()
+  const { state, dispatch, showToast, addSale, updateCustomer } = useStore()
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [customerName, setCustomerName] = useState('')
@@ -57,6 +57,13 @@ export default function AddSaleSheet() {
       }
 
       await addSale(saleData, product.id, quantity)
+
+      // Automatically increment customer total_purchases if they exist
+      const existingCustomer = state.customers.find(c => c.name === customerName)
+      if (existingCustomer) {
+        // We don't await this so it doesn't block the UI
+        updateCustomer(existingCustomer.id, { total_purchases: existingCustomer.total_purchases + total }).catch(() => {})
+      }
 
       setConfirmed(true)
       showToast('Sale recorded!', 'success')
@@ -226,6 +233,26 @@ export default function AddSaleSheet() {
                             animate={{ height: 'auto', opacity: 1 }}
                             className="mt-3 space-y-3 overflow-hidden"
                           >
+                            {state.customers.length > 0 && (
+                              <div className="relative">
+                                <select
+                                  onChange={(e) => {
+                                    if (!e.target.value) return
+                                    const c = state.customers.find(c => c.id === e.target.value)
+                                    if (c) {
+                                      setCustomerName(c.name)
+                                      setCustomerPhone(c.phone || '')
+                                    }
+                                  }}
+                                  className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body text-ink"
+                                >
+                                  <option value="">Select saved customer...</option>
+                                  {state.customers.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                             <div className="relative">
                               <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" />
                               <input

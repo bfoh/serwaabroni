@@ -41,6 +41,14 @@ Thank you for your business!`
     setTimeout(() => setShared(false), 2000)
   }
 
+  const handleShareSMS = () => {
+    const encoded = encodeURIComponent(receiptText)
+    const phone = sale.customer_phone ? `+${sale.customer_phone.replace(/^0/, '233')}` : ''
+    window.open(`sms:${phone}?body=${encoded}`, '_self')
+    setShared(true)
+    setTimeout(() => setShared(false), 2000)
+  }
+
   const handleDownloadImage = () => {
     if (!receiptRef.current) return
     const canvas = document.createElement('canvas')
@@ -230,31 +238,38 @@ Thank you for your business!`
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-3 grid grid-cols-4 gap-2 print-hide">
+            <div className="mt-3 grid grid-cols-5 gap-1.5 print-hide">
               <button
                 onClick={() => window.print()}
-                className="h-11 bg-ink rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
+                className="h-11 bg-ink rounded-sm font-display text-[10px] text-white uppercase tracking-wider flex items-center justify-center gap-1"
               >
                 <Printer size={14} />
-                Print
+                <span className="hidden sm:inline">Print</span>
               </button>
               <button
                 onClick={handleShareWhatsApp}
-                className="h-11 bg-[#25D366] rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
+                className="h-11 bg-[#25D366] rounded-sm font-display text-[10px] text-white uppercase tracking-wider flex items-center justify-center gap-1"
               >
                 {shared ? <Check size={14} /> : <Share2 size={14} />}
-                {shared ? 'Sent' : 'WhatsApp'}
+                WA
+              </button>
+              <button
+                onClick={handleShareSMS}
+                className="h-11 bg-accent-green rounded-sm font-display text-[10px] text-white uppercase tracking-wider flex items-center justify-center gap-1"
+              >
+                {shared ? <Check size={14} /> : <Share2 size={14} />}
+                SMS
               </button>
               <button
                 onClick={handleDownloadImage}
-                className="h-11 bg-ink rounded-sm font-display text-xs text-white uppercase tracking-wider flex items-center justify-center gap-1.5"
+                className="h-11 bg-ink rounded-sm font-display text-[10px] text-white uppercase tracking-wider flex items-center justify-center gap-1"
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">Save</span>
               </button>
               <button
                 onClick={onClose}
-                className="h-11 bg-warm-gray rounded-sm font-display text-xs text-ink uppercase tracking-wider flex items-center justify-center gap-1.5"
+                className="h-11 bg-warm-gray rounded-sm font-display text-[10px] text-ink uppercase tracking-wider flex items-center justify-center gap-1"
               >
                 <X size={14} />
                 Close

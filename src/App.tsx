@@ -12,17 +12,23 @@ import Login from '@/pages/Login'
 import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
+import Customers from '@/pages/Customers'
 
 function MainApp() {
   const { state } = useStore()
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showCustomers, setShowCustomers] = useState(false)
 
   const renderPage = () => {
     switch (state.activeTab) {
       case 'home':
-        return <Dashboard onOpenSalesHistory={() => setShowSalesHistory(true)} onOpenExpenses={() => setShowExpenses(true)} />
+        return <Dashboard 
+          onOpenSalesHistory={() => setShowSalesHistory(true)} 
+          onOpenExpenses={() => setShowExpenses(true)} 
+          onOpenCustomers={() => setShowCustomers(true)} 
+        />
       case 'stock':
         return <Inventory />
       case 'debts':
@@ -30,7 +36,11 @@ function MainApp() {
       case 'reports':
         return <Reports />
       default:
-        return <Dashboard onOpenSalesHistory={() => setShowSalesHistory(true)} onOpenExpenses={() => setShowExpenses(true)} />
+        return <Dashboard 
+          onOpenSalesHistory={() => setShowSalesHistory(true)} 
+          onOpenExpenses={() => setShowExpenses(true)} 
+          onOpenCustomers={() => setShowCustomers(true)} 
+        />
     }
   }
 
@@ -45,6 +55,19 @@ function MainApp() {
       <SalesHistory isOpen={showSalesHistory} onClose={() => setShowSalesHistory(false)} />
       <Expenses isOpen={showExpenses} onClose={() => setShowExpenses(false)} />
       {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+      
+      {showCustomers && (
+        <div className="absolute inset-0 z-50 bg-sand">
+          <div className="flex justify-end p-2 border-b-2 border-ink">
+            <button onClick={() => setShowCustomers(false)} className="btn-tactile p-2 bg-warm-gray rounded-sm">
+              Back to Home
+            </button>
+          </div>
+          <div className="h-[calc(100%-60px)] overflow-y-auto">
+            <Customers />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

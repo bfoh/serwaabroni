@@ -77,6 +77,16 @@ export interface Expense {
   created_at: string
 }
 
+export interface Customer {
+  id: string
+  user_id: string
+  name: string
+  phone: string | null
+  email: string | null
+  total_purchases: number
+  created_at: string
+}
+
 export interface BusinessProfile {
   id: string
   user_id: string

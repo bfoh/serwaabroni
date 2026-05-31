@@ -37,21 +37,50 @@ type ScanMode = 'camera' | 'keyboard' | 'upload' | 'manual'
 // ============================================================
 // OPEN FOOD FACTS API
 // ============================================================
-async function lookupOpenFoodFacts(barcode: string): Promise<{ name: string; category: string } | null> {
+type ProductInfo = { name: string; category: string }
+
+// Open Food Facts — strong for packaged food/drinks worldwide.
+async function lookupOpenFoodFacts(barcode: string): Promise<ProductInfo | null> {
   try {
     const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`, { signal: AbortSignal.timeout(5000) })
     const data = await res.json()
     if (data.status === 1 && data.product) {
       const p = data.product
-      return {
-        name: p.product_name_en || p.product_name || 'Unknown Product',
-        category: p.categories?.split(',')[0]?.trim() || 'Groceries',
+      const name = p.product_name_en || p.product_name || p.generic_name
+      if (name) {
+        return {
+          name,
+          category: p.categories?.split(',')[0]?.trim() || 'Groceries',
+        }
       }
     }
   } catch {
     // ignore
   }
   return null
+}
+
+// UPCitemdb (free trial) — general retail products, not just food.
+async function lookupUPCItemDB(barcode: string): Promise<ProductInfo | null> {
+  try {
+    const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`, { signal: AbortSignal.timeout(5000) })
+    const data = await res.json()
+    const item = data?.items?.[0]
+    if (item?.title) {
+      return {
+        name: item.title,
+        category: item.category?.split('>').pop()?.trim() || 'Groceries',
+      }
+    }
+  } catch {
+    // ignore (CORS / rate limit / offline) — caller falls back to manual entry
+  }
+  return null
+}
+
+// Try every product database in turn; first hit wins.
+async function lookupProduct(barcode: string): Promise<ProductInfo | null> {
+  return (await lookupOpenFoodFacts(barcode)) || (await lookupUPCItemDB(barcode))
 }
 
 // ============================================================
@@ -388,8 +417,8 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       return
     }
 
-    // 3. Barcode — check Open Food Facts API
-    const apiData = await lookupOpenFoodFacts(code)
+    // 3. Barcode — check online product databases (food + general retail)
+    const apiData = await lookupProduct(code)
     if (apiData) {
       setCurrentItem({
         id: uid(),

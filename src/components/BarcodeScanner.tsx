@@ -5,7 +5,7 @@ import {
   Mic, ChevronDown, ChevronUp, Trash2, Check, Barcode as BarcodeIcon,
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
@@ -62,6 +62,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Scanner state
+  const isProcessingRef = useRef(false)
   const [isScanning, setIsScanning] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -102,15 +103,6 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     try {
       const scanner = new Html5Qrcode('scanner-camera', {
         verbose: false,
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-        ],
       })
       scannerRef.current = scanner
 
@@ -167,14 +159,6 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     }
     return () => { stopScanner() }
   }, [isOpen, startScanner, stopScanner])
-
-  // ==========================================================
-  // CAMERA SCAN SUCCESS
-  // ==========================================================
-  const onScanSuccess = useCallback((decodedText: string) => {
-    scannerRef.current?.pause()
-    processScannedCode(decodedText)
-  }, [])
 
   // ==========================================================
   // PROCESS SCANNED / TYPED / UPLOADED CODE (shared logic)
@@ -260,6 +244,29 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   }, [state.products])
 
   // ==========================================================
+  // CAMERA SCAN SUCCESS
+  // ==========================================================
+  const onScanSuccess = useCallback((decodedText: string) => {
+    if (isProcessingRef.current) return
+    isProcessingRef.current = true
+
+    try {
+      if (scannerRef.current?.getState() === 2) { // 2 = SCANNING
+        scannerRef.current?.pause(true)
+      }
+    } catch { /* ignore pause errors */ }
+    
+    // Haptic feedback
+    try {
+      if (navigator.vibrate) navigator.vibrate(200)
+    } catch {}
+
+    processScannedCode(decodedText).finally(() => {
+      isProcessingRef.current = false
+    })
+  }, [processScannedCode])
+
+  // ==========================================================
   // HANDLE TYPED BARCODE
   // ==========================================================
   const handleTypedBarcode = useCallback(async () => {
@@ -322,8 +329,8 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     setCurrentItem(null)
     showToast(`${item.name} added`, 'success')
     // Back to camera if it was working
-    if (isScanning) {
-      scannerRef.current?.resume()
+    if (isScanning && scannerRef.current?.getState() === 3) { // 3 = PAUSED
+      try { scannerRef.current?.resume() } catch {}
     }
   }, [showToast, isScanning])
 
@@ -790,7 +797,19 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         <AnimatePresence>
           {showItemSheet && currentItem && (
             <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 z-[110]" onClick={() => { setShowItemSheet(false); setCurrentItem(null); scannerRef.current?.resume(); }} />
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }} 
+                className="absolute inset-0 bg-black/60 z-[110]" 
+                onClick={() => { 
+                  setShowItemSheet(false)
+                  setCurrentItem(null)
+                  if (scannerRef.current?.getState() === 3) {
+                    try { scannerRef.current?.resume() } catch {}
+                  }
+                }} 
+              />
               <motion.div
                 initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}

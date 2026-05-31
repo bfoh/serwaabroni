@@ -1,5 +1,5 @@
 // SerwaaBroni Service Worker - Simple cache-first strategy
-const CACHE_NAME = 'serwaabroni-v1'
+const CACHE_NAME = 'serwaabroni-v2'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -37,9 +37,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached
-      return fetch(event.request).then((response) => {
+    fetch(event.request)
+      .then((response) => {
         // Cache successful responses
         if (response.status === 200) {
           const clone = response.clone()
@@ -48,12 +47,15 @@ self.addEventListener('fetch', (event) => {
           })
         }
         return response
-      }).catch(() => {
-        // Return cached fallback for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/')
-        }
       })
-    })
+      .catch(() => {
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached
+          // Return cached fallback for navigation requests
+          if (event.request.mode === 'navigate') {
+            return caches.match('/')
+          }
+        })
+      })
   )
 })

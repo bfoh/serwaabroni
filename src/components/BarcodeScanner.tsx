@@ -137,19 +137,22 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       scannerRef.current = scanner
 
       await scanner.start(
-        // Request a high-res rear camera with continuous autofocus. Sharp, large
-        // frames are the single biggest factor in decoding blurry 1D barcodes.
-        {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          // focusMode isn't in the TS lib types yet, hence the cast.
-          advanced: [{ focusMode: 'continuous' }],
-        } as unknown as MediaTrackConstraints,
+        // First arg must be a single-key object (lib requirement). The richer
+        // constraints below in `videoConstraints` override this.
+        { facingMode: 'environment' },
         {
           fps: 20,
           // No qrbox: scan the whole frame so the barcode never has to be centred.
           disableFlip: false,
+          // Request a high-res rear camera with continuous autofocus. Sharp, large
+          // frames are the single biggest factor in decoding blurry 1D barcodes.
+          // focusMode isn't in the TS lib types yet, hence the cast.
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: 'continuous' }],
+          } as unknown as MediaTrackConstraints,
         },
         (text) => onScanSuccessRef.current(text),
         () => { /* silent failure */ }

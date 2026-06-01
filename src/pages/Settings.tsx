@@ -116,7 +116,7 @@ export default function Settings({ onClose }: SettingsProps) {
   return (
     <div className="h-full bg-sand overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 flex items-center justify-between">
+      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between">
         <h1 className="font-display text-xl text-ink uppercase tracking-tight">Settings</h1>
         <button onClick={onClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
           <X size={20} strokeWidth={2.5} className="text-ink" />
@@ -180,7 +180,7 @@ export default function Settings({ onClose }: SettingsProps) {
               initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
               animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
               exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[70] w-[90vw] max-w-sm"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[90vw] max-w-sm"
             >
               <div className="flex items-center justify-between px-4 py-3 border-b-2 border-ink">
                 <h2 className="font-display text-lg text-ink uppercase">Edit Profile</h2>
@@ -238,7 +238,7 @@ export default function Settings({ onClose }: SettingsProps) {
               initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
               animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
               exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[70] w-[85vw] max-w-sm p-5"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[85vw] max-w-sm p-5"
             >
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-accent-red/10 rounded-full flex items-center justify-center">
@@ -270,7 +270,7 @@ export default function Settings({ onClose }: SettingsProps) {
               initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
               animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
               exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[70] w-[85vw] max-w-sm p-5"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[85vw] max-w-sm p-5"
             >
               <h3 className="font-display text-lg text-ink uppercase mb-3">Log Out?</h3>
               <p className="text-sm text-ink mb-4">Your data is safely stored in the cloud. You can log back in anytime.</p>

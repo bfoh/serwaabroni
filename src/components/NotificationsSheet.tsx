@@ -31,7 +31,7 @@ export default function NotificationsSheet({ onClose }: NotificationsSheetProps)
 
   return (
     <div className="h-full flex flex-col bg-sand overflow-hidden">
-      <div className="sticky top-0 z-10 bg-sand border-b-2 border-ink px-5 py-3 flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between">
         <h2 className="font-display text-xl text-ink uppercase tracking-tight">Notifications</h2>
         <button onClick={onClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
           <X size={20} strokeWidth={2.5} className="text-ink" />

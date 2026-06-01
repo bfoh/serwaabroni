@@ -49,7 +49,7 @@ export default function Customers() {
 
   return (
     <div className="min-h-screen bg-sand pb-20">
-      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3">
+      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3 pt-safe">
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-2xl text-ink uppercase tracking-tight">Customers</h1>
           <button
@@ -117,7 +117,7 @@ export default function Customers() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 z-50"
+              className="fixed inset-0 bg-black/40 z-[60]"
               onClick={() => setShowAddCustomer(false)}
             />
             <motion.div
@@ -125,7 +125,7 @@ export default function Customers() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet"
+              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[61] shadow-sheet"
               style={{ maxHeight: '90dvh' }}
             >
               <div className="flex flex-col h-full">
@@ -161,7 +161,7 @@ export default function Customers() {
                 </div>
 
                 {/* Save button - STICKY AT BOTTOM */}
-                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                <div className="px-5 pt-4 pb-sheet bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                   <button
                     onClick={handleAddCustomer}
                     disabled={!newCustomer.name || adding}

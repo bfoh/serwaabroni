@@ -77,7 +77,7 @@ export default function Reports() {
       <MazeShader />
       <div className="relative z-10">
         {/* Header */}
-        <header className="sticky top-0 z-40 bg-sand/95 backdrop-blur-sm border-b-2 border-ink px-5 py-3">
+        <header className="sticky top-0 z-40 bg-sand/95 backdrop-blur-sm border-b-2 border-ink px-5 py-3 pt-safe">
           <div className="flex items-center justify-between mb-3">
             <h1 className="font-display text-2xl text-ink uppercase tracking-tight">{t('report')}</h1>
             <BarChart3 size={24} strokeWidth={2} className="text-ink" />

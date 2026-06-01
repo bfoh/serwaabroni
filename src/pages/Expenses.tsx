@@ -70,9 +70,9 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[90] bg-sand flex flex-col">
+    <div className="fixed inset-0 z-50 bg-sand flex flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between flex-shrink-0">
         <h1 className="font-display text-xl text-ink uppercase tracking-tight">Expenses</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowAdd(true)} className="btn-tactile w-9 h-9 bg-ink rounded-sm flex items-center justify-center">
@@ -121,7 +121,7 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-5 pb-24 space-y-2">
+      <div className="flex-1 overflow-y-auto px-5 pb-sheet space-y-2">
         {filtered.length === 0 && (
           <div className="text-center py-16">
             <Receipt size={40} strokeWidth={1} className="text-ink/20 mx-auto mb-3" />
@@ -154,11 +154,11 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
       <AnimatePresence>
         {showAdd && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[100]" onClick={() => setShowAdd(false)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowAdd(false)} />
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[110] flex flex-col shadow-sheet"
+              className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[61] flex flex-col shadow-sheet"
               style={{ maxHeight: '92dvh' }}
             >
               <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
@@ -183,7 +183,7 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
                 </div>
                 
                 {/* Save button - STICKY AT BOTTOM */}
-                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                <div className="px-5 pt-4 pb-sheet bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                   <button onClick={handleAdd} disabled={saving} className="w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
                     {saving ? '...' : 'Add Expense'}
                   </button>

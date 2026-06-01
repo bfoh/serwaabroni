@@ -1053,7 +1053,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                 initial={{ opacity: 0 }} 
                 animate={{ opacity: 1 }} 
                 exit={{ opacity: 0 }} 
-                className="absolute inset-0 bg-black/60 z-[110]" 
+                className="absolute inset-0 bg-black/60 z-[60]"
                 onClick={() => {
                   setShowItemSheet(false)
                   setCurrentItem(null)
@@ -1063,7 +1063,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
               <motion.div
                 initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="absolute bottom-0 left-0 right-0 bg-sand z-[120] rounded-t-2xl max-h-[90vh] overflow-y-auto"
+                className="absolute bottom-0 left-0 right-0 bg-sand z-[61] rounded-t-2xl max-h-[90vh] overflow-y-auto"
               >
                 <div className="flex justify-center pt-3 pb-2"><div className="w-10 h-1 bg-ink/20 rounded-full" /></div>
                 <div className="px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">

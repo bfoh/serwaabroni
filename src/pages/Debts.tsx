@@ -91,7 +91,7 @@ export default function Debts() {
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3">
+      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3 pt-safe">
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-2xl text-ink uppercase tracking-tight">{t('debts')}</h1>
           <button
@@ -330,7 +330,7 @@ export default function Debts() {
                 </div>
 
                 {/* Save button - STICKY AT BOTTOM */}
-                <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                <div className="px-5 pt-4 pb-sheet bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                   <button onClick={handleAddDebt} disabled={saving}
                     className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50">
                     {saving ? '...' : t('save_debt')}

@@ -65,9 +65,9 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[90] bg-sand flex flex-col">
+    <div className="fixed inset-0 z-50 bg-sand flex flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between flex-shrink-0">
         <h1 className="font-display text-xl text-ink uppercase tracking-tight">Sales History</h1>
         <button onClick={onClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
           <X size={20} strokeWidth={2.5} className="text-ink" />
@@ -114,13 +114,13 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search product, customer..."
-            className="w-full h-10 pl-10 pr-4 bg-light harsh-border rounded-sm text-sm font-body"
+            className="w-full h-10 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body"
           />
         </div>
       </div>
 
       {/* Sales List */}
-      <div className="flex-1 overflow-y-auto px-5 pb-24 space-y-2">
+      <div className="flex-1 overflow-y-auto px-5 pb-sheet space-y-2">
         {filteredGroups.length === 0 && (
           <div className="text-center py-16">
             <Receipt size={40} strokeWidth={1} className="text-ink/20 mx-auto mb-3" />

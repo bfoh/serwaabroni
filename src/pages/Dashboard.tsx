@@ -31,7 +31,7 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between">
         <div>
           <p className="text-micro text-muted-text">{businessName.toUpperCase()}</p>
         </div>

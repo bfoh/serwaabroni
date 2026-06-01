@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { X, Search, Receipt, User } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime, formatDate } from '@/lib/data'
+import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import ProductIcon from '@/components/ProductIcon'
 import ReceiptModal from '@/components/ReceiptModal'
 import type { Sale } from '@/lib/supabase'
@@ -15,7 +15,7 @@ interface SalesHistoryProps {
 export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   const { state } = useStore()
   const [search, setSearch] = useState('')
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
+  const [selectedSales, setSelectedSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
 
@@ -53,12 +53,14 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
     return sales
   }, [state.sales, search, filterPeriod])
 
+  const filteredGroups = useMemo(() => groupSales(filteredSales), [filteredSales])
+
   const summary = useMemo(() => {
     const total = filteredSales.reduce((s, sale) => s + sale.total, 0)
     const profit = filteredSales.reduce((s, sale) => s + (sale.profit || 0), 0)
-    const count = filteredSales.length
+    const count = filteredGroups.length
     return { total, profit, count }
-  }, [filteredSales])
+  }, [filteredSales, filteredGroups])
 
   if (!isOpen) return null
 
@@ -119,7 +121,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
 
       {/* Sales List */}
       <div className="flex-1 overflow-y-auto px-5 pb-24 space-y-2">
-        {filteredSales.length === 0 && (
+        {filteredGroups.length === 0 && (
           <div className="text-center py-16">
             <Receipt size={40} strokeWidth={1} className="text-ink/20 mx-auto mb-3" />
             <p className="text-muted-text text-sm">No sales found</p>
@@ -127,43 +129,52 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
           </div>
         )}
 
-        {filteredSales.map((sale, i) => (
-          <motion.button
-            key={sale.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.03 }}
-            onClick={() => { setSelectedSale(sale); setShowReceipt(true) }}
-            className="w-full bg-light harsh-border rounded-sm p-3 flex items-center gap-3 text-left"
-          >
-            <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
-              <ProductIcon
-                category={state.products.find((p) => p.id === sale.product_id)?.category || 'default'}
-                size={22}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{sale.product_name}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] text-muted-text">{formatDate(sale.created_at)} {formatTime(sale.created_at)}</span>
-                {sale.customer_name && (
-                  <span className="text-[10px] text-accent-green flex items-center gap-0.5">
-                    <User size={8} /> {sale.customer_name}
-                  </span>
+        {filteredGroups.map((group: SaleGroup, i) => {
+          const head = group.sales[0]
+          const lineCount = group.sales.length
+          const title = lineCount > 1 ? `${head.product_name} +${lineCount - 1} more` : head.product_name
+          return (
+            <motion.button
+              key={group.key}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03 }}
+              onClick={() => { setSelectedSales(group.sales); setShowReceipt(true) }}
+              className="w-full bg-light harsh-border rounded-sm p-3 flex items-center gap-3 text-left"
+            >
+              <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
+                <ProductIcon
+                  category={state.products.find((p) => p.id === head.product_id)?.category || 'default'}
+                  size={22}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{title}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-muted-text">{formatDate(group.created_at)} {formatTime(group.created_at)}</span>
+                  {group.customer_name && (
+                    <span className="text-[10px] text-accent-green flex items-center gap-0.5">
+                      <User size={8} /> {group.customer_name}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="font-display text-sm text-ink">{formatCurrency(group.total)}</p>
+                {lineCount > 1 ? (
+                  <p className="text-[9px] text-muted-text">{group.itemCount} items</p>
+                ) : (
+                  <p className="text-[9px] text-muted-text">{head.quantity} x {formatCurrency(head.unit_price)}</p>
                 )}
               </div>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="font-display text-sm text-ink">{formatCurrency(sale.total)}</p>
-              <p className="text-[9px] text-muted-text">{sale.quantity} x {formatCurrency(sale.unit_price)}</p>
-            </div>
-          </motion.button>
-        ))}
+            </motion.button>
+          )
+        })}
       </div>
 
       {/* Receipt Modal */}
       <ReceiptModal
-        sale={selectedSale}
+        sales={selectedSales}
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
       />

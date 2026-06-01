@@ -48,6 +48,7 @@ export interface Sale {
   customer_phone: string | null
   payment_method: 'cash' | 'momo' | 'bank'
   qr_invoice?: string | null
+  sale_group_id?: string | null
   created_at: string
 }
 

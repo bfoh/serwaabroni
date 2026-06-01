@@ -54,8 +54,11 @@ CREATE TABLE IF NOT EXISTS sales (
   customer_phone TEXT,
   payment_method TEXT NOT NULL DEFAULT 'cash' CHECK (payment_method IN ('cash', 'momo', 'bank')),
   qr_invoice TEXT,
+  sale_group_id UUID,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_sales_group ON sales(sale_group_id);
 
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 

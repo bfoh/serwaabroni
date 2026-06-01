@@ -117,3 +117,61 @@ export function getStockValue(products: Product[]): number {
 export function getProjectedProfit(products: Product[]): number {
   return products.reduce((sum, p) => sum + (p.selling_price - p.cost_price) * p.quantity, 0)
 }
+
+export interface SaleGroup {
+  key: string                       // sale_group_id, or row id when ungrouped
+  sales: Sale[]                     // line items, input order preserved
+  total: number
+  profit: number
+  itemCount: number
+  created_at: string
+  customer_name: string | null
+  customer_phone: string | null
+  payment_method: 'cash' | 'momo' | 'bank'
+}
+
+// Fold flat sale rows into groups. Rows sharing a truthy sale_group_id become
+// one group (keeping first-seen order); rows without one are singleton groups.
+export function groupSales(sales: Sale[]): SaleGroup[] {
+  const groups: SaleGroup[] = []
+  const byKey = new Map<string, SaleGroup>()
+  for (const sale of sales) {
+    const gid = sale.sale_group_id
+    if (gid) {
+      const existing = byKey.get(gid)
+      if (existing) {
+        existing.sales.push(sale)
+        existing.total += sale.total
+        existing.profit += sale.profit || 0
+        existing.itemCount += sale.quantity
+        continue
+      }
+      const g: SaleGroup = {
+        key: gid,
+        sales: [sale],
+        total: sale.total,
+        profit: sale.profit || 0,
+        itemCount: sale.quantity,
+        created_at: sale.created_at,
+        customer_name: sale.customer_name,
+        customer_phone: sale.customer_phone,
+        payment_method: sale.payment_method,
+      }
+      byKey.set(gid, g)
+      groups.push(g)
+    } else {
+      groups.push({
+        key: sale.id,
+        sales: [sale],
+        total: sale.total,
+        profit: sale.profit || 0,
+        itemCount: sale.quantity,
+        created_at: sale.created_at,
+        customer_name: sale.customer_name,
+        customer_phone: sale.customer_phone,
+        payment_method: sale.payment_method,
+      })
+    }
+  }
+  return groups
+}

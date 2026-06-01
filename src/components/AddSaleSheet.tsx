@@ -1,14 +1,24 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minus, Plus, Check, User, Phone } from 'lucide-react'
+import { X, Minus, Plus, Check, User, Phone, Trash2, ArrowLeft } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, uid } from '@/lib/data'
 import ProductIcon from './ProductIcon'
 
+type CartItem = {
+  product_id: string
+  name: string
+  category: string
+  unit_price: number
+  cost_price: number
+  quantity: number
+  stock: number
+}
+
 export default function AddSaleSheet() {
-  const { state, dispatch, showToast, addSale, updateCustomer, addCustomer } = useStore()
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
-  const [quantity, setQuantity] = useState(1)
+  const { state, dispatch, showToast, addSaleBatch, updateCustomer, addCustomer } = useStore()
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [view, setView] = useState<'grid' | 'cart'>('grid')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo' | 'bank'>('cash')
@@ -17,64 +27,117 @@ export default function AddSaleSheet() {
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const product = useMemo(
-    () => state.products.find((p) => p.id === selectedProduct),
-    [selectedProduct, state.products]
+  const total = useMemo(
+    () => cart.reduce((sum, i) => sum + i.unit_price * i.quantity, 0),
+    [cart]
+  )
+  const profit = useMemo(
+    () => cart.reduce((sum, i) => sum + (i.unit_price - i.cost_price) * i.quantity, 0),
+    [cart]
+  )
+  const itemCount = useMemo(
+    () => cart.reduce((sum, i) => sum + i.quantity, 0),
+    [cart]
   )
 
-  const total = product ? product.selling_price * quantity : 0
-  const profit = product ? (product.selling_price - product.cost_price) * quantity : 0
-
   const filteredProducts = useMemo(() => {
-    let list = state.products;
+    let list = state.products
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(q));
+      const q = searchQuery.toLowerCase()
+      list = list.filter((p) => p.name.toLowerCase().includes(q))
     }
-    return list.slice(0, 20); // show up to 20 to avoid performance issues
-  }, [state.products, searchQuery]);
+    return list.slice(0, 20)
+  }, [state.products, searchQuery])
 
   const handleClose = () => {
     dispatch({ type: 'TOGGLE_ADD_SHEET', show: false })
-    setSelectedProduct(null)
-    setQuantity(1)
+    setCart([])
+    setView('grid')
     setCustomerName('')
     setCustomerPhone('')
     setShowCustomerForm(false)
     setConfirmed(false)
     setSearchQuery('')
+    setPaymentMethod('cash')
+  }
+
+  // Add a product to the cart (or increment if already present), capped at stock.
+  const addToCart = (productId: string) => {
+    const p = state.products.find((x) => x.id === productId)
+    if (!p) return
+    setCart((prev) => {
+      const existing = prev.find((i) => i.product_id === productId)
+      if (existing) {
+        return prev.map((i) =>
+          i.product_id === productId
+            ? { ...i, quantity: Math.min(i.stock, i.quantity + 1) }
+            : i
+        )
+      }
+      return [
+        ...prev,
+        {
+          product_id: p.id,
+          name: p.name,
+          category: p.category,
+          unit_price: p.selling_price,
+          cost_price: p.cost_price,
+          quantity: Math.min(1, p.quantity),
+          stock: p.quantity,
+        },
+      ]
+    })
+    setView('cart')
+  }
+
+  const changeQty = (productId: string, delta: number) => {
+    setCart((prev) =>
+      prev.map((i) =>
+        i.product_id === productId
+          ? { ...i, quantity: Math.max(1, Math.min(i.stock, i.quantity + delta)) }
+          : i
+      )
+    )
+  }
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => {
+      const next = prev.filter((i) => i.product_id !== productId)
+      if (next.length === 0) setView('grid')
+      return next
+    })
   }
 
   const handleConfirm = async () => {
-    if (!product) return
-
+    if (cart.length === 0) return
     setSaving(true)
-
     try {
-      const saleData = {
+      const createdAt = new Date().toISOString()
+      const sales = cart.map((i) => ({
         id: uid(),
-        product_id: product.id,
-        product_name: product.name,
-        quantity,
-        unit_price: product.selling_price,
-        total,
-        profit,
+        product_id: i.product_id,
+        product_name: i.name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total: i.unit_price * i.quantity,
+        profit: (i.unit_price - i.cost_price) * i.quantity,
         customer_name: customerName || null,
         customer_phone: customerPhone || null,
         payment_method: paymentMethod,
-        created_at: new Date().toISOString(),
-      }
+        created_at: createdAt,
+      }))
+      const items = cart.map((i) => ({ productId: i.product_id, qty: i.quantity }))
 
-      await addSale(saleData, product.id, quantity)
+      await addSaleBatch(sales, items)
 
-      // Automatically save or update customer
       if (customerName) {
-        const existingCustomer = state.customers.find(c => c.name.toLowerCase() === customerName.trim().toLowerCase())
+        const existingCustomer = state.customers.find(
+          (c) => c.name.toLowerCase() === customerName.trim().toLowerCase()
+        )
         if (existingCustomer) {
-          // We don't await this so it doesn't block the UI
-          updateCustomer(existingCustomer.id, { 
+          updateCustomer(existingCustomer.id, {
             total_purchases: (existingCustomer.total_purchases || 0) + total,
-            phone: customerPhone || existingCustomer.phone
+            phone: customerPhone || existingCustomer.phone,
           }).catch(() => {})
         } else {
           addCustomer({
@@ -83,14 +146,12 @@ export default function AddSaleSheet() {
             phone: customerPhone || null,
             email: null,
             total_purchases: total,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
           }).catch(() => {})
         }
       }
 
       setConfirmed(true)
-      showToast('Sale recorded!', 'success')
-
       setTimeout(() => {
         handleClose()
       }, 1200)
@@ -141,14 +202,28 @@ export default function AddSaleSheet() {
                   <Check size={40} strokeWidth={3} className="text-white" />
                 </motion.div>
                 <p className="font-display text-2xl text-ink uppercase tracking-wide">Sale Recorded!</p>
-                <p className="text-muted-text mt-2">{formatCurrency(total)} added</p>
+                <p className="text-muted-text mt-2">
+                  {formatCurrency(total)} · {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                </p>
                 {customerPhone && <p className="text-xs text-accent-green mt-1">Receipt sent via SMS</p>}
               </div>
             ) : (
               <div className="flex flex-col h-full" style={{ maxHeight: '92dvh' }}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
-                  <h2 className="font-display text-2xl text-ink uppercase tracking-tight">New Sale</h2>
+                  <div className="flex items-center gap-3">
+                    {view === 'grid' && cart.length > 0 && (
+                      <button
+                        onClick={() => setView('cart')}
+                        className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray"
+                      >
+                        <ArrowLeft size={20} strokeWidth={2.5} className="text-ink" />
+                      </button>
+                    )}
+                    <h2 className="font-display text-2xl text-ink uppercase tracking-tight">
+                      {view === 'grid' ? 'Add Product' : 'New Sale'}
+                    </h2>
+                  </div>
                   <button onClick={handleClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
                     <X size={20} strokeWidth={2.5} className="text-ink" />
                   </button>
@@ -157,7 +232,7 @@ export default function AddSaleSheet() {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-4 min-h-0">
                   {/* Product Grid */}
-                  {!selectedProduct && (
+                  {view === 'grid' && (
                     <div className="mt-4">
                       <div className="mb-4">
                         <input
@@ -168,7 +243,7 @@ export default function AddSaleSheet() {
                           className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body focus:outline-none focus:ring-2 focus:ring-ink"
                         />
                       </div>
-                      
+
                       {filteredProducts.length === 0 ? (
                         <div className="bg-light harsh-border rounded-sm p-8 text-center">
                           <p className="text-sm font-medium text-ink">No products found</p>
@@ -176,59 +251,77 @@ export default function AddSaleSheet() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-3 pb-6">
-                          {filteredProducts.map((p) => (
-                            <button
-                              key={p.id}
-                              onClick={() => setSelectedProduct(p.id)}
-                              className="btn-tactile bg-light harsh-border rounded-sm p-3 flex flex-col items-center gap-2 active:bg-warm-gray"
-                            >
-                              <ProductIcon category={p.category} size={36} />
-                              <span className="text-sm font-medium text-center leading-tight">{p.name}</span>
-                              <span className="text-xs text-muted-text">{formatCurrency(p.selling_price)}</span>
-                            </button>
-                          ))}
+                          {filteredProducts.map((p) => {
+                            const inCart = cart.find((i) => i.product_id === p.id)
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => addToCart(p.id)}
+                                disabled={p.quantity < 1}
+                                className="btn-tactile relative bg-light harsh-border rounded-sm p-3 flex flex-col items-center gap-2 active:bg-warm-gray disabled:opacity-40"
+                              >
+                                {inCart && (
+                                  <span className="absolute top-1 right-1 min-w-5 h-5 px-1 rounded-full bg-accent-red text-white text-xs font-bold flex items-center justify-center">
+                                    {inCart.quantity}
+                                  </span>
+                                )}
+                                <ProductIcon category={p.category} size={36} />
+                                <span className="text-sm font-medium text-center leading-tight">{p.name}</span>
+                                <span className="text-xs text-muted-text">{formatCurrency(p.selling_price)}</span>
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Selected Product + Quantity */}
-                  {selectedProduct && product && (
+                  {/* Cart */}
+                  {view === 'cart' && (
                     <div className="mt-4">
-                      <button
-                        onClick={() => setSelectedProduct(null)}
-                        className="w-full bg-light harsh-border rounded-sm p-4 flex items-center gap-4 mb-4 text-left"
-                      >
-                        <ProductIcon category={product.category} size={40} />
-                        <div className="flex-1">
-                          <p className="font-display text-lg uppercase">{product.name}</p>
-                          <p className="text-sm text-muted-text">{formatCurrency(product.selling_price)} each</p>
-                        </div>
-                        <span className="text-micro text-accent-red">CHANGE</span>
-                      </button>
-
-                      {/* Quantity Selector */}
-                      <div className="bg-light harsh-border rounded-sm p-5 mb-4">
-                        <p className="text-micro text-muted-text mb-3 text-center">QUANTITY</p>
-                        <div className="flex items-center justify-center gap-6">
-                          <button
-                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                            className="btn-tactile w-14 h-14 bg-warm-gray flex items-center justify-center rounded-sm active:bg-muted-text"
-                          >
-                            <Minus size={24} strokeWidth={2.5} className="text-ink" />
-                          </button>
-                          <span className="font-display text-5xl text-ink w-16 text-center">
-                            {quantity.toString().padStart(2, '0')}
-                          </span>
-                          <button
-                            onClick={() => setQuantity(Math.min(product.quantity, quantity + 1))}
-                            className="btn-tactile w-14 h-14 bg-warm-gray flex items-center justify-center rounded-sm active:bg-muted-text"
-                          >
-                            <Plus size={24} strokeWidth={2.5} className="text-ink" />
-                          </button>
-                        </div>
-                        <p className="text-center text-xs text-muted-text mt-2">{product.quantity} in stock</p>
+                      {/* Cart lines */}
+                      <div className="space-y-3 mb-4">
+                        {cart.map((i) => (
+                          <div key={i.product_id} className="bg-light harsh-border rounded-sm p-3 flex items-center gap-3">
+                            <ProductIcon category={i.category} size={32} />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-display text-base uppercase truncate">{i.name}</p>
+                              <p className="text-xs text-muted-text">
+                                {formatCurrency(i.unit_price)} · {formatCurrency(i.unit_price * i.quantity)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => changeQty(i.product_id, -1)}
+                                className="btn-tactile w-9 h-9 bg-warm-gray flex items-center justify-center rounded-sm"
+                              >
+                                <Minus size={16} strokeWidth={2.5} className="text-ink" />
+                              </button>
+                              <span className="font-display text-xl text-ink w-7 text-center">{i.quantity}</span>
+                              <button
+                                onClick={() => changeQty(i.product_id, 1)}
+                                className="btn-tactile w-9 h-9 bg-warm-gray flex items-center justify-center rounded-sm"
+                              >
+                                <Plus size={16} strokeWidth={2.5} className="text-ink" />
+                              </button>
+                              <button
+                                onClick={() => removeFromCart(i.product_id)}
+                                className="btn-tactile w-9 h-9 flex items-center justify-center rounded-sm"
+                              >
+                                <Trash2 size={16} className="text-accent-red" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
+
+                      {/* Add more */}
+                      <button
+                        onClick={() => setView('grid')}
+                        className="btn-tactile w-full py-3 mb-4 bg-light harsh-border rounded-sm font-display text-sm uppercase tracking-wider text-ink flex items-center justify-center gap-2"
+                      >
+                        <Plus size={16} strokeWidth={2.5} /> Add More Products
+                      </button>
 
                       {/* Payment Method */}
                       <div className="mb-4">
@@ -270,7 +363,7 @@ export default function AddSaleSheet() {
                                 <select
                                   onChange={(e) => {
                                     if (!e.target.value) return
-                                    const c = state.customers.find(c => c.id === e.target.value)
+                                    const c = state.customers.find((c) => c.id === e.target.value)
                                     if (c) {
                                       setCustomerName(c.name)
                                       setCustomerPhone(c.phone || '')
@@ -279,7 +372,7 @@ export default function AddSaleSheet() {
                                   className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body text-ink"
                                 >
                                   <option value="">Select saved customer...</option>
-                                  {state.customers.map(c => (
+                                  {state.customers.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                   ))}
                                 </select>
@@ -312,7 +405,7 @@ export default function AddSaleSheet() {
                       {/* Total Display */}
                       <div className="bg-ink rounded-sm p-5 mb-4">
                         <div className="flex justify-between items-baseline">
-                          <span className="text-white/60 text-micro">TOTAL</span>
+                          <span className="text-white/60 text-micro">TOTAL · {itemCount} {itemCount === 1 ? 'ITEM' : 'ITEMS'}</span>
                           <span className="font-display text-3xl text-white">{formatCurrency(total)}</span>
                         </div>
                         <div className="flex justify-between items-baseline mt-1">
@@ -322,15 +415,14 @@ export default function AddSaleSheet() {
                       </div>
                     </div>
                   )}
-
                 </div>
 
                 {/* Save button - STICKY AT BOTTOM */}
-                {selectedProduct && (
+                {view === 'cart' && cart.length > 0 && (
                   <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                     <button
                       onClick={handleConfirm}
-                      disabled={!selectedProduct || quantity < 1 || saving}
+                      disabled={cart.length === 0 || saving}
                       className="btn-tactile w-full h-14 bg-ink text-white font-display text-lg uppercase tracking-wider rounded-sm disabled:opacity-50"
                     >
                       {saving ? '...' : 'CONFIRM SALE'}

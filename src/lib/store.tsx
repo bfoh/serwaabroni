@@ -10,7 +10,7 @@ import { generateAlerts, type Alert } from './alerts'
 import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services/auth'
 import {
   fetchProducts, insertProduct, updateProductDb, deleteProductDb,
-  fetchSales, recordSale,
+  fetchSales, recordSale, recordSaleBatch,
   fetchDebts, insertDebt, updateDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
   fetchBusinessProfile, upsertBusinessProfile,
@@ -193,6 +193,7 @@ interface StoreContextType {
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   removeProduct: (id: string) => Promise<void>
   addSale: (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => Promise<void>
+  addSaleBatch: (sales: Omit<Sale, 'user_id'>[], items: { productId: string; qty: number }[]) => Promise<void>
   addDebt: (debt: Omit<Debt, 'user_id'>) => Promise<void>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
@@ -437,6 +438,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state, showToast])
 
+  const addSaleBatch = useCallback(async (
+    sales: Omit<Sale, 'user_id'>[],
+    items: { productId: string; qty: number }[]
+  ) => {
+    try {
+      const recorded = await recordSaleBatch(sales, items)
+      recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
+      const products = await fetchProducts()
+      dispatch({ type: 'SET_PRODUCTS', products })
+      const summary = await getDashboardSummary()
+      dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
+      dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
+      dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
+      showToast('Sale recorded!', 'success')
+    } catch {
+      sales.forEach((sale) => {
+        const localSale: Sale = { ...sale, user_id: 'local' } as Sale
+        dispatch({ type: 'ADD_SALE', sale: localSale })
+      })
+      items.forEach(({ productId, qty }) => {
+        const existing = state.products.find((p) => p.id === productId)
+        if (existing) {
+          dispatch({ type: 'UPDATE_PRODUCT', product: { ...existing, quantity: Math.max(0, existing.quantity - qty) } })
+        }
+      })
+      showToast('Sale saved locally', 'success')
+    }
+  }, [state, showToast])
+
   const addDebt = useCallback(async (debt: Omit<Debt, 'user_id'>) => {
     try {
       const inserted = await insertDebt(debt)
@@ -549,7 +579,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       state, dispatch, setTab, showToast, t, refreshData,
       addProduct, updateProduct, removeProduct,
-      addSale, addDebt, updateDebt, addExpense, removeExpense,
+      addSale, addSaleBatch, addDebt, updateDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
       updateBusinessProfile,
       resetAllData,

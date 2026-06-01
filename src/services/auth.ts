@@ -23,8 +23,7 @@ export async function signUp(email: string, password: string, phone: string, bus
       email,
       password,
       options: {
-        data: { phone, business_name: businessName },
-        emailRedirectTo: window.location.origin + '/login'
+        data: { phone, business_name: businessName }
       }
     })
     if (error) {

@@ -40,6 +40,11 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Prevent iOS auto-zoom on focus: inputs must be >= 16px */
+  input, select, textarea {
+    font-size: 16px;
+  }
+
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -84,4 +89,13 @@
   .text-micro {
     @apply text-xs font-semibold uppercase tracking-widest;
   }
+}
+
+/* Z-index ladder (documented): nav z-40 < page overlays z-50
+   < sheets/modals z-60/61 < toast z-70 */
+@layer utilities {
+  .pt-safe  { padding-top: env(safe-area-inset-top); }
+  .pb-safe  { padding-bottom: env(safe-area-inset-bottom); }
+  .pb-sheet { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .h-nav    { height: calc(4rem + env(safe-area-inset-bottom)); }
 }

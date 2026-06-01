@@ -6,36 +6,41 @@ import { formatCurrency, formatTime } from '@/lib/data'
 import type { Sale } from '@/lib/supabase'
 
 interface ReceiptModalProps {
-  sale: Sale | null
+  sales: Sale[]
   isOpen: boolean
   onClose: () => void
 }
 
-export default function ReceiptModal({ sale, isOpen, onClose }: ReceiptModalProps) {
+export default function ReceiptModal({ sales, isOpen, onClose }: ReceiptModalProps) {
   const { state } = useStore()
   const [shared, setShared] = useState(false)
   const receiptRef = useRef<HTMLDivElement>(null)
 
-  if (!isOpen || !sale) return null
+  if (!isOpen || sales.length === 0) return null
 
+  const head = sales[0]
+  const grandTotal = sales.reduce((sum, s) => sum + s.total, 0)
   const businessName = state.businessProfile?.business_name || state.user?.business_name || "SerwaaBroni Shop"
   const logoUrl = state.user?.logo || state.businessProfile?.logo_url
   const now = new Date()
-  const receiptNo = `SB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${sale.id.slice(-4).toUpperCase()}`
+  const receiptKey = (head.sale_group_id ?? head.id).slice(-4).toUpperCase()
+  const receiptNo = `SB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${receiptKey}`
+
+  const itemLines = sales
+    .map((s) => `${s.product_name}  ${s.quantity} x ${formatCurrency(s.unit_price)} = ${formatCurrency(s.total)}`)
+    .join('\n')
 
   const receiptText = `*${businessName}*
 Receipt: ${receiptNo}
-Date: ${formatTime(sale.created_at)}
-Product: ${sale.product_name}
-Qty: ${sale.quantity}
-Unit Price: ${formatCurrency(sale.unit_price)}
-Total: ${formatCurrency(sale.total)}
-Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}
+Date: ${formatTime(head.created_at)}
+${itemLines}
+Total: ${formatCurrency(grandTotal)}
+Payment: ${head.payment_method?.toUpperCase() || 'CASH'}
 Thank you for your business!`
 
   const handleShareWhatsApp = () => {
     const encoded = encodeURIComponent(receiptText)
-    const phone = sale.customer_phone ? `+${sale.customer_phone.replace(/^0/, '233')}` : ''
+    const phone = head.customer_phone ? `+${head.customer_phone.replace(/^0/, '233')}` : ''
     window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank')
     setShared(true)
     setTimeout(() => setShared(false), 2000)
@@ -43,35 +48,35 @@ Thank you for your business!`
 
   const handleShareSMS = () => {
     const encoded = encodeURIComponent(receiptText)
-    const phone = sale.customer_phone ? `+${sale.customer_phone.replace(/^0/, '233')}` : ''
+    const phone = head.customer_phone ? `+${head.customer_phone.replace(/^0/, '233')}` : ''
     window.open(`sms:${phone}?body=${encoded}`, '_self')
     setShared(true)
     setTimeout(() => setShared(false), 2000)
   }
 
   const handleDownloadImage = () => {
-    if (!receiptRef.current) return
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    const lineH = 30
+    const itemsTop = 360
     canvas.width = 600
-    canvas.height = 700
+    canvas.height = itemsTop + sales.length * lineH + 220
 
     // Background
     ctx.fillStyle = '#F5F0E6'
-    ctx.fillRect(0, 0, 600, 700)
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     // Border
     ctx.strokeStyle = '#1A1A1A'
     ctx.lineWidth = 3
-    ctx.strokeRect(15, 15, 570, 670)
+    ctx.strokeRect(15, 15, canvas.width - 30, canvas.height - 30)
 
     // Content
     ctx.fillStyle = '#1A1A1A'
     ctx.textAlign = 'center'
 
-    // Shop name
     ctx.font = 'bold 32px Arial'
     ctx.fillText(businessName.toUpperCase(), 300, 80)
 
@@ -79,51 +84,52 @@ Thank you for your business!`
     ctx.fillText('RECEIPT', 300, 110)
     ctx.fillText('- - - - - - - - - - - - - - - -', 300, 130)
 
-    // Receipt details
     ctx.textAlign = 'left'
     ctx.font = '18px Arial'
     ctx.fillText(`Receipt No: ${receiptNo}`, 40, 170)
-    ctx.fillText(`Date: ${formatTime(sale.created_at)}`, 40, 200)
-    ctx.fillText(`Customer: ${sale.customer_name || 'Walk-in'}`, 40, 230)
-    if (sale.customer_phone) ctx.fillText(`Phone: ${sale.customer_phone}`, 40, 260)
+    ctx.fillText(`Date: ${formatTime(head.created_at)}`, 40, 200)
+    ctx.fillText(`Customer: ${head.customer_name || 'Walk-in'}`, 40, 230)
+    if (head.customer_phone) ctx.fillText(`Phone: ${head.customer_phone}`, 40, 260)
 
     ctx.textAlign = 'center'
     ctx.fillText('- - - - - - - - - - - - - - - -', 300, 290)
 
-    // Items
+    // Items header
     ctx.textAlign = 'left'
     ctx.font = 'bold 20px Arial'
     ctx.fillText('ITEM', 40, 325)
-    ctx.fillText('QTY', 300, 325)
+    ctx.fillText('QTY', 360, 325)
     ctx.textAlign = 'right'
     ctx.fillText('AMOUNT', 560, 325)
 
+    // Item rows
     ctx.font = '18px Arial'
-    ctx.textAlign = 'left'
-    ctx.fillText(sale.product_name, 40, 360)
-    ctx.fillText(String(sale.quantity), 300, 360)
-    ctx.textAlign = 'right'
-    ctx.fillText(formatCurrency(sale.total), 560, 360)
+    sales.forEach((s, idx) => {
+      const y = itemsTop + idx * lineH
+      ctx.textAlign = 'left'
+      ctx.fillText(s.product_name, 40, y)
+      ctx.fillText(String(s.quantity), 360, y)
+      ctx.textAlign = 'right'
+      ctx.fillText(formatCurrency(s.total), 560, y)
+    })
 
-    // Totals
+    const afterItems = itemsTop + sales.length * lineH + 10
     ctx.textAlign = 'center'
-    ctx.fillText('- - - - - - - - - - - - - - - -', 300, 400)
+    ctx.fillText('- - - - - - - - - - - - - - - -', 300, afterItems)
 
     ctx.textAlign = 'right'
     ctx.font = 'bold 24px Arial'
-    ctx.fillText(`TOTAL: ${formatCurrency(sale.total)}`, 560, 440)
+    ctx.fillText(`TOTAL: ${formatCurrency(grandTotal)}`, 560, afterItems + 40)
 
     ctx.font = '18px Arial'
-    ctx.fillText(`Payment: ${sale.payment_method?.toUpperCase() || 'CASH'}`, 560, 470)
+    ctx.fillText(`Payment: ${head.payment_method?.toUpperCase() || 'CASH'}`, 560, afterItems + 70)
 
-    // Footer
     ctx.textAlign = 'center'
     ctx.font = '16px Arial'
     ctx.fillStyle = '#888888'
-    ctx.fillText('Thank you for your business!', 300, 530)
-    ctx.fillText('Powered by SerwaaBroni', 300, 560)
+    ctx.fillText('Thank you for your business!', 300, afterItems + 120)
+    ctx.fillText('Powered by SerwaaBroni', 300, afterItems + 150)
 
-    // Download
     const link = document.createElement('a')
     link.download = `receipt-${receiptNo}.png`
     link.href = canvas.toDataURL()
@@ -188,16 +194,16 @@ Thank you for your business!`
               <div className="space-y-1.5 mb-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-text">Date</span>
-                  <span className="font-medium">{formatTime(sale.created_at)}</span>
+                  <span className="font-medium">{formatTime(head.created_at)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-text">Customer</span>
-                  <span className="font-medium">{sale.customer_name || 'Walk-in'}</span>
+                  <span className="font-medium">{head.customer_name || 'Walk-in'}</span>
                 </div>
-                {sale.customer_phone && (
+                {head.customer_phone && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-text">Phone</span>
-                    <span className="font-medium">{sale.customer_phone}</span>
+                    <span className="font-medium">{head.customer_phone}</span>
                   </div>
                 )}
               </div>
@@ -206,15 +212,19 @@ Thank you for your business!`
               <div className="border-t-2 border-dashed border-ink/30 my-3" />
 
               {/* Items */}
-              <div className="space-y-1 mb-3">
+              <div className="space-y-1.5 mb-3">
                 <div className="flex justify-between text-[10px] text-muted-text uppercase">
                   <span>Item</span>
                   <span>Qty x Price</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">{sale.product_name}</span>
-                  <span className="text-sm">{sale.quantity} x {formatCurrency(sale.unit_price)}</span>
-                </div>
+                {sales.map((s) => (
+                  <div key={s.id} className="flex justify-between items-start gap-2">
+                    <span className="text-sm font-medium flex-1 min-w-0 truncate">{s.product_name}</span>
+                    <span className="text-sm text-right whitespace-nowrap">
+                      {s.quantity} x {formatCurrency(s.unit_price)}
+                    </span>
+                  </div>
+                ))}
               </div>
 
               {/* Divider */}
@@ -223,11 +233,11 @@ Thank you for your business!`
               {/* Total */}
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm text-muted-text">Payment</span>
-                <span className="text-sm font-medium uppercase">{sale.payment_method || 'CASH'}</span>
+                <span className="text-sm font-medium uppercase">{head.payment_method || 'CASH'}</span>
               </div>
               <div className="flex justify-between items-center bg-ink rounded-sm px-4 py-3 print:bg-white print:border-y-2 print:border-black print:px-0">
                 <span className="text-white/70 text-sm uppercase print:text-black">Total</span>
-                <span className="font-display text-xl text-white print:text-black">{formatCurrency(sale.total)}</span>
+                <span className="font-display text-xl text-white print:text-black">{formatCurrency(grandTotal)}</span>
               </div>
 
               {/* Footer */}

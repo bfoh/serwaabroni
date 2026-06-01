@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime, formatDate } from '@/lib/data'
+import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import Odometer from '@/components/Odometer'
 import ProductIcon from '@/components/ProductIcon'
 import BarcodeScanner from '@/components/BarcodeScanner'
@@ -19,14 +19,14 @@ interface DashboardProps {
 export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
   const { state, t, setTab } = useStore()
   const [showScanner, setShowScanner] = useState(false)
-  const [receiptSale, setReceiptSale] = useState<Sale | null>(null)
+  const [receiptSales, setReceiptSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
 
   const businessName = state.businessProfile?.business_name || state.user?.business_name || "Maame Doku's Shop"
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 
-  const recentSales = useMemo(() => state.sales.slice(0, 6), [state.sales])
+  const recentGroups = useMemo(() => groupSales(state.sales).slice(0, 6), [state.sales])
 
   return (
     <div className="min-h-screen bg-sand pb-20">
@@ -172,46 +172,55 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         </div>
 
         <div className="space-y-2">
-          {recentSales.length === 0 && (
+          {recentGroups.length === 0 && (
             <div className="text-center py-10">
               <p className="text-muted-text text-sm">{t('no_sales_period')}</p>
               <p className="text-xs text-muted-text mt-1">Tap the + button to add your first sale</p>
             </div>
           )}
-          {recentSales.map((sale, index) => (
-            <motion.button
-              key={sale.id}
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05, duration: 0.25 }}
-              onClick={() => { setReceiptSale(sale); setShowReceipt(true) }}
-              className="w-full bg-light harsh-border rounded-sm px-4 py-3 flex items-center gap-3 text-left"
-            >
-              <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
-                <ProductIcon
-                  category={state.products.find((p) => p.id === sale.product_id)?.category || 'default'}
-                  size={24}
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{sale.product_name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] text-muted-text">{formatDate(sale.created_at)} {formatTime(sale.created_at)}</span>
-                  {sale.customer_name && (
-                    <span className="text-[10px] text-accent-green flex items-center gap-0.5">
-                      <User size={8} /> {sale.customer_name}
-                    </span>
+          {recentGroups.map((group: SaleGroup, index) => {
+            const head = group.sales[0]
+            const lineCount = group.sales.length
+            const title = lineCount > 1 ? `${head.product_name} +${lineCount - 1} more` : head.product_name
+            return (
+              <motion.button
+                key={group.key}
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05, duration: 0.25 }}
+                onClick={() => { setReceiptSales(group.sales); setShowReceipt(true) }}
+                className="w-full bg-light harsh-border rounded-sm px-4 py-3 flex items-center gap-3 text-left"
+              >
+                <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
+                  <ProductIcon
+                    category={state.products.find((p) => p.id === head.product_id)?.category || 'default'}
+                    size={24}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-muted-text">{formatDate(group.created_at)} {formatTime(group.created_at)}</span>
+                    {group.customer_name && (
+                      <span className="text-[10px] text-accent-green flex items-center gap-0.5">
+                        <User size={8} /> {group.customer_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-display text-base text-accent-green">+{formatCurrency(group.total)}</p>
+                  {lineCount > 1 ? (
+                    <p className="text-[10px] text-muted-text">{group.itemCount} items</p>
+                  ) : (
+                    head.quantity > 1 && (
+                      <p className="text-[10px] text-muted-text">{head.quantity} x {formatCurrency(head.unit_price)}</p>
+                    )
                   )}
                 </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-display text-base text-accent-green">+{formatCurrency(sale.total)}</p>
-                {sale.quantity > 1 && (
-                  <p className="text-[10px] text-muted-text">{sale.quantity} x {formatCurrency(sale.unit_price)}</p>
-                )}
-              </div>
-            </motion.button>
-          ))}
+              </motion.button>
+            )
+          })}
         </div>
       </section>
 
@@ -220,7 +229,7 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
 
       {/* Receipt Modal */}
       <ReceiptModal
-        sale={receiptSale}
+        sales={receiptSales}
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
       />

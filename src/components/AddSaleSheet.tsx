@@ -113,6 +113,7 @@ export default function AddSaleSheet() {
     setSaving(true)
     try {
       const createdAt = new Date().toISOString()
+      const groupId = uid()
       const sales = cart.map((i) => ({
         id: uid(),
         product_id: i.product_id,
@@ -124,6 +125,7 @@ export default function AddSaleSheet() {
         customer_name: customerName || null,
         customer_phone: customerPhone || null,
         payment_method: paymentMethod,
+        sale_group_id: groupId,
         created_at: createdAt,
       }))
       const items = cart.map((i) => ({ productId: i.product_id, qty: i.quantity }))

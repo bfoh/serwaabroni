@@ -132,6 +132,47 @@ export async function recordSale(
   return saleData as Sale
 }
 
+// Record several sale rows in one checkout (a multi-product cart).
+// Inserts all rows sharing the caller-provided customer/payment/timestamp,
+// then decrements stock per product. Returns the inserted rows.
+export async function recordSaleBatch(
+  sales: Omit<Sale, 'user_id'>[],
+  items: { productId: string; qty: number }[]
+): Promise<Sale[]> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  // Insert all sale rows scoped to user
+  const { data: saleData, error: saleError } = await supabase
+    .from('sales')
+    .insert(sales.map((s) => ({ ...s, user_id: uid })))
+    .select()
+
+  if (saleError) throw saleError
+
+  // Reduce stock per product — scoped to user's own products
+  for (const { productId, qty } of items) {
+    if (!productId) continue
+    const { data: product } = await supabase
+      .from('products')
+      .select('quantity')
+      .eq('id', productId)
+      .eq('user_id', uid)
+      .single()
+
+    if (product) {
+      const newQty = Math.max(0, (product.quantity || 0) - qty)
+      await supabase
+        .from('products')
+        .update({ quantity: newQty })
+        .eq('id', productId)
+        .eq('user_id', uid)
+    }
+  }
+
+  return (saleData as Sale[]) || []
+}
+
 // ============================================
 // DEBTS (scoped to user)
 // ============================================

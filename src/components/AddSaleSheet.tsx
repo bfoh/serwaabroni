@@ -180,7 +180,7 @@ export default function AddSaleSheet() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/40 z-50"
+            className="fixed inset-0 bg-black/40 z-[60]"
             onClick={handleClose}
           />
 
@@ -190,7 +190,7 @@ export default function AddSaleSheet() {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet"
+            className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-[61] shadow-sheet"
             style={{ maxHeight: '90dvh' }}
           >
             {confirmed ? (
@@ -217,7 +217,7 @@ export default function AddSaleSheet() {
                     {view === 'grid' && cart.length > 0 && (
                       <button
                         onClick={() => setView('cart')}
-                        className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray"
+                        className="btn-tactile w-11 h-11 flex items-center justify-center rounded-sm bg-warm-gray"
                       >
                         <ArrowLeft size={20} strokeWidth={2.5} className="text-ink" />
                       </button>
@@ -226,7 +226,7 @@ export default function AddSaleSheet() {
                       {view === 'grid' ? 'Add Product' : 'New Sale'}
                     </h2>
                   </div>
-                  <button onClick={handleClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
+                  <button onClick={handleClose} className="btn-tactile w-11 h-11 flex items-center justify-center rounded-sm bg-warm-gray">
                     <X size={20} strokeWidth={2.5} className="text-ink" />
                   </button>
                 </div>
@@ -295,20 +295,20 @@ export default function AddSaleSheet() {
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => changeQty(i.product_id, -1)}
-                                className="btn-tactile w-9 h-9 bg-warm-gray flex items-center justify-center rounded-sm"
+                                className="btn-tactile w-11 h-11 bg-warm-gray flex items-center justify-center rounded-sm"
                               >
                                 <Minus size={16} strokeWidth={2.5} className="text-ink" />
                               </button>
                               <span className="font-display text-xl text-ink w-7 text-center">{i.quantity}</span>
                               <button
                                 onClick={() => changeQty(i.product_id, 1)}
-                                className="btn-tactile w-9 h-9 bg-warm-gray flex items-center justify-center rounded-sm"
+                                className="btn-tactile w-11 h-11 bg-warm-gray flex items-center justify-center rounded-sm"
                               >
                                 <Plus size={16} strokeWidth={2.5} className="text-ink" />
                               </button>
                               <button
                                 onClick={() => removeFromCart(i.product_id)}
-                                className="btn-tactile w-9 h-9 flex items-center justify-center rounded-sm"
+                                className="btn-tactile w-11 h-11 flex items-center justify-center rounded-sm"
                               >
                                 <Trash2 size={16} className="text-accent-red" />
                               </button>
@@ -421,7 +421,7 @@ export default function AddSaleSheet() {
 
                 {/* Save button - STICKY AT BOTTOM */}
                 {view === 'cart' && cart.length > 0 && (
-                  <div className="px-5 pt-4 pb-24 bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+                  <div className="px-5 pt-4 pb-sheet bg-sand border-t-2 border-ink flex-shrink-0 mt-auto shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
                     <button
                       onClick={handleConfirm}
                       disabled={cart.length === 0 || saving}

@@ -144,14 +144,14 @@ Thank you for your business!`
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[100]"
+            className="fixed inset-0 bg-black/60 z-[60]"
             onClick={onClose}
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
             animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
             exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] w-[92vw] max-w-sm"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[61] w-[92vw] max-w-sm flex flex-col max-h-[calc(100dvh-2rem)]"
           >
             <style>{`
               @media print {
@@ -179,7 +179,7 @@ Thank you for your business!`
                 @page { margin: 0; }
               }
             `}</style>
-            <div ref={receiptRef} className="bg-sand harsh-border rounded-sm p-5 print-section">
+            <div ref={receiptRef} className="bg-sand harsh-border rounded-sm p-5 print-section overflow-y-auto no-scrollbar">
               {/* Header */}
               <div className="text-center border-b-2 border-dashed border-ink/30 pb-3 mb-4 flex flex-col items-center">
                 {logoUrl && (
@@ -248,7 +248,7 @@ Thank you for your business!`
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-3 grid grid-cols-5 gap-1.5 print-hide">
+            <div className="mt-3 pb-safe grid grid-cols-5 gap-1.5 print-hide flex-shrink-0">
               <button
                 onClick={() => window.print()}
                 className="h-11 bg-ink rounded-sm font-display text-[10px] text-white uppercase tracking-wider flex items-center justify-center gap-1"

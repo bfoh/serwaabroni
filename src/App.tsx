@@ -116,7 +116,7 @@ export default function App() {
       </div>
       
       {state.isAuthenticated && (
-        <div className="flex-shrink-0 h-16 w-full z-[9999] relative border-t-2 border-ink">
+        <div className="flex-shrink-0 h-nav w-full z-40 relative border-t-2 border-ink">
           <BottomNav />
         </div>
       )}

@@ -30,7 +30,7 @@ export default function BottomNav() {
   }
 
   return (
-    <nav className="w-full h-full bg-ink flex items-center justify-around select-none">
+    <nav className="w-full h-full pb-safe bg-ink flex items-center justify-around select-none">
       {mainTabs.map((item) => {
         const isActive = state.activeTab === item.key
 

@@ -4,13 +4,13 @@ import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './
 import { cacheOfflineData } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
-import { loadData, saveData } from './data'
+import { loadData, saveData, type SaleGroup } from './data'
 import { generateAlerts, type Alert } from './alerts'
 
 import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services/auth'
 import {
   fetchProducts, insertProduct, updateProductDb, deleteProductDb,
-  fetchSales, recordSale, recordSaleBatch,
+  fetchSales, recordSale, recordSaleBatch, deleteSaleGroup,
   fetchDebts, insertDebt, updateDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
   fetchBusinessProfile, upsertBusinessProfile,
@@ -64,6 +64,7 @@ type Action =
   | { type: 'DELETE_PRODUCT'; id: string }
   | { type: 'SET_SALES'; sales: Sale[] }
   | { type: 'ADD_SALE'; sale: Sale }
+  | { type: 'DELETE_SALES'; ids: string[] }
   | { type: 'SET_DEBTS'; debts: Debt[] }
   | { type: 'ADD_DEBT'; debt: Debt }
   | { type: 'UPDATE_DEBT'; debt: Debt }
@@ -140,6 +141,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'DELETE_PRODUCT': return { ...state, products: state.products.filter((p) => p.id !== action.id) }
     case 'SET_SALES': return { ...state, sales: action.sales }
     case 'ADD_SALE': return { ...state, sales: [action.sale, ...state.sales] }
+    case 'DELETE_SALES': return { ...state, sales: state.sales.filter((s) => !action.ids.includes(s.id)) }
     case 'SET_DEBTS': return { ...state, debts: action.debts }
     case 'ADD_DEBT': return { ...state, debts: [action.debt, ...state.debts] }
     case 'UPDATE_DEBT': return { ...state, debts: state.debts.map((d) => (d.id === action.debt.id ? action.debt : d)) }
@@ -194,6 +196,7 @@ interface StoreContextType {
   removeProduct: (id: string) => Promise<void>
   addSale: (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => Promise<void>
   addSaleBatch: (sales: Omit<Sale, 'user_id'>[], items: { productId: string; qty: number }[]) => Promise<void>
+  deleteSale: (group: SaleGroup) => Promise<void>
   addDebt: (debt: Omit<Debt, 'user_id'>) => Promise<void>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
@@ -467,6 +470,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state, showToast])
 
+  const deleteSale = useCallback(async (group: SaleGroup) => {
+    const ids = group.sales.map((s) => s.id)
+    try {
+      await deleteSaleGroup(group.sales)
+      dispatch({ type: 'DELETE_SALES', ids })
+      const products = await fetchProducts()
+      dispatch({ type: 'SET_PRODUCTS', products })
+      const summary = await getDashboardSummary()
+      dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
+      dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
+      dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
+      const customers = await fetchCustomers()
+      dispatch({ type: 'SET_CUSTOMERS', customers })
+      showToast('Sale deleted', 'success')
+    } catch {
+      dispatch({ type: 'DELETE_SALES', ids })
+      const qtyByProduct = new Map<string, number>()
+      for (const s of group.sales) {
+        if (!s.product_id) continue
+        qtyByProduct.set(s.product_id, (qtyByProduct.get(s.product_id) || 0) + s.quantity)
+      }
+      qtyByProduct.forEach((qty, productId) => {
+        const existing = state.products.find((p) => p.id === productId)
+        if (existing) {
+          dispatch({ type: 'UPDATE_PRODUCT', product: { ...existing, quantity: existing.quantity + qty } })
+        }
+      })
+      const customerName = group.sales[0].customer_name
+      if (customerName) {
+        const existing = state.customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase())
+        if (existing) {
+          dispatch({ type: 'UPDATE_CUSTOMER', customer: { ...existing, total_purchases: Math.max(0, (existing.total_purchases || 0) - group.total) } })
+        }
+      }
+      showToast('Sale deleted (offline)', 'success')
+    }
+  }, [state, showToast])
+
   const addDebt = useCallback(async (debt: Omit<Debt, 'user_id'>) => {
     try {
       const inserted = await insertDebt(debt)
@@ -579,7 +620,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       state, dispatch, setTab, showToast, t, refreshData,
       addProduct, updateProduct, removeProduct,
-      addSale, addSaleBatch, addDebt, updateDebt, addExpense, removeExpense,
+      addSale, addSaleBatch, deleteSale, addDebt, updateDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
       updateBusinessProfile,
       resetAllData,

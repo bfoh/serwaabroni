@@ -5,8 +5,14 @@ import {
   Mic, ChevronDown, ChevronUp, Trash2, Check, Barcode as BarcodeIcon,
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
-import { scanImageData, getInstance } from '@undecaf/zbar-wasm'
+import type { Html5Qrcode } from 'html5-qrcode'
+
+// Heavy scanner deps are loaded on demand so they stay out of the main bundle.
+let zbarMod: typeof import('@undecaf/zbar-wasm') | null = null
+const loadZbar = async () => (zbarMod ??= await import('@undecaf/zbar-wasm'))
+
+let html5Mod: typeof import('html5-qrcode') | null = null
+const loadHtml5 = async () => (html5Mod ??= await import('html5-qrcode'))
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
@@ -98,22 +104,6 @@ async function lookupProduct(barcode: string): Promise<ProductInfo | null> {
 // SUPPORTED CODE FORMATS — all common retail 1D + 2D codes.
 // Limiting the set lets the decoder focus and lock faster.
 // ============================================================
-const SUPPORTED_FORMATS = [
-  Html5QrcodeSupportedFormats.QR_CODE,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.CODABAR,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.DATA_MATRIX,
-  Html5QrcodeSupportedFormats.AZTEC,
-]
-
 // Native BarcodeDetector format strings (used when the browser supports it).
 const NATIVE_FORMATS = [
   'qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
@@ -238,7 +228,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     if (!ctx) return null
     ctx.drawImage(video, 0, 0, w, h)
     const imageData = ctx.getImageData(0, 0, w, h)
-    const symbols = await scanImageData(imageData)
+    const symbols = await (zbarMod ?? await loadZbar()).scanImageData(imageData)
     if (symbols && symbols.length > 0) {
       const text = symbols[0].decode()
       return text || null
@@ -272,10 +262,6 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     msg.includes('NotAllowed')
 
   const startCameraScanner = useCallback(async () => {
-    // Warm up the ZBar WASM in parallel with the camera so the first decode is
-    // instant rather than paying the ~240KB instantiation cost on first scan.
-    getInstance().catch(() => { /* loads lazily on first decode otherwise */ })
-
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
@@ -318,6 +304,13 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       }
     } else {
       decodeModeRef.current = 'zbar'
+    }
+
+    // Load + warm the ZBar WASM only when we will actually use it (iOS path).
+    // Android's native BarcodeDetector never downloads it.
+    if (decodeModeRef.current === 'zbar') {
+      const zbar = await loadZbar()
+      zbar.getInstance().catch(() => { /* instantiates lazily on first decode */ })
     }
 
     engineRef.current = 'native'
@@ -518,10 +511,26 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const handleFileUpload = useCallback(async (file: File) => {
     setIsProcessingUpload(true)
     try {
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await loadHtml5()
+      const formatsToSupport = [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_93,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.AZTEC,
+      ]
       const scanner = new Html5Qrcode('upload-scanner-hidden', {
         verbose: false,
         useBarCodeDetectorIfSupported: true,
-        formatsToSupport: SUPPORTED_FORMATS,
+        formatsToSupport,
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
       })
       const decodedText = await scanner.scanFile(file, false)

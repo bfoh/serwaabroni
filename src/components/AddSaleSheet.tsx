@@ -327,13 +327,23 @@ export default function AddSaleSheet() {
                         ))}
                       </div>
 
-                      {/* Add more */}
-                      <button
-                        onClick={() => setView('grid')}
-                        className="btn-tactile w-full py-3 mb-4 bg-light harsh-border rounded-sm font-display text-sm uppercase tracking-wider text-ink flex items-center justify-center gap-2"
-                      >
-                        <Plus size={16} strokeWidth={2.5} /> Add More Products
-                      </button>
+                      {/* Add more / scan next */}
+                      <div className="flex gap-2 mb-4">
+                        <button
+                          onClick={() => setView('grid')}
+                          className="btn-tactile flex-1 py-3 bg-light harsh-border rounded-sm font-display text-sm uppercase tracking-wider text-ink flex items-center justify-center gap-2"
+                        >
+                          <Plus size={16} strokeWidth={2.5} /> Add More
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowScan(true)}
+                          aria-label="Scan next product"
+                          className="btn-tactile px-4 py-3 bg-ink rounded-sm font-display text-sm uppercase tracking-wider text-white flex items-center justify-center gap-2"
+                        >
+                          <ScanLine size={18} /> Scan
+                        </button>
+                      </div>
 
                       {/* Payment Method */}
                       <div className="mb-4">

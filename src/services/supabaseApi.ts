@@ -173,6 +173,63 @@ export async function recordSaleBatch(
   return (saleData as Sale[]) || []
 }
 
+// Delete all sale rows of one Sales-History entry, restore the sold stock, and
+// decrement the customer's lifetime total. Scoped to the current user.
+export async function deleteSaleGroup(sales: Sale[]): Promise<void> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+  if (sales.length === 0) return
+
+  const ids = sales.map((s) => s.id)
+  const { error: delError } = await supabase
+    .from('sales')
+    .delete()
+    .in('id', ids)
+    .eq('user_id', uid)
+  if (delError) throw delError
+
+  // Restore stock: sum the deleted quantity per product, add it back.
+  const qtyByProduct = new Map<string, number>()
+  for (const s of sales) {
+    if (!s.product_id) continue
+    qtyByProduct.set(s.product_id, (qtyByProduct.get(s.product_id) || 0) + s.quantity)
+  }
+  for (const [productId, qty] of qtyByProduct) {
+    const { data: product } = await supabase
+      .from('products')
+      .select('quantity')
+      .eq('id', productId)
+      .eq('user_id', uid)
+      .single()
+    if (product) {
+      await supabase
+        .from('products')
+        .update({ quantity: (product.quantity || 0) + qty })
+        .eq('id', productId)
+        .eq('user_id', uid)
+    }
+  }
+
+  // Decrement the customer's lifetime total by the deleted sale total.
+  const customerName = sales[0].customer_name
+  if (customerName) {
+    const groupTotal = sales.reduce((sum, s) => sum + (s.total || 0), 0)
+    const { data: customers } = await supabase
+      .from('customers')
+      .select('id, total_purchases')
+      .eq('user_id', uid)
+      .ilike('name', customerName)
+    const customer = customers?.[0]
+    if (customer) {
+      await supabase
+        .from('customers')
+        .update({ total_purchases: Math.max(0, (customer.total_purchases || 0) - groupTotal) })
+        .eq('id', customer.id)
+        .eq('user_id', uid)
+    }
+  }
+}
+
 // ============================================
 // DEBTS (scoped to user)
 // ============================================

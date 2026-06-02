@@ -110,6 +110,18 @@ const NATIVE_FORMATS = [
   'code_39', 'code_93', 'codabar', 'itf', 'data_matrix', 'aztec', 'pdf417',
 ]
 
+// Mirror Inventory's Add Product options so scanned items capture the same data.
+const UNIT_OPTIONS = [
+  { value: 'piece', label: 'Pc' },
+  { value: 'tin', label: 'Tin' },
+  { value: 'bag', label: 'Bag' },
+  { value: 'bottle', label: 'Btl' },
+  { value: 'pack', label: 'Pack' },
+  { value: 'loaf', label: 'Loaf' },
+  { value: 'kg', label: 'Kg' },
+]
+const CATEGORY_OPTIONS = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
+
 // Minimal typing for the native BarcodeDetector API (not in TS DOM lib yet).
 interface NativeBarcodeDetector {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>
@@ -177,6 +189,17 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const [manualCost, setManualCost] = useState('')
   const [manualPrice, setManualPrice] = useState('')
   const [manualQty, setManualQty] = useState(1)
+  const [manualUnit, setManualUnit] = useState('piece')
+  const [manualCategory, setManualCategory] = useState('Groceries')
+
+  const resetManual = useCallback(() => {
+    setManualName('')
+    setManualCost('')
+    setManualPrice('')
+    setManualQty(1)
+    setManualUnit('piece')
+    setManualCategory('Groceries')
+  }, [])
   const [isListening, setIsListening] = useState(false)
 
   // ==========================================================
@@ -364,10 +387,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       setShowItemSheet(false)
       setScanMode('camera')
       setTypedBarcode('')
-      setManualName('')
-      setManualCost('')
-      setManualPrice('')
-      setManualQty(1)
+      resetManual()
       setCameraError(null)
       setCameraBlocked(false)
       startScanner()
@@ -392,7 +412,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
           cost_price: Number(json.cost_price) || 0,
           selling_price: Number(json.selling_price) || Number(json.price) || 0,
           quantity: Number(json.quantity) || 1,
-          unit: json.unit || 'unit',
+          unit: json.unit || 'piece',
           category: json.category || 'Groceries',
           low_stock_threshold: 5,
           source: 'qr',
@@ -416,7 +436,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         cost_price: existing.cost_price,
         selling_price: existing.selling_price,
         quantity: 1,
-        unit: existing.unit || 'unit',
+        unit: existing.unit || 'piece',
         category: existing.category,
         low_stock_threshold: existing.low_stock_threshold || 5,
         source: 'barcode-local',
@@ -435,7 +455,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         cost_price: 0,
         selling_price: 0,
         quantity: 1,
-        unit: 'unit',
+        unit: 'piece',
         category: apiData.category,
         low_stock_threshold: 5,
         source: 'barcode-api',
@@ -452,16 +472,13 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       cost_price: 0,
       selling_price: 0,
       quantity: 1,
-      unit: 'unit',
+      unit: 'piece',
       category: 'Groceries',
       low_stock_threshold: 5,
       source: 'manual',
     })
     setScanMode('manual')
-    setManualName('')
-    setManualCost('')
-    setManualPrice('')
-    setManualQty(1)
+    resetManual()
   }, [state.products])
 
   // ==========================================================
@@ -763,7 +780,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
 
                     {/* Add Manual */}
                     <button
-                      onClick={() => { setScanMode('manual'); setCurrentItem(null); setManualName(''); setManualCost(''); setManualPrice(''); setManualQty(1); }}
+                      onClick={() => { setScanMode('manual'); setCurrentItem(null); resetManual(); }}
                       className="w-full h-14 bg-white/5 rounded-sm flex items-center justify-center gap-3"
                     >
                       <Plus size={20} strokeWidth={2} className="text-white/50" />
@@ -943,6 +960,37 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                 </div>
               </div>
 
+              <div className="mb-4">
+                <label className="text-micro text-muted-text mb-1 block">UNIT</label>
+                <select
+                  value={manualUnit}
+                  onChange={(e) => setManualUnit(e.target.value)}
+                  className="w-full h-12 bg-white harsh-border rounded-sm px-3 font-body text-base text-ink"
+                >
+                  {UNIT_OPTIONS.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-5">
+                <label className="text-micro text-muted-text mb-2 block">CATEGORY</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setManualCategory(cat)}
+                      className={`py-2.5 font-display text-xs uppercase tracking-wider rounded-sm border-2 ${
+                        manualCategory === cat ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Projected profit */}
               <div className="bg-accent-green/10 rounded-sm p-3 mb-5">
                 <p className="text-[10px] text-accent-green uppercase tracking-wider mb-1">Projected Profit</p>
@@ -965,15 +1013,12 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                       cost_price: Number(manualCost) || 0,
                       selling_price: Number(manualPrice) || 0,
                       quantity: manualQty,
-                      unit: 'unit',
-                      category: 'Groceries',
+                      unit: manualUnit,
+                      category: manualCategory,
                       low_stock_threshold: 5,
                       source: 'manual',
                     })
-                    setManualName('')
-                    setManualCost('')
-                    setManualPrice('')
-                    setManualQty(1)
+                    resetManual()
                   }}
                   className="flex-1 h-14 bg-ink rounded-sm font-display text-sm text-white uppercase tracking-wider flex items-center justify-center gap-2"
                 >
@@ -1036,7 +1081,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                 <span className="text-[10px] font-display uppercase">Upload</span>
               </button>
               <div className="w-px h-4 bg-white/20" />
-              <button onClick={() => { setScanMode('manual'); setCurrentItem(null); setManualName(''); setManualCost(''); setManualPrice(''); setManualQty(1); }} className="flex items-center gap-1.5 text-white/40">
+              <button onClick={() => { setScanMode('manual'); setCurrentItem(null); resetManual(); }} className="flex items-center gap-1.5 text-white/40">
                 <Plus size={14} />
                 <span className="text-[10px] font-display uppercase">Manual</span>
               </button>
@@ -1045,7 +1090,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
 
           {/* Manual entry from camera mode (when camera works) */}
           {scanMode === 'camera' && isScanning && (
-            <button onClick={() => { setScanMode('manual'); setCurrentItem(null); setManualName(''); setManualCost(''); setManualPrice(''); setManualQty(1); }} className="w-full flex items-center justify-center gap-2 py-3 border-t border-white/10">
+            <button onClick={() => { setScanMode('manual'); setCurrentItem(null); resetManual(); }} className="w-full flex items-center justify-center gap-2 py-3 border-t border-white/10">
               <Plus size={14} className="text-white/40" />
               <span className="text-white/40 text-xs font-display">ADD WITHOUT BARCODE</span>
             </button>
@@ -1118,6 +1163,37 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                         className="w-full h-12 bg-white harsh-border rounded-sm px-3 font-display text-lg text-ink"
                         placeholder="0.00"
                       />
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="text-micro text-muted-text mb-1 block">UNIT</label>
+                    <select
+                      value={currentItem.unit}
+                      onChange={(e) => setCurrentItem((prev) => prev ? { ...prev, unit: e.target.value } : null)}
+                      className="w-full h-12 bg-white harsh-border rounded-sm px-3 font-body text-base text-ink"
+                    >
+                      {UNIT_OPTIONS.map((u) => (
+                        <option key={u.value} value={u.value}>{u.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="mb-5">
+                    <label className="text-micro text-muted-text mb-2 block">CATEGORY</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CATEGORY_OPTIONS.map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setCurrentItem((prev) => prev ? { ...prev, category: cat } : null)}
+                          className={`py-2.5 font-display text-xs uppercase tracking-wider rounded-sm border-2 ${
+                            currentItem.category === cat ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
                     </div>
                   </div>
 

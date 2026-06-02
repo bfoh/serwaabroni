@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Check } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -15,35 +15,34 @@ interface SaleScannerProps {
   total: number
 }
 
-const COOLDOWN_MS = 1200
-
 export default function SaleScanner({ isOpen, onClose, onProductScanned, itemCount, total }: SaleScannerProps) {
   const { state, showToast } = useStore()
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const lastCodeRef = useRef<{ code: string; at: number }>({ code: '', at: 0 })
-  const [flash, setFlash] = useState(false)
+  const handledRef = useRef(false)
 
   const handleCode = useCallback((raw: string) => {
+    if (handledRef.current) return
     const target = normalizeBarcode(raw)
     if (!target) return
-    const now = Date.now()
-    if (lastCodeRef.current.code === target && now - lastCodeRef.current.at < COOLDOWN_MS) return
-    lastCodeRef.current = { code: target, at: now }
 
     const product = state.products.find(
       (p) => normalizeBarcode(p.barcode) === target || normalizeBarcode(p.qr_code) === target
     )
-    if (product) {
-      if (product.quantity < 1) { showToast(`${product.name} is out of stock`, 'error'); return }
-      onProductScanned(product)
-      setFlash(true)
-      setTimeout(() => setFlash(false), 250)
-      try { navigator.vibrate?.(60) } catch { /* no haptics */ }
-      showToast(`Added ${product.name}`, 'success')
-    } else {
-      showToast('Not in inventory', 'error')
-    }
-  }, [state.products, onProductScanned, showToast])
+    if (!product) { showToast('Not in inventory', 'error'); return }
+    if (product.quantity < 1) { showToast(`${product.name} is out of stock`, 'error'); return }
+
+    // One-shot: add the product, then close so the user sets quantity on the cart.
+    handledRef.current = true
+    try { navigator.vibrate?.(60) } catch { /* no haptics */ }
+    onProductScanned(product)
+    showToast(`Added ${product.name}`, 'success')
+    onClose()
+  }, [state.products, onProductScanned, showToast, onClose])
+
+  // Reset the one-shot guard whenever the scanner reopens.
+  useEffect(() => {
+    if (isOpen) handledRef.current = false
+  }, [isOpen])
 
   const { error } = useScanCamera({ videoRef, active: isOpen, onResult: handleCode })
 
@@ -57,9 +56,6 @@ export default function SaleScanner({ isOpen, onClose, onProductScanned, itemCou
           className="fixed inset-0 z-[65] bg-black flex flex-col"
         >
           <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
-
-          {/* green flash on a successful add */}
-          {flash && <div className="absolute inset-0 bg-accent-green/40 pointer-events-none" />}
 
           {/* reticle */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { X, Search, Receipt, User } from 'lucide-react'
+import { X, Search, Receipt, User, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import ProductIcon from '@/components/ProductIcon'
@@ -13,10 +13,12 @@ interface SalesHistoryProps {
 }
 
 export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
-  const { state } = useStore()
+  const { state, deleteSale } = useStore()
   const [search, setSearch] = useState('')
   const [selectedSales, setSelectedSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<SaleGroup | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
 
   const filteredSales = useMemo(() => {
@@ -134,45 +136,92 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
           const lineCount = group.sales.length
           const title = lineCount > 1 ? `${head.product_name} +${lineCount - 1} more` : head.product_name
           return (
-            <motion.button
+            <motion.div
               key={group.key}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              onClick={() => { setSelectedSales(group.sales); setShowReceipt(true) }}
-              className="w-full bg-light harsh-border rounded-sm p-3 flex items-center gap-3 text-left"
+              className="w-full bg-light harsh-border rounded-sm flex items-center gap-2 pr-2"
             >
-              <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
-                <ProductIcon
-                  category={state.products.find((p) => p.id === head.product_id)?.category || 'default'}
-                  size={22}
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{title}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] text-muted-text">{formatDate(group.created_at)} {formatTime(group.created_at)}</span>
-                  {group.customer_name && (
-                    <span className="text-[10px] text-accent-green flex items-center gap-0.5">
-                      <User size={8} /> {group.customer_name}
-                    </span>
+              <button
+                onClick={() => { setSelectedSales(group.sales); setShowReceipt(true) }}
+                className="flex-1 min-w-0 p-3 flex items-center gap-3 text-left"
+              >
+                <div className="w-10 h-10 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
+                  <ProductIcon
+                    category={state.products.find((p) => p.id === head.product_id)?.category || 'default'}
+                    size={22}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-muted-text">{formatDate(group.created_at)} {formatTime(group.created_at)}</span>
+                    {group.customer_name && (
+                      <span className="text-[10px] text-accent-green flex items-center gap-0.5">
+                        <User size={8} /> {group.customer_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-display text-sm text-ink">{formatCurrency(group.total)}</p>
+                  {lineCount > 1 ? (
+                    <p className="text-[9px] text-muted-text">{group.itemCount} items</p>
+                  ) : (
+                    <p className="text-[9px] text-muted-text">{head.quantity} x {formatCurrency(head.unit_price)}</p>
                   )}
                 </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-display text-sm text-ink">{formatCurrency(group.total)}</p>
-                {lineCount > 1 ? (
-                  <p className="text-[9px] text-muted-text">{group.itemCount} items</p>
-                ) : (
-                  <p className="text-[9px] text-muted-text">{head.quantity} x {formatCurrency(head.unit_price)}</p>
-                )}
-              </div>
-            </motion.button>
+              </button>
+              <button
+                onClick={() => setConfirmDelete(group)}
+                aria-label="Delete sale"
+                className="btn-tactile w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-sm"
+              >
+                <Trash2 size={18} className="text-accent-red" />
+              </button>
+            </motion.div>
           )
         })}
       </div>
 
       {/* Receipt Modal */}
+      {confirmDelete && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-[60]" onClick={() => !deleting && setConfirmDelete(null)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[85vw] max-w-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={20} className="text-accent-red" />
+              <h3 className="font-display text-lg text-ink uppercase tracking-tight">Delete sale?</h3>
+            </div>
+            <p className="text-sm text-muted-text mb-1">
+              {confirmDelete.sales[0].product_name}
+              {confirmDelete.sales.length > 1 ? ` +${confirmDelete.sales.length - 1} more` : ''} · {formatCurrency(confirmDelete.total)}
+            </p>
+            <p className="text-xs text-muted-text mb-5">Stock will be restored. This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="flex-1 h-12 bg-warm-gray rounded-sm font-display text-sm text-ink uppercase tracking-wider disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setDeleting(true)
+                  try { await deleteSale(confirmDelete) } finally { setDeleting(false); setConfirmDelete(null) }
+                }}
+                disabled={deleting}
+                className="flex-1 h-12 bg-accent-red rounded-sm font-display text-sm text-white uppercase tracking-wider disabled:opacity-50"
+              >
+                {deleting ? '...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       <ReceiptModal
         sales={selectedSales}
         isOpen={showReceipt}

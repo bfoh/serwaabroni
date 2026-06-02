@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Minus, Plus, Check, User, Phone, Trash2, ArrowLeft } from 'lucide-react'
+import { X, Minus, Plus, Check, User, Phone, Trash2, ArrowLeft, ScanLine } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, uid } from '@/lib/data'
 import ProductIcon from './ProductIcon'
+import SaleScanner from './SaleScanner'
 
 type CartItem = {
   product_id: string
@@ -26,6 +27,7 @@ export default function AddSaleSheet() {
   const [confirmed, setConfirmed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showScan, setShowScan] = useState(false)
 
   const total = useMemo(
     () => cart.reduce((sum, i) => sum + i.unit_price * i.quantity, 0),
@@ -236,14 +238,22 @@ export default function AddSaleSheet() {
                   {/* Product Grid */}
                   {view === 'grid' && (
                     <div className="mt-4">
-                      <div className="mb-4">
+                      <div className="mb-4 flex gap-2">
                         <input
                           type="text"
                           placeholder="Search products..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body focus:outline-none focus:ring-2 focus:ring-ink"
+                          className="flex-1 h-12 px-4 bg-light harsh-border rounded-sm text-base font-body focus:outline-none focus:ring-2 focus:ring-ink"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowScan(true)}
+                          aria-label="Scan barcode"
+                          className="btn-tactile w-12 h-12 flex-shrink-0 bg-ink rounded-sm flex items-center justify-center"
+                        >
+                          <ScanLine size={22} className="text-white" />
+                        </button>
                       </div>
 
                       {filteredProducts.length === 0 ? (
@@ -434,6 +444,14 @@ export default function AddSaleSheet() {
               </div>
             )}
           </motion.div>
+
+          <SaleScanner
+            isOpen={showScan}
+            onClose={() => setShowScan(false)}
+            onProductScanned={(p) => addToCart(p.id)}
+            itemCount={itemCount}
+            total={total}
+          />
         </>
       )}
     </AnimatePresence>

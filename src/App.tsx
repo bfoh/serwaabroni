@@ -13,6 +13,8 @@ import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
 import Customers from '@/pages/Customers'
+import SuspendedScreen from '@/components/SuspendedScreen'
+import AdminConsole from '@/pages/AdminConsole'
 
 function MainApp() {
   const { state } = useStore()
@@ -92,6 +94,10 @@ export default function App() {
     )
   }
 
+  if (state.isAuthenticated && state.suspended && !state.isSuperAdmin) {
+    return <SuspendedScreen />
+  }
+
   return (
     <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden relative">
       <div className="flex-1 overflow-hidden relative">
@@ -107,6 +113,14 @@ export default function App() {
                 <SettingsPage onClose={() => window.history.back()} />
               </div>
             ) : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/admin"
+            element={
+              state.isAuthenticated && state.isSuperAdmin
+                ? <div className="h-full w-full overflow-hidden bg-sand relative"><AdminConsole /></div>
+                : <Navigate to="/" replace />
+            }
           />
           <Route
             path="/*"

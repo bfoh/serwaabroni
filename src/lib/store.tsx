@@ -17,6 +17,7 @@ import {
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
+import { amISuperAdmin } from '@/services/adminApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
 
@@ -50,6 +51,8 @@ export interface AppState {
   businessProfile: BusinessProfile | null
   dataLoading: boolean
   isOnline: boolean
+  isSuperAdmin: boolean
+  suspended: boolean
 }
 
 type Action =
@@ -83,6 +86,8 @@ type Action =
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
+  | { type: 'SET_SUPER_ADMIN'; value: boolean }
+  | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
   | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
@@ -113,6 +118,8 @@ const initialState: AppState = {
   businessProfile: null,
   dataLoading: false,
   isOnline: navigator.onLine,
+  isSuperAdmin: false,
+  suspended: false,
 }
 
 // Helper: persist current data to localStorage (for offline access)
@@ -174,6 +181,8 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
+    case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
+    case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
     case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
     default: return state
@@ -328,6 +337,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (profile) {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
       }
+
+      // Admin + suspension flags
+      const admin = await amISuperAdmin()
+      dispatch({ type: 'SET_SUPER_ADMIN', value: admin })
+      dispatch({ type: 'SET_SUSPENDED', value: (profile?.status === 'suspended') && !admin })
+
       cacheOfflineData({ products, sales, debts, expenses, lastSync: Date.now() })
     } catch {
       // Fall back to localStorage / seed data
@@ -472,39 +487,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const deleteSale = useCallback(async (group: SaleGroup) => {
     const ids = group.sales.map((s) => s.id)
+    // Optimistic: drop the row right away so the UI feels instant.
+    dispatch({ type: 'DELETE_SALES', ids })
     try {
       await deleteSaleGroup(group.sales)
-      dispatch({ type: 'DELETE_SALES', ids })
-      const products = await fetchProducts()
+      // Re-sync derived data in parallel (one wall-clock round-trip, not three).
+      const [products, summary, customers] = await Promise.all([
+        fetchProducts(),
+        getDashboardSummary(),
+        fetchCustomers(),
+      ])
       dispatch({ type: 'SET_PRODUCTS', products })
-      const summary = await getDashboardSummary()
       dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
-      const customers = await fetchCustomers()
       dispatch({ type: 'SET_CUSTOMERS', customers })
       showToast('Sale deleted', 'success')
     } catch {
-      dispatch({ type: 'DELETE_SALES', ids })
-      const qtyByProduct = new Map<string, number>()
-      for (const s of group.sales) {
-        if (!s.product_id) continue
-        qtyByProduct.set(s.product_id, (qtyByProduct.get(s.product_id) || 0) + s.quantity)
-      }
-      qtyByProduct.forEach((qty, productId) => {
-        const existing = state.products.find((p) => p.id === productId)
-        if (existing) {
-          dispatch({ type: 'UPDATE_PRODUCT', product: { ...existing, quantity: existing.quantity + qty } })
+      if (!state.isOnline) {
+        // Truly offline — keep the optimistic removal, adjust stock/customer locally.
+        const qtyByProduct = new Map<string, number>()
+        for (const s of group.sales) {
+          if (!s.product_id) continue
+          qtyByProduct.set(s.product_id, (qtyByProduct.get(s.product_id) || 0) + s.quantity)
         }
-      })
-      const customerName = group.sales[0].customer_name
-      if (customerName) {
-        const existing = state.customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase())
-        if (existing) {
-          dispatch({ type: 'UPDATE_CUSTOMER', customer: { ...existing, total_purchases: Math.max(0, (existing.total_purchases || 0) - group.total) } })
+        qtyByProduct.forEach((qty, productId) => {
+          const existing = state.products.find((p) => p.id === productId)
+          if (existing) {
+            dispatch({ type: 'UPDATE_PRODUCT', product: { ...existing, quantity: existing.quantity + qty } })
+          }
+        })
+        const customerName = group.sales[0].customer_name
+        if (customerName) {
+          const existing = state.customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase())
+          if (existing) {
+            dispatch({ type: 'UPDATE_CUSTOMER', customer: { ...existing, total_purchases: Math.max(0, (existing.total_purchases || 0) - group.total) } })
+          }
         }
+        showToast('Sale deleted (offline)', 'success')
+        return
       }
-      showToast('Sale deleted (offline)', 'success')
+      // Online but the server rejected the delete — restore the row so the UI
+      // matches the server instead of faking a delete that never happened.
+      try {
+        const sales = await fetchSales()
+        dispatch({ type: 'SET_SALES', sales })
+      } catch { /* leave optimistic state if even the re-fetch fails */ }
+      showToast('Could not delete sale', 'error')
     }
   }, [state, showToast])
 

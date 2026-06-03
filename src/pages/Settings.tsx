@@ -103,6 +103,9 @@ export default function Settings({ onClose }: SettingsProps) {
   }
 
   const menuItems = [
+    ...(state.isSuperAdmin
+      ? [{ icon: Shield, label: 'Super Admin', action: () => navigate('/admin') }]
+      : []),
     { icon: User, label: 'Edit Profile', action: () => setShowProfile(true) },
     { icon: Download, label: 'Export All Data (CSV)', action: handleExport },
     { icon: Bell, label: 'Notifications', badge: 'On', action: () => showToast('Notifications enabled', 'success') },

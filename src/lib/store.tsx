@@ -18,6 +18,7 @@ import {
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
 import { amISuperAdmin } from '@/services/adminApi'
+import { contributeCatalog } from '@/services/catalogApi'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
 
@@ -407,6 +408,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const inserted = await insertProduct(product)
       dispatch({ type: 'ADD_PRODUCT', product: inserted })
+      const code = inserted.barcode || inserted.qr_code
+      if (code && state.businessProfile?.catalog_contribute !== false) {
+        void contributeCatalog(code, inserted.name, null, inserted.category, inserted.unit)
+      }
       showToast('Product added', 'success')
     } catch {
       const localProduct: Product = { ...product, user_id: 'local' } as Product

@@ -6,6 +6,7 @@ import {
   QrCode, Keyboard, Upload, AlertTriangle
 } from 'lucide-react'
 import { normalizeBarcode } from '@/lib/scanner'
+import { lookupCatalog } from '@/services/catalogApi'
 import { useScanCamera } from '@/hooks/useScanCamera'
 
 // html5-qrcode is loaded on demand (photo-upload path only) to stay out of the
@@ -29,7 +30,7 @@ interface ScannedItem {
   unit: string
   category: string
   low_stock_threshold: number
-  source: 'qr' | 'barcode-local' | 'barcode-api' | 'manual'
+  source: 'qr' | 'barcode-local' | 'barcode-api' | 'catalog' | 'manual'
 }
 
 interface BarcodeScannerProps {
@@ -247,6 +248,25 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         category: existing.category,
         low_stock_threshold: existing.low_stock_threshold || 5,
         source: 'barcode-local',
+      })
+      setShowItemSheet(true)
+      return
+    }
+
+    // 2b. Shared community catalog (other tenants' crowd-sourced identity)
+    const catalogData = await lookupCatalog(code)
+    if (catalogData) {
+      setCurrentItem({
+        id: uid(),
+        barcode: code,
+        name: catalogData.name,
+        cost_price: 0,
+        selling_price: 0,
+        quantity: 1,
+        unit: catalogData.unit || 'piece',
+        category: catalogData.category || 'Groceries',
+        low_stock_threshold: 5,
+        source: 'catalog',
       })
       setShowItemSheet(true)
       return
@@ -926,7 +946,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   <div className="flex items-center gap-2 mb-4">
                     {currentItem.source === 'qr' ? <QrCode size={14} className="text-accent-green" /> : <BarcodeIcon size={14} className="text-accent-green" />}
                     <span className="text-[10px] text-accent-green font-display uppercase tracking-wider">
-                      {currentItem.source === 'qr' ? 'QR DELIVERY' : currentItem.source === 'barcode-local' ? 'KNOWN PRODUCT' : 'FROM DATABASE'}
+                      {currentItem.source === 'qr' ? 'QR DELIVERY' : currentItem.source === 'barcode-local' ? 'KNOWN PRODUCT' : currentItem.source === 'catalog' ? 'COMMUNITY CATALOG' : 'FROM DATABASE'}
                     </span>
                   </div>
                   <h3 className="font-display text-xl text-ink uppercase tracking-tight mb-4">{currentItem.name}</h3>

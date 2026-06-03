@@ -2,13 +2,26 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeft, Search, Shield, Ban, Trash2, Eye, Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/data'
+import { useStore } from '@/lib/store'
 import {
   getPlatformSummary, listTenants, setTenantStatus, deleteTenant, getTenantDetail,
   type PlatformSummary, type TenantRow, type TenantDetail,
 } from '@/services/adminApi'
 
+// Turn a Supabase/Postgres error into a human message. A missing RPC (un-migrated
+// DB) surfaces as a 404 / "Could not find function" — call that out specifically.
+function adminErr(e: unknown, fallback: string): string {
+  const msg = (e as { message?: string })?.message ?? ''
+  if (/function|does not exist|not find|schema cache|404/i.test(msg)) {
+    return 'Admin database functions not found. Run migration_005 in Supabase.'
+  }
+  if (/forbidden/i.test(msg)) return 'Not authorized — your account is not a super admin.'
+  return msg || fallback
+}
+
 export default function AdminConsole() {
   const navigate = useNavigate()
+  const { showToast } = useStore()
   const [summary, setSummary] = useState<PlatformSummary | null>(null)
   const [tenants, setTenants] = useState<TenantRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,6 +37,8 @@ export default function AdminConsole() {
       const [s, t] = await Promise.all([getPlatformSummary(), listTenants()])
       setSummary(s)
       setTenants(t)
+    } catch (e) {
+      showToast(adminErr(e, 'Failed to load tenants'), 'error')
     } finally {
       setLoading(false)
     }
@@ -40,20 +55,23 @@ export default function AdminConsole() {
       ? (window.prompt('Reason for suspension?') ?? '') : ''
     if (next === 'suspended' && reason === '') return
     setBusyId(t.user_id)
-    try { await setTenantStatus(t.user_id, next, reason); await load() }
+    try { await setTenantStatus(t.user_id, next, reason); await load(); showToast(`Tenant ${next === 'suspended' ? 'suspended' : 'reactivated'}`, 'success') }
+    catch (e) { showToast(adminErr(e, 'Failed to update tenant'), 'error') }
     finally { setBusyId(null) }
   }
 
   async function doDelete() {
     if (!confirmDelete) return
     setBusyId(confirmDelete.user_id)
-    try { await deleteTenant(confirmDelete.user_id); await load() }
+    try { await deleteTenant(confirmDelete.user_id); await load(); showToast('Tenant deleted', 'success') }
+    catch (e) { showToast(adminErr(e, 'Failed to delete tenant'), 'error') }
     finally { setBusyId(null); setConfirmDelete(null); setDeleteText('') }
   }
 
   async function openDrill(t: TenantRow) {
     setBusyId(t.user_id)
     try { setDrill({ tenant: t, detail: await getTenantDetail(t.user_id) }) }
+    catch (e) { showToast(adminErr(e, 'Failed to load tenant'), 'error') }
     finally { setBusyId(null) }
   }
 

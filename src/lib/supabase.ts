@@ -98,6 +98,9 @@ export interface BusinessProfile {
   logo_url?: string | null
   currency: string
   language: string
+  status?: 'active' | 'suspended'
+  suspended_at?: string | null
+  suspended_reason?: string | null
   created_at: string
   updated_at: string
 }

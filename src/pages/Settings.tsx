@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield, Camera } from 'lucide-react'
+import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield, Camera, Share2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useNavigate } from 'react-router'
 import { exportToCSV } from '@/lib/export'
@@ -110,6 +110,13 @@ export default function Settings({ onClose }: SettingsProps) {
     { icon: Download, label: 'Export All Data (CSV)', action: handleExport },
     { icon: Bell, label: 'Notifications', badge: 'On', action: () => showToast('Notifications enabled', 'success') },
     { icon: Globe, label: 'Language', badge: state.language === 'tw' ? 'Twi' : 'English', action: () => dispatch({ type: 'SET_LANGUAGE', lang: state.language === 'tw' ? 'en' : 'tw' }) },
+    { icon: Share2, label: 'Community Catalog',
+      badge: state.businessProfile?.catalog_contribute === false ? 'Off' : 'On',
+      action: () => {
+        if (!state.businessProfile) { showToast('Set up your shop profile first', 'error'); return }
+        const enabled = state.businessProfile.catalog_contribute !== false
+        updateBusinessProfile({ ...state.businessProfile, catalog_contribute: !enabled })
+      } },
     { icon: Shield, label: 'Privacy & Security', action: () => showToast('All data stored securely on Supabase', 'success') },
     { icon: HelpCircle, label: 'Help & Support', action: () => showToast('Contact: support@serwaabroni.com', 'success') },
     { icon: Trash2, label: 'Reset All Data', danger: true, action: () => setShowConfirmReset(true) },

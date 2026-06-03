@@ -101,6 +101,7 @@ export interface BusinessProfile {
   status?: 'active' | 'suspended'
   suspended_at?: string | null
   suspended_reason?: string | null
+  catalog_contribute?: boolean
   created_at: string
   updated_at: string
 }

@@ -52,6 +52,11 @@ export interface Sale {
   created_at: string
 }
 
+export interface DebtPayment {
+  amount: number
+  date: string
+}
+
 export interface Debt {
   id: string
   user_id: string
@@ -59,6 +64,7 @@ export interface Debt {
   phone: string | null
   amount: number
   amount_paid: number
+  payments: DebtPayment[]
   description: string | null
   type: 'owed' | 'owing'
   due_date: string | null

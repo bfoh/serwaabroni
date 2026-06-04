@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, Phone, User, CalendarDays, CheckCircle } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
-import type { Debt } from '@/lib/supabase'
+import type { Debt, DebtPayment } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
 
@@ -53,6 +53,7 @@ export default function Debts() {
         phone: newDebt.phone || null,
         amount: parseFloat(newDebt.amount),
         amount_paid: 0,
+        payments: [],
         description: newDebt.description || null,
         type: newDebt.type,
         due_date: newDebt.due_date || null,
@@ -83,12 +84,15 @@ export default function Debts() {
 
     const newPaid = (debt.amount_paid || 0) + pay
     const fullyPaid = newPaid >= debt.amount - 0.001
+    const now = new Date().toISOString()
+    const newPayments: DebtPayment[] = [...(debt.payments || []), { amount: pay, date: now }]
 
     try {
       await updateDebt(debtId, {
         amount_paid: fullyPaid ? debt.amount : newPaid,
+        payments: newPayments,
         is_paid: fullyPaid,
-        paid_at: fullyPaid ? new Date().toISOString() : null,
+        paid_at: fullyPaid ? now : null,
       })
 
       if (debt.type === 'owed') {
@@ -171,6 +175,19 @@ export default function Debts() {
           {paid > 0 && (
             <div className="mt-3 h-1.5 bg-warm-gray rounded-full overflow-hidden">
               <div className={`h-full ${c.bar} transition-all`} style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          {debt.payments && debt.payments.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-ink/5">
+              <p className="text-[10px] text-muted-text uppercase tracking-wider mb-1.5">{t('payment_history')}</p>
+              <div className="space-y-1">
+                {debt.payments.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-text flex items-center gap-1"><CalendarDays size={10} />{formatDate(p.date)}</span>
+                    <span className={`font-display ${c.amount}`}>{formatCurrency(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

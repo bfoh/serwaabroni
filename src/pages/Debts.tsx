@@ -2,15 +2,22 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, Phone, User, CalendarDays, CheckCircle } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatDate, uid } from '@/lib/data'
+import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
+import type { Debt } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
+
+const colorFor = (tab: DebtTab) =>
+  tab === 'owed'
+    ? { amount: 'text-accent-green', avatar: 'bg-ink', bar: 'bg-accent-green', mark: 'text-accent-green' }
+    : { amount: 'text-accent-red', avatar: 'bg-accent-red', bar: 'bg-accent-red', mark: 'text-accent-red' }
 
 export default function Debts() {
   const { state, dispatch, showToast, t, addDebt, updateDebt } = useStore()
   const [activeDebtTab, setActiveDebtTab] = useState<DebtTab>('owed')
   const [showAddDebt, setShowAddDebt] = useState(false)
-  const [markingPaid, setMarkingPaid] = useState<string | null>(null)
+  const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
+  const [paymentInput, setPaymentInput] = useState('')
   const [saving, setSaving] = useState(false)
 
   const [newDebt, setNewDebt] = useState({
@@ -26,8 +33,10 @@ export default function Debts() {
   const owingDebts = state.debts.filter((d) => d.type === 'owing' && !d.is_paid)
   const paidDebts = state.debts.filter((d) => d.is_paid)
 
-  const totalOwed = owedDebts.reduce((s, d) => s + d.amount, 0)
-  const totalOwing = owingDebts.reduce((s, d) => s + d.amount, 0)
+  const totalOwed = owedDebts.reduce((s, d) => s + remainingAmount(d), 0)
+  const totalOwing = owingDebts.reduce((s, d) => s + remainingAmount(d), 0)
+
+  const paymentDebt = paymentDebtId ? state.debts.find((d) => d.id === paymentDebtId) : null
 
   const handleAddDebt = async () => {
     if (!newDebt.person_name || !newDebt.amount) {
@@ -43,6 +52,7 @@ export default function Debts() {
         person_name: newDebt.person_name,
         phone: newDebt.phone || null,
         amount: parseFloat(newDebt.amount),
+        amount_paid: 0,
         description: newDebt.description || null,
         type: newDebt.type,
         due_date: newDebt.due_date || null,
@@ -60,24 +70,63 @@ export default function Debts() {
     }
   }
 
-  const handleMarkPaid = async (debtId: string) => {
+  // Apply a payment of `payAmount` toward a debt. Clamps to the remaining balance,
+  // flips is_paid when the debt is fully settled, and adjusts running balances for
+  // money owed to the user (the increment only, never the full debt).
+  const recordPayment = async (debtId: string, payAmount: number) => {
     const debt = state.debts.find((d) => d.id === debtId)
     if (!debt) return
 
+    const remaining = remainingAmount(debt)
+    const pay = Math.min(payAmount, remaining)
+    if (pay <= 0) return
+
+    const newPaid = (debt.amount_paid || 0) + pay
+    const fullyPaid = newPaid >= debt.amount - 0.001
+
     try {
-      await updateDebt(debtId, { is_paid: true, paid_at: new Date().toISOString() })
+      await updateDebt(debtId, {
+        amount_paid: fullyPaid ? debt.amount : newPaid,
+        is_paid: fullyPaid,
+        paid_at: fullyPaid ? new Date().toISOString() : null,
+      })
 
       if (debt.type === 'owed') {
-        dispatch({ type: 'SET_BALANCE', value: state.balance + debt.amount })
-        dispatch({ type: 'SET_PENDING_DEBTS', value: Math.max(0, state.pendingDebts - debt.amount) })
+        dispatch({ type: 'SET_BALANCE', value: state.balance + pay })
+        dispatch({ type: 'SET_PENDING_DEBTS', value: Math.max(0, state.pendingDebts - pay) })
       }
 
-      showToast(`${debt.person_name} marked as paid!`, 'success')
+      showToast(fullyPaid ? `${debt.person_name} marked as paid!` : t('payment_recorded'), 'success')
     } catch {
-      showToast('Failed to mark as paid', 'error')
+      showToast('Failed to record payment', 'error')
     }
+  }
 
-    setMarkingPaid(null)
+  const handleMarkPaid = (debtId: string) => {
+    const debt = state.debts.find((d) => d.id === debtId)
+    if (!debt) return
+    recordPayment(debtId, remainingAmount(debt))
+  }
+
+  const openPayment = (debtId: string) => {
+    setPaymentInput('')
+    setPaymentDebtId(debtId)
+  }
+
+  const submitPayment = () => {
+    if (!paymentDebt) return
+    const amt = parseFloat(paymentInput)
+    if (!amt || amt <= 0) {
+      showToast(t('enter_valid_amount'), 'error')
+      return
+    }
+    if (amt > remainingAmount(paymentDebt) + 0.001) {
+      showToast(t('payment_exceeds'), 'error')
+      return
+    }
+    recordPayment(paymentDebt.id, amt)
+    setPaymentDebtId(null)
+    setPaymentInput('')
   }
 
   const getDaysOverdue = (dueDate: string | null) => {
@@ -86,6 +135,51 @@ export default function Debts() {
     const now = new Date()
     const diff = Math.ceil((now.getTime() - due.getTime()) / 86400000)
     return diff > 0 ? diff : 0
+  }
+
+  const renderDebtCard = (debt: Debt, index: number, tab: DebtTab) => {
+    const c = colorFor(tab)
+    const overdue = getDaysOverdue(debt.due_date)
+    const paid = debt.amount_paid || 0
+    const remaining = remainingAmount(debt)
+    const pct = debt.amount > 0 ? Math.min(100, (paid / debt.amount) * 100) : 0
+
+    return (
+      <motion.div key={debt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+        className={`bg-light harsh-border rounded-sm overflow-hidden ${overdue && overdue > 0 ? 'border-l-4 border-l-accent-red' : ''}`}>
+        <div className="p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full ${c.avatar} flex items-center justify-center flex-shrink-0`}>
+                <span className="font-display text-sm text-white">{debt.person_name.charAt(0).toUpperCase()}</span>
+              </div>
+              <div>
+                <p className="font-medium text-sm">{debt.person_name}</p>
+                {debt.phone && <p className="text-xs text-muted-text flex items-center gap-1"><Phone size={10} />{debt.phone}</p>}
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={`font-display text-lg ${c.amount}`}>{formatCurrency(remaining)}</p>
+              {paid > 0 && (
+                <p className="text-[10px] text-muted-text">{t('paid_label')} {formatCurrency(paid)} {t('of_total')} {formatCurrency(debt.amount)}</p>
+              )}
+              {overdue !== null && overdue > 0 && <p className="text-[10px] text-accent-red font-medium">{overdue} days overdue</p>}
+            </div>
+          </div>
+          {debt.description && <p className="text-xs text-muted-text mt-2">{debt.description}</p>}
+          {debt.due_date && <p className="text-xs text-muted-text mt-1 flex items-center gap-1"><CalendarDays size={10} />Due: {formatDate(debt.due_date)}</p>}
+          {paid > 0 && (
+            <div className="mt-3 h-1.5 bg-warm-gray rounded-full overflow-hidden">
+              <div className={`h-full ${c.bar} transition-all`} style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
+        <div className="flex border-t border-ink/10">
+          <button onClick={() => openPayment(debt.id)} className="flex-1 py-2.5 text-micro text-ink hover:bg-warm-gray/30 transition-colors">{t('record_payment')}</button>
+          <button onClick={() => handleMarkPaid(debt.id)} className={`flex-1 py-2.5 text-micro ${c.mark} border-l border-ink/10 hover:bg-warm-gray/30 transition-colors`}>{t('mark_paid')}</button>
+        </div>
+      </motion.div>
+    )
   }
 
   return (
@@ -146,36 +240,7 @@ export default function Debts() {
                   <p className="text-muted-text text-sm">{t('no_outstanding')}</p>
                 </div>
               )}
-              {owedDebts.map((debt, index) => {
-                const overdue = getDaysOverdue(debt.due_date)
-                return (
-                  <motion.div key={debt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
-                    className={`bg-light harsh-border rounded-sm overflow-hidden ${overdue && overdue > 0 ? 'border-l-4 border-l-accent-red' : ''}`}>
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-ink flex items-center justify-center flex-shrink-0">
-                            <span className="font-display text-sm text-white">{debt.person_name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{debt.person_name}</p>
-                            {debt.phone && <p className="text-xs text-muted-text flex items-center gap-1"><Phone size={10} />{debt.phone}</p>}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-display text-lg text-accent-green">{formatCurrency(debt.amount)}</p>
-                          {overdue !== null && overdue > 0 && <p className="text-[10px] text-accent-red font-medium">{overdue} days overdue</p>}
-                        </div>
-                      </div>
-                      {debt.description && <p className="text-xs text-muted-text mt-2">{debt.description}</p>}
-                      {debt.due_date && <p className="text-xs text-muted-text mt-1 flex items-center gap-1"><CalendarDays size={10} />Due: {formatDate(debt.due_date)}</p>}
-                    </div>
-                    <div className="flex border-t border-ink/10">
-                      <button onClick={() => setMarkingPaid(debt.id)} className="flex-1 py-2.5 text-micro text-accent-green hover:bg-warm-gray/30 transition-colors">{t('mark_paid')}</button>
-                    </div>
-                  </motion.div>
-                )
-              })}
+              {owedDebts.map((debt, index) => renderDebtCard(debt, index, 'owed'))}
             </motion.div>
           )}
 
@@ -187,36 +252,7 @@ export default function Debts() {
                   <p className="text-muted-text text-sm">{t('no_outstanding')}</p>
                 </div>
               )}
-              {owingDebts.map((debt, index) => {
-                const overdue = getDaysOverdue(debt.due_date)
-                return (
-                  <motion.div key={debt.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
-                    className={`bg-light harsh-border rounded-sm overflow-hidden ${overdue && overdue > 0 ? 'border-l-4 border-l-accent-red' : ''}`}>
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-accent-red flex items-center justify-center flex-shrink-0">
-                            <span className="font-display text-sm text-white">{debt.person_name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{debt.person_name}</p>
-                            {debt.phone && <p className="text-xs text-muted-text flex items-center gap-1"><Phone size={10} />{debt.phone}</p>}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-display text-lg text-accent-red">{formatCurrency(debt.amount)}</p>
-                          {overdue !== null && overdue > 0 && <p className="text-[10px] text-accent-red font-medium">{overdue} days overdue</p>}
-                        </div>
-                      </div>
-                      {debt.description && <p className="text-xs text-muted-text mt-2">{debt.description}</p>}
-                      {debt.due_date && <p className="text-xs text-muted-text mt-1 flex items-center gap-1"><CalendarDays size={10} />Due: {formatDate(debt.due_date)}</p>}
-                    </div>
-                    <div className="flex border-t border-ink/10">
-                      <button onClick={() => setMarkingPaid(debt.id)} className="flex-1 py-2.5 text-micro text-accent-red hover:bg-warm-gray/30 transition-colors">{t('mark_paid')}</button>
-                    </div>
-                  </motion.div>
-                )
-              })}
+              {owingDebts.map((debt, index) => renderDebtCard(debt, index, 'owing'))}
             </motion.div>
           )}
         </AnimatePresence>
@@ -240,20 +276,42 @@ export default function Debts() {
         )}
       </section>
 
-      {/* Mark Paid Confirmation */}
+      {/* Record Payment Sheet */}
       <AnimatePresence>
-        {markingPaid && (
+        {paymentDebt && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setMarkingPaid(null)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setPaymentDebtId(null)} />
             <motion.div initial={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }} animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }} exit={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm p-6 z-50 w-[85vw] max-w-sm">
-              <p className="font-display text-lg text-ink uppercase text-center mb-4">{t('mark_as_paid')}</p>
-              <p className="text-sm text-muted-text text-center mb-6">
-                {state.debts.find((d) => d.id === markingPaid)?.person_name} - {formatCurrency(state.debts.find((d) => d.id === markingPaid)?.amount || 0)}
-              </p>
+              <p className="font-display text-lg text-ink uppercase text-center mb-1">{t('record_payment_title')}</p>
+              <p className="text-sm text-muted-text text-center mb-4">{paymentDebt.person_name}</p>
+
+              <div className="flex justify-between text-xs text-muted-text mb-2">
+                <span>{t('remaining_label')}</span>
+                <span className="font-display text-ink">{formatCurrency(remainingAmount(paymentDebt))}</span>
+              </div>
+
+              <label className="text-micro text-muted-text mb-1.5 block">{t('payment_amount')} (GH₵)</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                autoFocus
+                value={paymentInput}
+                onChange={(e) => setPaymentInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitPayment()}
+                placeholder="0.00"
+                className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body mb-2"
+              />
+              <button
+                onClick={() => setPaymentInput(String(remainingAmount(paymentDebt)))}
+                className="text-micro text-accent-green mb-5"
+              >
+                {t('pay_full')} ({formatCurrency(remainingAmount(paymentDebt))})
+              </button>
+
               <div className="flex gap-3">
-                <button onClick={() => setMarkingPaid(null)} className="btn-tactile flex-1 h-12 bg-warm-gray font-display text-sm uppercase tracking-wider rounded-sm">{t('cancel')}</button>
-                <button onClick={() => markingPaid && handleMarkPaid(markingPaid)} className="btn-tactile flex-1 h-12 bg-accent-green font-display text-sm uppercase tracking-wider text-white rounded-sm">{t('confirm')}</button>
+                <button onClick={() => setPaymentDebtId(null)} className="btn-tactile flex-1 h-12 bg-warm-gray font-display text-sm uppercase tracking-wider rounded-sm">{t('cancel')}</button>
+                <button onClick={submitPayment} className="btn-tactile flex-1 h-12 bg-accent-green font-display text-sm uppercase tracking-wider text-white rounded-sm">{t('confirm')}</button>
               </div>
             </motion.div>
           </>

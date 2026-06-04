@@ -58,6 +58,7 @@ export interface Debt {
   person_name: string
   phone: string | null
   amount: number
+  amount_paid: number
   description: string | null
   type: 'owed' | 'owing'
   due_date: string | null

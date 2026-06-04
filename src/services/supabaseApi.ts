@@ -181,33 +181,41 @@ export async function deleteSaleGroup(sales: Sale[]): Promise<void> {
   if (sales.length === 0) return
 
   const ids = sales.map((s) => s.id)
-  const { error: delError } = await supabase
+  const { data: deleted, error: delError } = await supabase
     .from('sales')
     .delete()
     .in('id', ids)
     .eq('user_id', uid)
+    .select('id')
   if (delError) throw delError
+  // A delete blocked by RLS returns 0 rows and NO error. Treat that as failure
+  // so callers don't fake success (the bug that made deletes "not persist").
+  if (!deleted || deleted.length === 0) {
+    throw new Error('Sale not deleted — no rows affected (check RLS delete policy).')
+  }
 
   // Restore stock: sum the deleted quantity per product, add it back.
+  // One read for all products, writes in parallel — avoids N serial round-trips.
   const qtyByProduct = new Map<string, number>()
   for (const s of sales) {
     if (!s.product_id) continue
     qtyByProduct.set(s.product_id, (qtyByProduct.get(s.product_id) || 0) + s.quantity)
   }
-  for (const [productId, qty] of qtyByProduct) {
-    const { data: product } = await supabase
+  if (qtyByProduct.size > 0) {
+    const { data: products } = await supabase
       .from('products')
-      .select('quantity')
-      .eq('id', productId)
+      .select('id, quantity')
+      .in('id', Array.from(qtyByProduct.keys()))
       .eq('user_id', uid)
-      .single()
-    if (product) {
-      await supabase
-        .from('products')
-        .update({ quantity: (product.quantity || 0) + qty })
-        .eq('id', productId)
-        .eq('user_id', uid)
-    }
+    await Promise.all(
+      (products || []).map((product) =>
+        supabase
+          .from('products')
+          .update({ quantity: (product.quantity || 0) + (qtyByProduct.get(product.id) || 0) })
+          .eq('id', product.id)
+          .eq('user_id', uid)
+      )
+    )
   }
 
   // Decrement the customer's lifetime total by the deleted sale total.
@@ -392,7 +400,7 @@ export async function getDashboardSummary(): Promise<{
   const [salesRes, expensesRes, debtsRes, productsRes] = await Promise.all([
     supabase.from('sales').select('total, profit, created_at').eq('user_id', uid),
     supabase.from('expenses').select('amount').eq('user_id', uid),
-    supabase.from('debts').select('amount, type, is_paid').eq('user_id', uid),
+    supabase.from('debts').select('amount, amount_paid, type, is_paid').eq('user_id', uid),
     supabase.from('products').select('cost_price, selling_price, quantity').eq('user_id', uid),
   ])
 
@@ -406,8 +414,9 @@ export async function getDashboardSummary(): Promise<{
   const totalExpenses = expenses.reduce((s: number, e: Record<string, number>) => s + (e.amount || 0), 0)
   const todaySales = sales.filter((s: Record<string, string>) => s.created_at >= todayStart).reduce((sum: number, s: Record<string, number>) => sum + (s.total || 0), 0)
   const todayProfit = sales.filter((s: Record<string, string>) => s.created_at >= todayStart).reduce((sum: number, s: Record<string, number>) => sum + (s.profit || 0), 0)
-  const pendingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + (d.amount || 0), 0)
-  const owingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owing' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + (d.amount || 0), 0)
+  const debtRemaining = (d: Record<string, number>) => Math.max(0, (d.amount || 0) - (d.amount_paid || 0))
+  const pendingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
+  const owingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owing' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
   const stockValue = products.reduce((sum: number, p: Record<string, number>) => sum + (p.cost_price || 0) * (p.quantity || 0), 0)
   const projectedProfit = products.reduce((sum: number, p: Record<string, number>) => sum + ((p.selling_price || 0) - (p.cost_price || 0)) * (p.quantity || 0), 0)
 

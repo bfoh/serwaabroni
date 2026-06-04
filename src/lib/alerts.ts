@@ -1,4 +1,5 @@
 import type { Product, Sale, Debt, Expense } from './supabase'
+import { remainingAmount } from './data'
 
 export type AlertType = 'warning' | 'danger' | 'info' | 'success'
 
@@ -66,7 +67,7 @@ export function generateAlerts(
             id: `debt-due-${d.id}`,
             type: 'warning',
             title: 'Debt Collection Due Today',
-            message: `Time to collect! ${d.person_name} promised to pay their GH₵${d.amount} debt today.`,
+            message: `Time to collect! ${d.person_name} promised to pay their GH₵${remainingAmount(d)} debt today.`,
             actionLabel: d.phone ? 'Call Customer' : 'View Debt',
             actionPhone: d.phone || undefined,
             actionLink: 'debts',
@@ -77,7 +78,7 @@ export function generateAlerts(
             id: `debt-overdue-${d.id}`,
             type: 'danger',
             title: 'Overdue Debt',
-            message: `${d.person_name} is ${Math.abs(diffDays)} days late on their GH₵${d.amount} payment.`,
+            message: `${d.person_name} is ${Math.abs(diffDays)} days late on their GH₵${remainingAmount(d)} payment.`,
             actionLabel: d.phone ? 'Call Customer' : 'View Debt',
             actionPhone: d.phone || undefined,
             actionLink: 'debts',
@@ -90,7 +91,7 @@ export function generateAlerts(
             id: `supplier-due-${d.id}`,
             type: 'warning',
             title: 'Supplier Payment Soon',
-            message: `Remember to pay ${d.person_name} their GH₵${d.amount} by ${dueDate.toLocaleDateString('en-GB')}.`,
+            message: `Remember to pay ${d.person_name} their GH₵${remainingAmount(d)} by ${dueDate.toLocaleDateString('en-GB')}.`,
             actionLabel: 'View Debts',
             actionLink: 'debts',
             isCritical: false,

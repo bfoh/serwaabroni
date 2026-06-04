@@ -91,8 +91,12 @@ export function getTodaySales(sales: Sale[]): number {
     .reduce((sum, s) => sum + s.total, 0)
 }
 
+export function remainingAmount(debt: Debt): number {
+  return Math.max(0, debt.amount - (debt.amount_paid || 0))
+}
+
 export function getPendingDebts(debts: Debt[]): number {
-  return debts.filter((d) => d.type === 'owed' && !d.is_paid).reduce((sum, d) => sum + d.amount, 0)
+  return debts.filter((d) => d.type === 'owed' && !d.is_paid).reduce((sum, d) => sum + remainingAmount(d), 0)
 }
 
 export function getWeeklySales(sales: Sale[]): number {

@@ -67,7 +67,10 @@ export async function dispatch(args: DispatchArgs): Promise<ChannelResult[]> {
     let res: { ok: boolean; error?: string }
     if (channel === 'email') {
       const { subject, html } = buildEmail(type, data)
-      res = await sendEmail(recipient, recipientName(data), subject, html)
+      const fromName = data.businessName
+        ? (data.ownerName ? `${data.businessName} (${data.ownerName})` : data.businessName)
+        : undefined
+      res = await sendEmail(recipient, recipientName(data), subject, html, fromName)
     } else if (channel === 'whatsapp') {
       res = await sendWhatsApp(recipient, buildSMS(type, data))
     } else {

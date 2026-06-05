@@ -39,6 +39,7 @@ export async function sendEmail(
   toName: string,
   subject: string,
   htmlContent: string,
+  fromName?: string,
 ): Promise<SendResult> {
   if (!BREVO_API_KEY) return { ok: false, error: 'BREVO_API_KEY not configured' }
   try {
@@ -50,7 +51,9 @@ export async function sendEmail(
         Accept: 'application/json',
       },
       body: JSON.stringify({
-        sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+        // From-name is free per message (only the address needs domain verification),
+        // so each shop's email shows its own name — the per-tenant branding SMS can't do.
+        sender: { name: fromName || BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
         to: [{ email: to, name: toName || to }],
         subject,
         htmlContent,

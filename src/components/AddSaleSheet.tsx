@@ -166,6 +166,7 @@ export default function AddSaleSheet() {
           type: 'receipt',
           data: {
             businessName: state.businessProfile?.business_name || 'Your vendor',
+            ownerName: state.businessProfile?.owner_name,
             customerName: customerName || null,
             items: cart.map((i) => ({ name: i.name, qty: i.quantity, price: i.unit_price, total: i.unit_price * i.quantity })),
             total,

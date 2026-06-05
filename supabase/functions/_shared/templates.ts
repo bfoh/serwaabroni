@@ -4,6 +4,12 @@
 
 const cedi = (n: number) => `GHC ${Number(n || 0).toFixed(2)}`
 
+// "MamaShop (Ama Serwaa)" when an owner name is present, else just the shop name.
+function fromLabel(d: NotificationData): string {
+  const shop = d.businessName ?? 'Your vendor'
+  return d.ownerName ? `${shop} (${d.ownerName})` : shop
+}
+
 interface ReceiptItem {
   name: string
   qty: number
@@ -43,7 +49,7 @@ function emailShell(businessName: string, inner: string): string {
 }
 
 export function receiptSMS(d: NotificationData): string {
-  return `${d.businessName ?? 'Your vendor'}: Thank you ${d.customerName ?? ''}! Receipt total ${cedi(d.total ?? 0)} on ${d.date ?? ''}. Akwaaba!`.trim()
+  return `${fromLabel(d)}: Thank you ${d.customerName ?? ''}! Receipt total ${cedi(d.total ?? 0)} on ${d.date ?? ''}. Akwaaba!`.trim()
 }
 
 export function receiptEmail(d: NotificationData): { subject: string; html: string } {
@@ -72,7 +78,8 @@ export function receiptEmail(d: NotificationData): { subject: string; html: stri
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p style="text-align: right; font-size: 18px; font-weight: bold;">Total: ${cedi(d.total ?? 0)}</p>`
+    <p style="text-align: right; font-size: 18px; font-weight: bold;">Total: ${cedi(d.total ?? 0)}</p>
+    <p style="margin-top: 16px;">— ${fromLabel(d)}</p>`
   return {
     subject: `Receipt from ${d.businessName ?? 'your vendor'} - ${cedi(d.total ?? 0)}`,
     html: emailShell(d.businessName ?? 'SerwaaBroni', inner),
@@ -81,7 +88,7 @@ export function receiptEmail(d: NotificationData): { subject: string; html: stri
 
 export function debtReminderSMS(d: NotificationData): string {
   const due = d.dueDate ? ` (due ${d.dueDate})` : ''
-  return `Hello ${d.personName ?? ''}, a friendly reminder from ${d.businessName ?? 'your vendor'}: your balance of ${cedi(d.amount ?? 0)}${due} is outstanding. Please arrange payment. Medaase!`.trim()
+  return `Hello ${d.personName ?? ''}, a friendly reminder from ${fromLabel(d)}: your balance of ${cedi(d.amount ?? 0)}${due} is outstanding. Please arrange payment. Medaase!`.trim()
 }
 
 export function debtReminderEmail(d: NotificationData): { subject: string; html: string } {
@@ -89,7 +96,8 @@ export function debtReminderEmail(d: NotificationData): { subject: string; html:
   const inner = `
     <p style="font-size: 16px;">Hello ${d.personName ?? 'there'},</p>
     <p>This is a friendly reminder that your balance of <strong>${cedi(d.amount ?? 0)}</strong>${due} is still outstanding.</p>
-    <p>Please arrange payment at your earliest convenience. Thank you!</p>`
+    <p>Please arrange payment at your earliest convenience. Thank you!</p>
+    <p style="margin-top: 16px;">— ${fromLabel(d)}</p>`
   return {
     subject: `Payment reminder from ${d.businessName ?? 'your vendor'}`,
     html: emailShell(d.businessName ?? 'SerwaaBroni', inner),

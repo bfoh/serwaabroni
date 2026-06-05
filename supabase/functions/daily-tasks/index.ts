@@ -109,6 +109,7 @@ Deno.serve(async (req) => {
           type: 'debt_reminder',
           data: {
             businessName: profile.business_name,
+            ownerName: profile.owner_name,
             personName: debt.person_name,
             amount: remaining(debt),
             dueDate: debt.due_date ? new Date(debt.due_date).toLocaleDateString('en-GB') : undefined,

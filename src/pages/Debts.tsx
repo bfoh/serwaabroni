@@ -122,6 +122,7 @@ export default function Debts() {
       type: 'debt_reminder',
       data: {
         businessName: state.businessProfile?.business_name || 'Your vendor',
+        ownerName: state.businessProfile?.owner_name,
         personName: debt.person_name,
         amount: remainingAmount(debt),
         dueDate: debt.due_date ? formatDate(debt.due_date) : undefined,

@@ -39,6 +39,8 @@ CREATE INDEX IF NOT EXISTS idx_notification_log_user ON notification_log(user_id
 
 -- Dedupe guard: one (type, channel, recipient, ref_id) per calendar day.
 -- daily-tasks / send-notification check this before sending.
+-- (sent_at AT TIME ZONE 'UTC')::date is IMMUTABLE (fixed zone), unlike a bare
+-- timestamptz::date cast which depends on the session TimeZone.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_notification_per_day
-  ON notification_log (user_id, type, channel, recipient, COALESCE(ref_id, ''), (sent_at::date))
+  ON notification_log (user_id, type, channel, recipient, COALESCE(ref_id, ''), ((sent_at AT TIME ZONE 'UTC')::date))
   WHERE status = 'sent';

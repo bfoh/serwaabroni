@@ -23,16 +23,14 @@ export function formatGhanaPhone(phone: string): string {
   return phone.replace(/\s+/g, '').replace(/^\+/, '').replace(/^0/, '233')
 }
 
-// Pick the SMS sender ID: the shop's own (if set) → sanitized business name → the
-// approved fallback. Arkesel requires alphanumeric, max 11 chars, no spaces; an
-// unapproved value will be rejected, so this only changes the displayed sender once
-// the shop has registered that ID with Arkesel.
-export function resolveSender(
-  custom?: string | null,
-  businessName?: string | null,
-): string {
-  const raw = (custom?.trim() || businessName?.trim() || '')
-  const clean = raw.replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
+// Pick the SMS sender ID: the shop's own registered ID (if set) → the default
+// registered brand sender. Ghana telcos only DELIVER sender IDs registered with
+// Arkesel/NCA (the API accepts anything but silently drops unregistered names), so we
+// never derive the sender from an arbitrary business name — the shop name lives in the
+// message body instead. A custom sms_sender_id only works once that shop has registered
+// it with Arkesel. Alphanumeric, max 11 chars, no spaces.
+export function resolveSender(custom?: string | null): string {
+  const clean = (custom?.trim() || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
   return clean || ARKESEL_SENDER_ID
 }
 

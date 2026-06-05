@@ -88,10 +88,7 @@ Deno.serve(async (req) => {
     emailTo: body.emailTo ?? null,
     phoneTo: body.phoneTo ?? null,
     refId: body.refId ?? null,
-    senderId: resolveSender(
-      prefs.sms_sender_id as string | null,
-      prefs.business_name as string | null,
-    ),
+    senderId: resolveSender(prefs.sms_sender_id as string | null),
   })
 
   return json({ ok: true, results })

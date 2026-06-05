@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
   for (const profile of profiles ?? []) {
     const uid = profile.user_id as string
     const channels = ownerChannels(profile)
-    const senderId = resolveSender(profile.sms_sender_id, profile.business_name)
+    const senderId = resolveSender(profile.sms_sender_id)
 
     // ---- Daily summary to owner ----
     if (profile.notify_daily_summary !== false && (profile.phone || profile.email)) {

@@ -296,7 +296,7 @@ export default function Settings({ onClose }: SettingsProps) {
                     placeholder="e.g. MamaShop"
                     className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
                   />
-                  <p className="text-[10px] text-muted-text mt-1">Up to 11 letters/numbers, no spaces. This is the name customers see as the SMS sender. Must be approved by Arkesel, otherwise it won't deliver. Leave blank to use the default.</p>
+                  <p className="text-[10px] text-muted-text mt-1">Up to 11 letters/numbers, no spaces. Only works if this exact name is registered with Arkesel — unregistered names are silently dropped by the networks. Leave blank to use the default sender; your shop name still appears inside every message.</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-text uppercase tracking-wider mb-2">Channels</p>

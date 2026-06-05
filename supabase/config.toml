@@ -1,0 +1,9 @@
+project_id = "qumttowvyujqaubyshjq"
+
+# Client-invoked: require a valid Supabase JWT (the function also re-checks the user).
+[functions.send-notification]
+verify_jwt = true
+
+# Cron-invoked from pg_cron: no user JWT. Guarded by the X-Cron-Secret header instead.
+[functions.daily-tasks]
+verify_jwt = false

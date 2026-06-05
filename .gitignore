@@ -25,3 +25,8 @@ npm-debug.log*
 
 # Test coverage
 coverage
+.vercel
+
+# Supabase CLI
+supabase/.temp
+supabase/.branches

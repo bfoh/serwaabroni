@@ -6,6 +6,7 @@ import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData, type SaleGroup } from './data'
 import { generateAlerts, type Alert } from './alerts'
+import { sendNotification } from '@/services/notify'
 
 import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services/auth'
 import {
@@ -337,6 +338,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       
       if (profile) {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+
+        // Push critical alerts to the owner (SMS/email). Per-day de-dupe lives in the
+        // edge function, so repeated app loads won't re-send the same alert.
+        if (profile.notify_critical !== false && (profile.phone || profile.email)) {
+          for (const alert of generatedAlerts.filter((a) => a.isCritical)) {
+            sendNotification({
+              type: 'critical',
+              data: { businessName: profile.business_name, title: alert.title, message: alert.message },
+              phoneTo: profile.phone,
+              emailTo: profile.email,
+              refId: alert.id,
+            })
+          }
+        }
       }
 
       // Admin + suspension flags

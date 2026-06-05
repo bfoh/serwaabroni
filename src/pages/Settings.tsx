@@ -14,6 +14,7 @@ export default function Settings({ onClose }: SettingsProps) {
   const { state, dispatch, showToast, logout, updateBusinessProfile, resetAllData } = useStore()
   const navigate = useNavigate()
   const [showProfile, setShowProfile] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
   const [showConfirmReset, setShowConfirmReset] = useState(false)
   const [showConfirmLogout, setShowConfirmLogout] = useState(false)
   const [businessName, setBusinessName] = useState(state.businessProfile?.business_name || state.user?.business_name || '')
@@ -83,6 +84,23 @@ export default function Settings({ onClose }: SettingsProps) {
     setSaving(false)
   }
 
+  // Notification preference helpers. Undefined fields fall back to their DB defaults
+  // (all on except WhatsApp). Toggling persists the whole profile via updateBusinessProfile.
+  const notifPref = (key: keyof BusinessProfile, fallback = true) => {
+    const v = state.businessProfile?.[key]
+    return v === undefined || v === null ? fallback : (v as boolean)
+  }
+
+  const toggleNotif = (key: keyof BusinessProfile, fallback = true) => {
+    if (!state.businessProfile) {
+      showToast('Set up your shop profile first', 'error')
+      return
+    }
+    updateBusinessProfile({ ...state.businessProfile, [key]: !notifPref(key, fallback) })
+  }
+
+  const anyChannelOn = notifPref('notify_sms') || notifPref('notify_email') || notifPref('notify_whatsapp', false)
+
   const handleExport = () => {
     exportToCSV(state)
     showToast('Data exported!', 'success')
@@ -108,7 +126,7 @@ export default function Settings({ onClose }: SettingsProps) {
       : []),
     { icon: User, label: 'Edit Profile', action: () => setShowProfile(true) },
     { icon: Download, label: 'Export All Data (CSV)', action: handleExport },
-    { icon: Bell, label: 'Notifications', badge: 'On', action: () => showToast('Notifications enabled', 'success') },
+    { icon: Bell, label: 'Notifications', badge: anyChannelOn ? 'On' : 'Off', action: () => setShowNotifications(true) },
     { icon: Globe, label: 'Language', badge: state.language === 'tw' ? 'Twi' : 'English', action: () => dispatch({ type: 'SET_LANGUAGE', lang: state.language === 'tw' ? 'en' : 'tw' }) },
     { icon: Share2, label: 'Community Catalog',
       badge: state.businessProfile?.catalog_contribute === false ? 'Off' : 'On',
@@ -239,6 +257,54 @@ export default function Settings({ onClose }: SettingsProps) {
         )}
       </AnimatePresence>
 
+      {/* Notification Preferences Modal */}
+      <AnimatePresence>
+        {showNotifications && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowNotifications(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+              exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[90vw] max-w-sm max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b-2 border-ink sticky top-0 bg-sand">
+                <h2 className="font-display text-lg text-ink uppercase">Notifications</h2>
+                <button onClick={() => setShowNotifications(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider mb-2">Channels</p>
+                  <div className="space-y-1">
+                    {([
+                      ['notify_sms', 'SMS', true],
+                      ['notify_email', 'Email', true],
+                      ['notify_whatsapp', 'WhatsApp', false],
+                    ] as const).map(([key, label, fb]) => (
+                      <ToggleRow key={key} label={label + (key === 'notify_whatsapp' ? ' (needs setup)' : '')} on={notifPref(key, fb)} onToggle={() => toggleNotif(key, fb)} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider mb-2">What to send</p>
+                  <div className="space-y-1">
+                    {([
+                      ['notify_receipts', 'Sale receipts to customers'],
+                      ['notify_debt_reminders', 'Debt reminders'],
+                      ['notify_daily_summary', 'Daily summary to me'],
+                      ['notify_critical', 'Critical alerts to me'],
+                    ] as const).map(([key, label]) => (
+                      <ToggleRow key={key} label={label} on={notifPref(key)} onToggle={() => toggleNotif(key)} />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-text">SMS and WhatsApp use your phone number; receipts also need the customer's contact. WhatsApp stays off until a sender ID is approved.</p>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Confirm Reset */}
       <AnimatePresence>
         {showConfirmReset && (
@@ -295,5 +361,16 @@ export default function Settings({ onClose }: SettingsProps) {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+function ToggleRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button onClick={onToggle} className="w-full flex items-center justify-between px-3 py-2.5 bg-light harsh-border rounded-sm">
+      <span className="text-sm text-ink text-left">{label}</span>
+      <span className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-accent-green' : 'bg-warm-gray'}`}>
+        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
+      </span>
+    </button>
   )
 }

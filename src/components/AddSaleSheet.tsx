@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Minus, Plus, Check, User, Phone, Trash2, ArrowLeft, ScanLine } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, uid } from '@/lib/data'
+import { formatCurrency, formatDate, uid } from '@/lib/data'
+import { sendNotification } from '@/services/notify'
 import ProductIcon from './ProductIcon'
 import SaleScanner from './SaleScanner'
 
@@ -153,6 +154,27 @@ export default function AddSaleSheet() {
             created_at: new Date().toISOString(),
           }).catch(() => {})
         }
+      }
+
+      // Send receipt to customer (non-blocking) if any contact is on file.
+      const existingCust = customerName
+        ? state.customers.find((c) => c.name.toLowerCase() === customerName.trim().toLowerCase())
+        : undefined
+      const customerEmail = existingCust?.email ?? null
+      if (customerPhone || customerEmail) {
+        sendNotification({
+          type: 'receipt',
+          data: {
+            businessName: state.businessProfile?.business_name || 'Your vendor',
+            customerName: customerName || null,
+            items: cart.map((i) => ({ name: i.name, qty: i.quantity, price: i.unit_price, total: i.unit_price * i.quantity })),
+            total,
+            date: formatDate(createdAt),
+          },
+          phoneTo: customerPhone || null,
+          emailTo: customerEmail,
+          refId: groupId,
+        })
       }
 
       setConfirmed(true)

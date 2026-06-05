@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, Phone, User, CalendarDays, CheckCircle } from 'lucide-react'
+import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
+import { sendNotification } from '@/services/notify'
 import type { Debt, DebtPayment } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
@@ -112,6 +113,25 @@ export default function Debts() {
     recordPayment(debtId, remainingAmount(debt))
   }
 
+  const handleRemind = async (debt: Debt) => {
+    if (!debt.phone) {
+      showToast('No phone number for this debtor', 'error')
+      return
+    }
+    const ok = await sendNotification({
+      type: 'debt_reminder',
+      data: {
+        businessName: state.businessProfile?.business_name || 'Your vendor',
+        personName: debt.person_name,
+        amount: remainingAmount(debt),
+        dueDate: debt.due_date ? formatDate(debt.due_date) : undefined,
+      },
+      phoneTo: debt.phone,
+      refId: debt.id,
+    })
+    showToast(ok ? `Reminder sent to ${debt.person_name}` : 'Could not send reminder', ok ? 'success' : 'error')
+  }
+
   const openPayment = (debtId: string) => {
     setPaymentInput('')
     setPaymentDebtId(debtId)
@@ -192,7 +212,10 @@ export default function Debts() {
           )}
         </div>
         <div className="flex border-t border-ink/10">
-          <button onClick={() => openPayment(debt.id)} className="flex-1 py-2.5 text-micro text-ink hover:bg-warm-gray/30 transition-colors">{t('record_payment')}</button>
+          {tab === 'owed' && debt.phone && (
+            <button onClick={() => handleRemind(debt)} className="flex-1 py-2.5 text-micro text-ink hover:bg-warm-gray/30 transition-colors flex items-center justify-center gap-1"><Send size={11} />{t('remind')}</button>
+          )}
+          <button onClick={() => openPayment(debt.id)} className="flex-1 py-2.5 text-micro text-ink border-l border-ink/10 hover:bg-warm-gray/30 transition-colors">{t('record_payment')}</button>
           <button onClick={() => handleMarkPaid(debt.id)} className={`flex-1 py-2.5 text-micro ${c.mark} border-l border-ink/10 hover:bg-warm-gray/30 transition-colors`}>{t('mark_paid')}</button>
         </div>
       </motion.div>

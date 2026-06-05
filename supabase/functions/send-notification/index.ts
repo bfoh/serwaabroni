@@ -7,7 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, json } from '../_shared/cors.ts'
-import { type Channel } from '../_shared/providers.ts'
+import { type Channel, resolveSender } from '../_shared/providers.ts'
 import { dispatch } from '../_shared/dispatch.ts'
 import type { NotificationData, NotificationType } from '../_shared/templates.ts'
 
@@ -88,6 +88,10 @@ Deno.serve(async (req) => {
     emailTo: body.emailTo ?? null,
     phoneTo: body.phoneTo ?? null,
     refId: body.refId ?? null,
+    senderId: resolveSender(
+      prefs.sms_sender_id as string | null,
+      prefs.business_name as string | null,
+    ),
   })
 
   return json({ ok: true, results })

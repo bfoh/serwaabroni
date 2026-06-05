@@ -21,6 +21,7 @@ export default function Settings({ onClose }: SettingsProps) {
   const [ownerName, setOwnerName] = useState(state.businessProfile?.owner_name || '')
   const [phone, setPhone] = useState(state.businessProfile?.phone || state.user?.phone || '')
   const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || localStorage.getItem('serwaabroni_logo') || '')
+  const [smsSenderId, setSmsSenderId] = useState(state.businessProfile?.sms_sender_id || '')
   const [saving, setSaving] = useState(false)
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,6 +101,18 @@ export default function Settings({ onClose }: SettingsProps) {
   }
 
   const anyChannelOn = notifPref('notify_sms') || notifPref('notify_email') || notifPref('notify_whatsapp', false)
+
+  const saveSender = () => {
+    if (!state.businessProfile) {
+      showToast('Set up your shop profile first', 'error')
+      return
+    }
+    const clean = smsSenderId.replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
+    if (clean !== smsSenderId) setSmsSenderId(clean)
+    if (clean !== (state.businessProfile.sms_sender_id || '')) {
+      updateBusinessProfile({ ...state.businessProfile, sms_sender_id: clean || null })
+    }
+  }
 
   const handleExport = () => {
     exportToCSV(state)
@@ -273,6 +286,18 @@ export default function Settings({ onClose }: SettingsProps) {
                 <button onClick={() => setShowNotifications(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
               </div>
               <div className="p-4 space-y-4">
+                <div>
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider mb-2">SMS Sender Name</p>
+                  <input
+                    value={smsSenderId}
+                    onChange={(e) => setSmsSenderId(e.target.value)}
+                    onBlur={saveSender}
+                    maxLength={11}
+                    placeholder="e.g. MamaShop"
+                    className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
+                  />
+                  <p className="text-[10px] text-muted-text mt-1">Up to 11 letters/numbers, no spaces. This is the name customers see as the SMS sender. Must be approved by Arkesel, otherwise it won't deliver. Leave blank to use the default.</p>
+                </div>
                 <div>
                   <p className="text-[10px] text-muted-text uppercase tracking-wider mb-2">Channels</p>
                   <div className="space-y-1">

@@ -109,6 +109,7 @@ export interface BusinessProfile {
   suspended_at?: string | null
   suspended_reason?: string | null
   catalog_contribute?: boolean
+  sms_sender_id?: string | null
   notify_sms?: boolean
   notify_email?: boolean
   notify_whatsapp?: boolean

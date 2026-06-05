@@ -23,6 +23,19 @@ export function formatGhanaPhone(phone: string): string {
   return phone.replace(/\s+/g, '').replace(/^\+/, '').replace(/^0/, '233')
 }
 
+// Pick the SMS sender ID: the shop's own (if set) → sanitized business name → the
+// approved fallback. Arkesel requires alphanumeric, max 11 chars, no spaces; an
+// unapproved value will be rejected, so this only changes the displayed sender once
+// the shop has registered that ID with Arkesel.
+export function resolveSender(
+  custom?: string | null,
+  businessName?: string | null,
+): string {
+  const raw = (custom?.trim() || businessName?.trim() || '')
+  const clean = raw.replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
+  return clean || ARKESEL_SENDER_ID
+}
+
 export async function sendEmail(
   to: string,
   toName: string,
@@ -52,14 +65,14 @@ export async function sendEmail(
   }
 }
 
-export async function sendSMS(to: string, message: string): Promise<SendResult> {
+export async function sendSMS(to: string, message: string, sender?: string): Promise<SendResult> {
   if (!ARKESEL_API_KEY) return { ok: false, error: 'ARKESEL_API_KEY not configured' }
   try {
     const res = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
       method: 'POST',
       headers: { 'api-key': ARKESEL_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sender: ARKESEL_SENDER_ID,
+        sender: sender || ARKESEL_SENDER_ID,
         message,
         recipients: [formatGhanaPhone(to)],
       }),

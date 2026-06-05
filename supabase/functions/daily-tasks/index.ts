@@ -11,7 +11,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, json } from '../_shared/cors.ts'
-import { type Channel } from '../_shared/providers.ts'
+import { type Channel, resolveSender } from '../_shared/providers.ts'
 import { dispatch } from '../_shared/dispatch.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
   for (const profile of profiles ?? []) {
     const uid = profile.user_id as string
     const channels = ownerChannels(profile)
+    const senderId = resolveSender(profile.sms_sender_id, profile.business_name)
 
     // ---- Daily summary to owner ----
     if (profile.notify_daily_summary !== false && (profile.phone || profile.email)) {
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
           channels,
           phoneTo: profile.phone,
           emailTo: profile.email,
+          senderId,
           refId: startOfDay.toISOString().slice(0, 10), // one summary per day
         })
         summaries++
@@ -113,6 +115,7 @@ Deno.serve(async (req) => {
           },
           channels: debtorChannels,
           phoneTo: debt.phone,
+          senderId,
           refId: debt.id,
         })
         reminders++

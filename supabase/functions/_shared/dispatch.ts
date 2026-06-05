@@ -11,6 +11,7 @@ export interface DispatchArgs {
   emailTo?: string | null
   phoneTo?: string | null
   refId?: string | null
+  senderId?: string // SMS sender ID override (already resolved/sanitized)
 }
 
 export interface ChannelResult {
@@ -51,7 +52,7 @@ function recipientName(d: NotificationData): string {
 // Send a notification across the requested channels, skipping channels with no
 // recipient or one already contacted today, and recording every attempt.
 export async function dispatch(args: DispatchArgs): Promise<ChannelResult[]> {
-  const { admin, userId, type, data, channels, emailTo, phoneTo, refId = null } = args
+  const { admin, userId, type, data, channels, emailTo, phoneTo, refId = null, senderId } = args
   const results: ChannelResult[] = []
 
   for (const channel of channels) {
@@ -70,7 +71,7 @@ export async function dispatch(args: DispatchArgs): Promise<ChannelResult[]> {
     } else if (channel === 'whatsapp') {
       res = await sendWhatsApp(recipient, buildSMS(type, data))
     } else {
-      res = await sendSMS(recipient, buildSMS(type, data))
+      res = await sendSMS(recipient, buildSMS(type, data), senderId)
     }
 
     await admin.from('notification_log').insert({

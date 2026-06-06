@@ -12,6 +12,7 @@ export default function Inventory() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
+  const [restockUnitCost, setRestockUnitCost] = useState('')
   const [addingProduct, setAddingProduct] = useState(false)
 
   // Inline edit state
@@ -105,6 +106,7 @@ export default function Inventory() {
     if (!product) return
     setEditingProduct(productId)
     setEditQty(0)
+    setRestockUnitCost(String(product.cost_price))
   }
 
   const handleSaveRestock = async () => {
@@ -113,12 +115,23 @@ export default function Inventory() {
       setEditingProduct(null)
       return
     }
+    const unitCost = parseFloat(restockUnitCost) || product.cost_price
     const newQty = product.quantity + editQty
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
+    // Optimistic cache bump.
     dispatch({ type: 'UPDATE_PRODUCT', product: updated })
     updateProduct(product.id, { quantity: newQty }).catch(() => {})
+    // Create the costed batch (online; offline restock still bumps the cache above).
+    try {
+      const { receiveStock } = await import('@/services/batchApi')
+      await receiveStock({ productId: product.id, qty: editQty, unitCost })
+    } catch {
+      /* offline or error — cache already bumped; batch can be reconciled later */
+    }
     showToast(`Restocked ${editQty} ${product.unit}(s)`, 'success')
     setEditingProduct(null)
+    setEditQty(0)
+    setRestockUnitCost('')
   }
 
   const handleOpenEdit = (productId: string) => {
@@ -417,6 +430,14 @@ export default function Inventory() {
                         <X size={16} strokeWidth={2.5} />
                       </button>
                     </div>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={restockUnitCost}
+                      onChange={(e) => setRestockUnitCost(e.target.value)}
+                      placeholder="Unit cost (GHS)"
+                      className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-3"
+                    />
                   </div>
                 ) : (
                   <div className="flex border-t border-ink/10">

@@ -135,6 +135,7 @@ export interface CapitalInjection {
   injection_date: string
   payback_months: number
   installment_count: number
+  repayment_type: 'equal' | 'interest_only'
   status: 'active' | 'repaid' | 'closed'
   risk_tier: RiskTier
   risk_alerted: boolean

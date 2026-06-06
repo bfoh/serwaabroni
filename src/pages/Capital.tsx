@@ -46,7 +46,7 @@ export default function Capital() {
   const totalRecovered = Object.values(recovered).reduce((s, v) => s + v, 0)
 
   return (
-    <div className="min-h-screen bg-light pb-24">
+    <div className="min-h-screen bg-light pb-40">
       <header className="bg-ink text-white px-5 pt-6 pb-5">
         <button onClick={() => navigate('/')} className="flex items-center gap-1 text-white/70 text-sm mb-3">
           <ArrowLeft size={16} /> Back
@@ -113,7 +113,7 @@ export default function Capital() {
 
       <button
         onClick={() => setShowCreate(true)}
-        className="fixed bottom-6 right-5 w-14 h-14 rounded-full bg-accent-red text-white flex items-center justify-center shadow-lg"
+        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+1.5rem)] right-5 w-14 h-14 rounded-full bg-accent-red text-white flex items-center justify-center shadow-lg z-30"
         aria-label="Add capital"
       >
         <Plus size={26} />

@@ -42,6 +42,32 @@ export function generateInstallments(
   return rows
 }
 
+// Interest-only schedule with a final balloon. Each month pays an equal slice of
+// the interest; the last interest slice absorbs the rounding remainder so the
+// interest slices sum exactly to `interest`. The final month additionally carries
+// the full principal. Total still sums to principal + interest.
+export function generateInterestOnlyInstallments(
+  principal: number,
+  interest: number,
+  count: number,
+  injectionDateIso: string
+): GeneratedInstallment[] {
+  const baseInterest = round2(interest / count)
+  const rows: GeneratedInstallment[] = []
+  for (let i = 1; i <= count; i++) {
+    const interestSlice = i === count
+      ? round2(interest - baseInterest * (count - 1))
+      : baseInterest
+    const amount = i === count ? round2(interestSlice + principal) : interestSlice
+    rows.push({
+      seq: i,
+      due_date: addMonthsUtc(injectionDateIso, i).toISOString(),
+      amount_due: amount,
+    })
+  }
+  return rows
+}
+
 export interface RiskInstallment {
   due_date: string
   amount_due: number

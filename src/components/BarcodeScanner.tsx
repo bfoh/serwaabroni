@@ -136,6 +136,19 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   // Delivery basket
   const [basket, setBasket] = useState<ScannedItem[]>([])
   const [showBasket, setShowBasket] = useState(false)
+  const [deliveryInjectionId, setDeliveryInjectionId] = useState<string>('')
+  const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
+
+  // Load active capital injections so a delivery can be tagged to its funding source.
+  useEffect(() => {
+    import('@/services/capitalApi').then(({ fetchInjections }) =>
+      fetchInjections().then((list) =>
+        setActiveInjections(
+          list.filter((i) => i.status !== 'repaid').map((i) => ({ id: i.id, lender_name: i.lender_name, source: i.source }))
+        )
+      ).catch(() => {})
+    )
+  }, [])
 
   // Current scan being processed
   const [currentItem, setCurrentItem] = useState<ScannedItem | null>(null)
@@ -430,6 +443,8 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   }, [])
 
   const saveAllToStock = useCallback(async () => {
+    const injectionId = deliveryInjectionId || null
+    const { receiveStock } = await import('@/services/batchApi')
     let added = 0, updated = 0
     for (const item of basket) {
       const itemKey = normalizeBarcode(item.barcode)
@@ -438,8 +453,13 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         : undefined
       if (existing) {
         await updateProduct(existing.id, { quantity: existing.quantity + item.quantity })
+        // Costed, optionally-tagged batch for the received units (FIFO + capital).
+        try {
+          await receiveStock({ productId: existing.id, qty: item.quantity, unitCost: item.cost_price, injectionId })
+        } catch { /* offline — reconcile later */ }
         updated++
       } else {
+        // addProduct creates the opening batch (and tags it) via the store.
         await addProduct({
           id: uid(),
           name: item.name,
@@ -452,16 +472,17 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
           barcode: item.barcode,
           qr_code: null,
           created_at: new Date().toISOString(),
-        } as Omit<Product, 'user_id'>)
+        } as Omit<Product, 'user_id'>, injectionId)
         added++
       }
     }
     const msg = added > 0 && updated > 0 ? `${added} new, ${updated} restocked` : added > 0 ? `${added} items added` : `${updated} items restocked`
     showToast(msg, 'success')
     setBasket([])
+    setDeliveryInjectionId('')
     setShowBasket(false)
     onClose()
-  }, [basket, state.products, addProduct, updateProduct, showToast, onClose])
+  }, [basket, state.products, addProduct, updateProduct, showToast, onClose, deliveryInjectionId])
 
   // ==========================================================
   // VOICE INPUT
@@ -880,7 +901,21 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                     </div>
                   ))}
                 </div>
-                <div className="p-3 pt-0">
+                <div className="p-3 pt-0 space-y-2">
+                  {activeInjections.length > 0 && (
+                    <select
+                      value={deliveryInjectionId}
+                      onChange={(e) => setDeliveryInjectionId(e.target.value)}
+                      className="w-full h-11 bg-white/5 text-white text-sm rounded-sm px-3 border border-white/10"
+                    >
+                      <option value="" className="text-ink">Not funded by tracked capital</option>
+                      {activeInjections.map((i) => (
+                        <option key={i.id} value={i.id} className="text-ink">
+                          Bought with: {i.lender_name || i.source}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button onClick={saveAllToStock} className="w-full h-12 bg-accent-green rounded-sm font-display text-sm text-white uppercase tracking-wider flex items-center justify-center gap-2">
                     <Check size={18} strokeWidth={2.5} />
                     SAVE ALL TO STOCK

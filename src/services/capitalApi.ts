@@ -323,9 +323,11 @@ export async function fetchInjectionStockSummary(injectionId: string): Promise<I
     .eq('user_id', uid)
   if (batchesError) throw batchesError
 
+  // batch_consumptions has no product_id — it reaches a product via batch_id ->
+  // stock_batches.product_id. Embed that relation to attribute realized profit.
   const { data: cons, error: consError } = await supabase
     .from('batch_consumptions')
-    .select('product_id, qty, profit')
+    .select('qty, profit, stock_batches(product_id)')
     .eq('injection_id', injectionId)
     .eq('user_id', uid)
   if (consError) throw consError
@@ -355,11 +357,14 @@ export async function fetchInjectionStockSummary(injectionId: string): Promise<I
     total_cost: b.total_cost,
   }))
 
-  const consLites = (cons as any[] || []).map(c => ({
-    product_id: c.product_id,
-    qty: c.qty,
-    profit: c.profit,
-  }))
+  const consLites = (cons as any[] || [])
+    .map(c => ({
+      // Embedded relation may come back as an object or a single-element array.
+      product_id: Array.isArray(c.stock_batches) ? c.stock_batches[0]?.product_id : c.stock_batches?.product_id,
+      qty: c.qty,
+      profit: c.profit,
+    }))
+    .filter(c => c.product_id) // drop untracked oversell rows (no batch)
 
   return summarizeInjectionStock(batchLites, consLites, sellingPriceById)
 }

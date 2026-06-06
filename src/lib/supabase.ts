@@ -120,6 +120,40 @@ export interface BatchConsumption {
   created_at: string
 }
 
+export type CapitalSource = 'microfinance' | 'personal' | 'family_friends' | 'investment' | 'other'
+export type RiskTier = 'on_track' | 'watch' | 'at_risk'
+
+export interface CapitalInjection {
+  id: string
+  user_id: string
+  source: CapitalSource
+  lender_name: string | null
+  principal: number
+  interest_amount: number
+  total_repayable: number
+  amount_repaid: number
+  injection_date: string
+  payback_months: number
+  installment_count: number
+  status: 'active' | 'repaid' | 'closed'
+  risk_tier: RiskTier
+  risk_alerted: boolean
+  notes: string | null
+  created_at: string
+}
+
+export interface RepaymentInstallment {
+  id: string
+  user_id: string
+  injection_id: string
+  seq: number
+  due_date: string
+  amount_due: number
+  amount_paid: number
+  paid_at: string | null
+  status: 'due' | 'paid' | 'overdue'
+}
+
 export interface BusinessProfile {
   id: string
   user_id: string

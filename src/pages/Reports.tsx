@@ -6,6 +6,7 @@ import { formatCurrency, getProfitForPeriod } from '@/lib/data'
 import { generateLoanDocument } from '@/lib/pdfGenerator'
 import MazeShader from '@/components/MazeShader'
 import ProductIcon from '@/components/ProductIcon'
+import CapitalReportSection from '@/components/CapitalReportSection'
 
 type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
@@ -441,6 +442,9 @@ export default function Reports() {
               </button>
             </div>
           </motion.div>
+
+          {/* Capital & Loans — period-aware recovery + risk */}
+          <CapitalReportSection cutoff={cutoff} periodLabel={periodLabels[period]} />
         </div>
       </div>
     </div>

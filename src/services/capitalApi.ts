@@ -98,14 +98,18 @@ export async function fetchConsumptions(injectionId: string): Promise<{ created_
 
 // Recovered profit for several injections at once (for the list view). Returns a
 // map injectionId -> profit.
-export async function fetchRecoveredProfitMap(injectionIds: string[]): Promise<Record<string, number>> {
+// Recovered profit per injection. Pass sinceIso to restrict to a period (e.g. the
+// last week/month); omit it for lifetime recovery.
+export async function fetchRecoveredProfitMap(injectionIds: string[], sinceIso?: string): Promise<Record<string, number>> {
   const uid = await uidOrThrow()
   if (injectionIds.length === 0) return {}
-  const { data, error } = await supabase
+  let query = supabase
     .from('batch_consumptions')
     .select('injection_id, profit')
     .in('injection_id', injectionIds)
     .eq('user_id', uid)
+  if (sinceIso) query = query.gte('created_at', sinceIso)
+  const { data, error } = await query
   if (error) throw error
   const map: Record<string, number> = {}
   for (const r of (data as { injection_id: string; profit: number }[]) || []) {

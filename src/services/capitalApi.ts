@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { CapitalInjection, RepaymentInstallment, CapitalSource } from '@/lib/supabase'
-import { generateInstallments, computeRisk } from '@/lib/capitalRisk'
+import { generateInstallments, generateInterestOnlyInstallments, computeRisk } from '@/lib/capitalRisk'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -36,6 +36,7 @@ export async function createInjection(input: {
   injection_date: string
   payback_months: number
   installment_count: number
+  repayment_type: 'equal' | 'interest_only'
   notes: string | null
 }): Promise<CapitalInjection> {
   const uid = await uidOrThrow()
@@ -50,8 +51,10 @@ export async function createInjection(input: {
   const injection = data as CapitalInjection
 
   // Generate the schedule.
-  const rows = generateInstallments(total_repayable, input.installment_count, input.injection_date)
-    .map((r) => ({ ...r, user_id: uid, injection_id: injection.id }))
+  const generated = input.repayment_type === 'interest_only'
+    ? generateInterestOnlyInstallments(input.principal, input.interest_amount, input.installment_count, input.injection_date)
+    : generateInstallments(total_repayable, input.installment_count, input.injection_date)
+  const rows = generated.map((r) => ({ ...r, user_id: uid, injection_id: injection.id }))
   const { error: insErr } = await supabase.from('repayment_installments').insert(rows)
   if (insErr) throw insErr
 
@@ -74,6 +77,7 @@ export async function updateInjection(id: string, updates: {
   principal?: number
   interest_amount?: number
   payback_months?: number
+  repayment_type?: 'equal' | 'interest_only'
 }): Promise<void> {
   const uid = await uidOrThrow()
   
@@ -85,6 +89,7 @@ export async function updateInjection(id: string, updates: {
   const newPrincipal = updates.principal ?? injection.principal
   const newInterest = updates.interest_amount ?? injection.interest_amount
   const newMonths = updates.payback_months ?? injection.payback_months
+  const newType = updates.repayment_type ?? injection.repayment_type
   const total_repayable = Math.round((newPrincipal + newInterest) * 100) / 100
 
   const { error } = await supabase
@@ -102,10 +107,13 @@ export async function updateInjection(id: string, updates: {
   // If financial parameters changed, regenerate the future schedule?
   // For simplicity, if these core params change, we recreate the schedule
   // but keep the `amount_paid` intact. 
-  if (updates.principal !== undefined || updates.interest_amount !== undefined || updates.payback_months !== undefined) {
+  if (updates.principal !== undefined || updates.interest_amount !== undefined || updates.payback_months !== undefined || updates.repayment_type !== undefined) {
     await supabase.from('repayment_installments').delete().eq('injection_id', id).eq('user_id', uid)
-    const rows = generateInstallments(total_repayable, newMonths, injection.injection_date)
-      .map((r) => ({ 
+    const generated = newType === 'interest_only'
+      ? generateInterestOnlyInstallments(newPrincipal, newInterest, newMonths, injection.injection_date)
+      : generateInstallments(total_repayable, newMonths, injection.injection_date)
+    const rows = generated
+      .map((r) => ({
         ...r, 
         user_id: uid, 
         injection_id: injection.id, 

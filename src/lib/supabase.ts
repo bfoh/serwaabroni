@@ -95,6 +95,31 @@ export interface Customer {
   created_at: string
 }
 
+export interface StockBatch {
+  id: string
+  user_id: string
+  injection_id: string | null
+  product_id: string
+  qty_purchased: number
+  qty_remaining: number
+  unit_cost: number
+  total_cost: number
+  purchased_at: string
+}
+
+export interface BatchConsumption {
+  id: string
+  user_id: string
+  sale_id: string
+  batch_id: string | null
+  injection_id: string | null
+  qty: number
+  unit_cost: number
+  unit_price: number
+  profit: number
+  created_at: string
+}
+
 export interface BusinessProfile {
   id: string
   user_id: string

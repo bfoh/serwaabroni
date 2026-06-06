@@ -202,7 +202,7 @@ interface StoreContextType {
   t: (key: string) => string
   refreshData: () => Promise<void>
   // Supabase-synced actions
-  addProduct: (product: Omit<Product, 'user_id'>) => Promise<void>
+  addProduct: (product: Omit<Product, 'user_id'>, injectionId?: string | null) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   removeProduct: (id: string) => Promise<void>
   addSale: (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => Promise<void>
@@ -419,10 +419,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // SUPABASE-SYNCED CRUD — ALL MULTI-TENANT
   // ==========================================================
 
-  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>) => {
+  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>, injectionId?: string | null) => {
     try {
       const inserted = await insertProduct(product)
       dispatch({ type: 'ADD_PRODUCT', product: inserted })
+      // Create the opening stock batch so the product's sales are costed and
+      // traceable (FIFO). Optionally tag it to the capital injection that funded it.
+      if ((inserted.quantity || 0) > 0) {
+        try {
+          const { receiveStock } = await import('@/services/batchApi')
+          await receiveStock({
+            productId: inserted.id,
+            qty: inserted.quantity,
+            unitCost: inserted.cost_price,
+            injectionId: injectionId || null,
+            purchasedAt: inserted.created_at,
+          })
+        } catch {
+          /* offline or error — batch can be reconciled later; product already added */
+        }
+      }
       const code = inserted.barcode || inserted.qr_code
       if (code && state.businessProfile?.catalog_contribute !== false) {
         void contributeCatalog(code, inserted.name, null, inserted.category, inserted.unit)

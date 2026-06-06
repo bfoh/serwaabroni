@@ -14,6 +14,7 @@ export default function Inventory() {
   const [editQty, setEditQty] = useState(0)
   const [restockUnitCost, setRestockUnitCost] = useState('')
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
+  const [addProductInjectionId, setAddProductInjectionId] = useState<string>('')
   const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [addingProduct, setAddingProduct] = useState(false)
 
@@ -103,10 +104,11 @@ export default function Inventory() {
         barcode: null,
         qr_code: null,
         created_at: new Date().toISOString(),
-      })
+      }, addProductInjectionId || null)
       showToast(t('product_added') || 'Product added!', 'success')
       setShowAddProduct(false)
       setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries' })
+      setAddProductInjectionId('')
     } catch {
       showToast('Failed to add product', 'error')
     } finally {
@@ -664,6 +666,24 @@ export default function Inventory() {
                       ))}
                     </div>
                   </div>
+
+                  {activeInjections.length > 0 && (
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">BOUGHT WITH CAPITAL</label>
+                      <select
+                        value={addProductInjectionId}
+                        onChange={(e) => setAddProductInjectionId(e.target.value)}
+                        className="w-full harsh-border rounded-sm px-3 py-2 text-sm"
+                      >
+                        <option value="">Not funded by tracked capital</option>
+                        {activeInjections.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.lender_name || i.source}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Projected profit preview */}
                   {newProduct.cost_price && newProduct.selling_price && (

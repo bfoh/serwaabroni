@@ -12,6 +12,9 @@ export default function Inventory() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
+  const [restockUnitCost, setRestockUnitCost] = useState('')
+  const [restockInjectionId, setRestockInjectionId] = useState<string>('')
+  const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [addingProduct, setAddingProduct] = useState(false)
 
   // Inline edit state
@@ -48,6 +51,17 @@ export default function Inventory() {
       }
     }
   }, [state.products.length, dispatch])
+
+  // Load active capital injections so restock can be tagged to its funding source.
+  useEffect(() => {
+    import('@/services/capitalApi').then(({ fetchInjections }) =>
+      fetchInjections().then((list) =>
+        setActiveInjections(
+          list.filter((i) => i.status !== 'repaid').map((i) => ({ id: i.id, lender_name: i.lender_name, source: i.source }))
+        )
+      ).catch(() => {})
+    )
+  }, [])
 
   const filteredProducts = state.products.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -105,6 +119,7 @@ export default function Inventory() {
     if (!product) return
     setEditingProduct(productId)
     setEditQty(0)
+    setRestockUnitCost(String(product.cost_price))
   }
 
   const handleSaveRestock = async () => {
@@ -113,12 +128,24 @@ export default function Inventory() {
       setEditingProduct(null)
       return
     }
+    const unitCost = parseFloat(restockUnitCost) || product.cost_price
     const newQty = product.quantity + editQty
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
+    // Optimistic cache bump.
     dispatch({ type: 'UPDATE_PRODUCT', product: updated })
     updateProduct(product.id, { quantity: newQty }).catch(() => {})
+    // Create the costed batch (online; offline restock still bumps the cache above).
+    try {
+      const { receiveStock } = await import('@/services/batchApi')
+      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null })
+    } catch {
+      /* offline or error — cache already bumped; batch can be reconciled later */
+    }
     showToast(`Restocked ${editQty} ${product.unit}(s)`, 'success')
     setEditingProduct(null)
+    setEditQty(0)
+    setRestockUnitCost('')
+    setRestockInjectionId('')
   }
 
   const handleOpenEdit = (productId: string) => {
@@ -417,6 +444,28 @@ export default function Inventory() {
                         <X size={16} strokeWidth={2.5} />
                       </button>
                     </div>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={restockUnitCost}
+                      onChange={(e) => setRestockUnitCost(e.target.value)}
+                      placeholder="Unit cost (GHS)"
+                      className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-3"
+                    />
+                    {activeInjections.length > 0 && (
+                      <select
+                        value={restockInjectionId}
+                        onChange={(e) => setRestockInjectionId(e.target.value)}
+                        className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-2"
+                      >
+                        <option value="">Not funded by tracked capital</option>
+                        {activeInjections.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            Bought with: {i.lender_name || i.source}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 ) : (
                   <div className="flex border-t border-ink/10">

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -15,6 +16,7 @@ const colorFor = (tab: DebtTab) =>
 
 export default function Debts() {
   const { state, dispatch, showToast, t, addDebt, updateDebt } = useStore()
+  const navigate = useNavigate()
   const [activeDebtTab, setActiveDebtTab] = useState<DebtTab>('owed')
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
@@ -266,6 +268,12 @@ export default function Debts() {
             }`}
           >
             {t('i_owe')} ({owingDebts.length})
+          </button>
+          <button
+            onClick={() => navigate('/capital')}
+            className="flex-1 py-2.5 font-display text-sm uppercase tracking-wider text-muted-text transition-colors"
+          >
+            Capital →
           </button>
         </div>
       </header>

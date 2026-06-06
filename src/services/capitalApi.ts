@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { CapitalInjection, RepaymentInstallment, CapitalSource } from '@/lib/supabase'
-import { generateInstallments } from '@/lib/capitalRisk'
+import { generateInstallments, computeRisk } from '@/lib/capitalRisk'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -193,6 +193,40 @@ export async function recordInstallmentPayment(injectionId: string, amount: numb
       .from('capital_injections')
       .update({ amount_repaid: newRepaid, status })
       .eq('id', injectionId).eq('user_id', uid)
+  }
+}
+
+export interface CapitalSummary {
+  outstanding: number
+  recovered: number
+  atRiskCount: number
+  activeCount: number
+}
+
+export async function fetchCapitalSummary(): Promise<CapitalSummary> {
+  const injections = await fetchInjections()
+  const active = injections.filter((i) => i.status !== 'repaid')
+  const recoveredMap = await fetchRecoveredProfitMap(active.map((i) => i.id))
+  const now = new Date().toISOString()
+
+  let atRiskCount = 0
+  for (const i of active) {
+    const risk = computeRisk({
+      injectionDate: i.injection_date,
+      paybackMonths: i.payback_months,
+      totalRepayable: i.total_repayable,
+      recoveredProfit: recoveredMap[i.id] || 0,
+      installments: [],
+      now,
+    })
+    if (risk.tier === 'at_risk') atRiskCount++
+  }
+
+  return {
+    outstanding: active.reduce((s, i) => s + (i.total_repayable - i.amount_repaid), 0),
+    recovered: Object.values(recoveredMap).reduce((s, v) => s + v, 0),
+    atRiskCount,
+    activeCount: active.length,
   }
 }
 

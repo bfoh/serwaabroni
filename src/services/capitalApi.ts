@@ -83,6 +83,19 @@ export async function fetchRecoveredProfit(injectionId: string): Promise<number>
   return (data || []).reduce((s, r: { profit: number }) => s + (r.profit || 0), 0)
 }
 
+// Raw consumption rows for the weekly report (shape matches ReportConsumption).
+export async function fetchConsumptions(injectionId: string): Promise<{ created_at: string; qty: number; profit: number }[]> {
+  const uid = await uidOrThrow()
+  const { data, error } = await supabase
+    .from('batch_consumptions')
+    .select('created_at, qty, profit')
+    .eq('injection_id', injectionId)
+    .eq('user_id', uid)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data as { created_at: string; qty: number; profit: number }[]) || []
+}
+
 // Recovered profit for several injections at once (for the list view). Returns a
 // map injectionId -> profit.
 export async function fetchRecoveredProfitMap(injectionIds: string[]): Promise<Record<string, number>> {

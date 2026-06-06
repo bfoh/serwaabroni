@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/data'
 import {
-  fetchInjection, fetchInstallments, fetchRecoveredProfit, fetchFundedStock,
+  fetchInjection, fetchInstallments, fetchRecoveredProfit, fetchFundedStock, fetchConsumptions,
   recordInstallmentPayment, updateInjectionRisk, type FundedStockRow,
 } from '@/services/capitalApi'
 import { computeRisk } from '@/lib/capitalRisk'
+import { buildWeeklyReport, type WeeklyReportRow } from '@/lib/capitalReport'
 import type { CapitalInjection, RepaymentInstallment, RiskTier } from '@/lib/supabase'
 
 const TIER: Record<RiskTier, { dot: string; label: string; cls: string }> = {
@@ -22,15 +23,17 @@ export default function InjectionDetail() {
   const [installments, setInstallments] = useState<RepaymentInstallment[]>([])
   const [recovered, setRecovered] = useState(0)
   const [stock, setStock] = useState<FundedStockRow[]>([])
+  const [report, setReport] = useState<WeeklyReportRow[]>([])
   const [payInput, setPayInput] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
     if (!id) return
-    const [injection, insts, prof, funded] = await Promise.all([
-      fetchInjection(id), fetchInstallments(id), fetchRecoveredProfit(id), fetchFundedStock(id),
+    const [injection, insts, prof, funded, cons] = await Promise.all([
+      fetchInjection(id), fetchInstallments(id), fetchRecoveredProfit(id), fetchFundedStock(id), fetchConsumptions(id),
     ])
     setInj(injection); setInstallments(insts); setRecovered(prof); setStock(funded)
+    setReport(buildWeeklyReport(cons))
   }
   useEffect(() => { load() }, [id])
 
@@ -155,6 +158,27 @@ export default function InjectionDetail() {
               <span>{formatCurrency(stock.reduce((s, x) => s + x.turnover, 0))} · profit {formatCurrency(stock.reduce((s, x) => s + x.profit, 0))}</span>
             </div>
           )}
+        </div>
+
+        {/* 5. Weekly report */}
+        <div className="bg-white harsh-border rounded-sm p-4">
+          <p className="text-sm font-medium mb-2">Weekly report</p>
+          {report.length === 0 && <p className="text-xs text-muted-text">No sales of this stock yet.</p>}
+          <div className="space-y-1 text-sm">
+            {report.map((w) => (
+              <div key={w.week} className="flex justify-between">
+                <span>{w.week.replace('-W', ' · week ')} — {w.units} sold</span>
+                <span className="text-muted-text">
+                  {formatCurrency(w.profit)} profit
+                  {w.deltaVsPrev !== 0 && (
+                    <span className={w.deltaVsPrev > 0 ? 'text-accent-green' : 'text-accent-red'}>
+                      {' '}{w.deltaVsPrev > 0 ? '↑' : '↓'}{formatCurrency(Math.abs(w.deltaVsPrev))}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

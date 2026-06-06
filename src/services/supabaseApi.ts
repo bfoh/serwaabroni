@@ -4,6 +4,7 @@
 // ============================================
 import { supabase } from '@/lib/supabase'
 import type { Product, Sale, Debt, Expense, Customer } from '@/lib/supabase'
+import { consumeForSale } from '@/services/batchApi'
 
 // Get the real Supabase user UUID — this is the tenant key
 async function getCurrentUserId(): Promise<string | null> {
@@ -110,22 +111,31 @@ export async function recordSale(
 
   if (saleError) throw saleError
 
-  // Reduce stock — scoped to user's own product
+  // Consume batches FIFO → writes consumption rows + decrements batch stock.
+  // The sale's profit becomes the true sum of the draws (batch-accurate).
   if (productId) {
+    const result = await consumeForSale({
+      saleId: saleData.id,
+      productId,
+      quantity: quantitySold,
+      unitPrice: sale.unit_price,
+    })
+    const trueProfit = result.draws.reduce((s, d) => s + d.profit, 0)
+      + (result.untrackedQty > 0 ? Math.round(sale.unit_price * result.untrackedQty * 100) / 100 : 0)
+    // Keep products.quantity cache in step with the batches.
     const { data: product } = await supabase
-      .from('products')
-      .select('quantity')
-      .eq('id', productId)
-      .eq('user_id', uid)
-      .single()
-
+      .from('products').select('quantity').eq('id', productId).eq('user_id', uid).single()
     if (product) {
-      const newQty = Math.max(0, (product.quantity || 0) - quantitySold)
       await supabase
         .from('products')
-        .update({ quantity: newQty })
-        .eq('id', productId)
-        .eq('user_id', uid)
+        .update({ quantity: Math.max(0, (product.quantity || 0) - quantitySold) })
+        .eq('id', productId).eq('user_id', uid)
+    }
+    if (trueProfit !== saleData.profit) {
+      const { data: fixed } = await supabase
+        .from('sales').update({ profit: trueProfit }).eq('id', saleData.id).eq('user_id', uid)
+        .select().single()
+      if (fixed) return fixed as Sale
     }
   }
 
@@ -150,27 +160,37 @@ export async function recordSaleBatch(
 
   if (saleError) throw saleError
 
-  // Reduce stock per product — scoped to user's own products
+  // Map each inserted sale row to its product so we can attribute its profit.
+  const inserted = (saleData as Sale[]) || []
   for (const { productId, qty } of items) {
     if (!productId) continue
-    const { data: product } = await supabase
-      .from('products')
-      .select('quantity')
-      .eq('id', productId)
-      .eq('user_id', uid)
-      .single()
+    const saleRow = inserted.find((s) => s.product_id === productId)
+    if (!saleRow) continue
 
+    const result = await consumeForSale({
+      saleId: saleRow.id,
+      productId,
+      quantity: qty,
+      unitPrice: saleRow.unit_price,
+    })
+    const trueProfit = result.draws.reduce((s, d) => s + d.profit, 0)
+      + (result.untrackedQty > 0 ? Math.round(saleRow.unit_price * result.untrackedQty * 100) / 100 : 0)
+
+    const { data: product } = await supabase
+      .from('products').select('quantity').eq('id', productId).eq('user_id', uid).single()
     if (product) {
-      const newQty = Math.max(0, (product.quantity || 0) - qty)
       await supabase
         .from('products')
-        .update({ quantity: newQty })
-        .eq('id', productId)
-        .eq('user_id', uid)
+        .update({ quantity: Math.max(0, (product.quantity || 0) - qty) })
+        .eq('id', productId).eq('user_id', uid)
+    }
+    if (trueProfit !== saleRow.profit) {
+      await supabase.from('sales').update({ profit: trueProfit }).eq('id', saleRow.id).eq('user_id', uid)
+      saleRow.profit = trueProfit
     }
   }
 
-  return (saleData as Sale[]) || []
+  return inserted
 }
 
 // Delete all sale rows of one Sales-History entry, restore the sold stock, and

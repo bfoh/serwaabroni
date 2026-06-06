@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send } from 'lucide-react'
+import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
@@ -15,13 +15,17 @@ const colorFor = (tab: DebtTab) =>
     : { amount: 'text-accent-red', avatar: 'bg-accent-red', bar: 'bg-accent-red', mark: 'text-accent-red' }
 
 export default function Debts() {
-  const { state, dispatch, showToast, t, addDebt, updateDebt } = useStore()
+  const { state, dispatch, showToast, t, addDebt, updateDebt, removeDebt } = useStore()
   const navigate = useNavigate()
   const [activeDebtTab, setActiveDebtTab] = useState<DebtTab>('owed')
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
   const [paymentInput, setPaymentInput] = useState('')
+  const [paymentInput, setPaymentInput] = useState('')
   const [saving, setSaving] = useState(false)
+  
+  const [editingDebtId, setEditingDebtId] = useState<string | null>(null)
+  const [editingPayment, setEditingPayment] = useState<{ debtId: string, index: number, amount: number } | null>(null)
 
   const [newDebt, setNewDebt] = useState({
     person_name: '',
@@ -49,9 +53,22 @@ export default function Debts() {
 
     setSaving(true)
 
+    setSaving(true)
+
     try {
-      await addDebt({
-        id: uid(),
+      if (editingDebtId) {
+        await updateDebt(editingDebtId, {
+          person_name: newDebt.person_name,
+          phone: newDebt.phone || null,
+          amount: parseFloat(newDebt.amount),
+          description: newDebt.description || null,
+          type: newDebt.type,
+          due_date: newDebt.due_date || null,
+        })
+        showToast('Debt updated!', 'success')
+      } else {
+        await addDebt({
+          id: uid(),
         person_name: newDebt.person_name,
         phone: newDebt.phone || null,
         amount: parseFloat(newDebt.amount),
@@ -62,10 +79,13 @@ export default function Debts() {
         due_date: newDebt.due_date || null,
         is_paid: false,
         paid_at: null,
+        paid_at: null,
         created_at: new Date().toISOString(),
       })
-      showToast('Debt recorded!', 'success')
+        showToast('Debt recorded!', 'success')
+      }
       setShowAddDebt(false)
+      setEditingDebtId(null)
       setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '' })
     } catch {
       showToast('Failed to save debt', 'error')
@@ -106,6 +126,92 @@ export default function Debts() {
       showToast(fullyPaid ? `${debt.person_name} marked as paid!` : t('payment_recorded'), 'success')
     } catch {
       showToast('Failed to record payment', 'error')
+    }
+  }
+
+  const handleDeleteDebt = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm('Are you sure you want to delete this debt?')) {
+      await removeDebt(id)
+    }
+  }
+
+  const handleEditDebtClick = (debt: Debt, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingDebtId(debt.id)
+    setNewDebt({
+      person_name: debt.person_name,
+      phone: debt.phone || '',
+      amount: String(debt.amount),
+      description: debt.description || '',
+      type: debt.type,
+      due_date: debt.due_date || '',
+    })
+    setShowAddDebt(true)
+  }
+
+  const handleDeletePayment = async (debt: Debt, index: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to delete this payment?')) return
+    
+    const p = debt.payments![index]
+    const newPayments = [...debt.payments!]
+    newPayments.splice(index, 1)
+    
+    const newPaid = Math.max(0, (debt.amount_paid || 0) - p.amount)
+    const fullyPaid = newPaid >= debt.amount - 0.001
+    
+    try {
+      await updateDebt(debt.id, {
+        amount_paid: newPaid,
+        payments: newPayments,
+        is_paid: fullyPaid,
+        paid_at: fullyPaid ? debt.paid_at : null,
+      })
+      if (debt.type === 'owed') {
+        dispatch({ type: 'SET_BALANCE', value: state.balance - p.amount })
+        dispatch({ type: 'SET_PENDING_DEBTS', value: state.pendingDebts + p.amount })
+      }
+      showToast('Payment deleted', 'success')
+    } catch {
+      showToast('Failed to delete payment', 'error')
+    }
+  }
+  
+  const handleEditPaymentClick = (debt: Debt, index: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingPayment({ debtId: debt.id, index, amount: debt.payments![index].amount })
+  }
+
+  const submitEditPayment = async () => {
+    if (!editingPayment) return
+    const debt = state.debts.find(d => d.id === editingPayment.debtId)
+    if (!debt) return
+    
+    const oldP = debt.payments![editingPayment.index]
+    const diff = editingPayment.amount - oldP.amount
+    
+    const newPayments = [...debt.payments!]
+    newPayments[editingPayment.index] = { ...oldP, amount: editingPayment.amount }
+    
+    const newPaid = Math.max(0, (debt.amount_paid || 0) + diff)
+    const fullyPaid = newPaid >= debt.amount - 0.001
+
+    try {
+      await updateDebt(debt.id, {
+        amount_paid: fullyPaid ? debt.amount : newPaid,
+        payments: newPayments,
+        is_paid: fullyPaid,
+        paid_at: fullyPaid ? new Date().toISOString() : null,
+      })
+      if (debt.type === 'owed') {
+        dispatch({ type: 'SET_BALANCE', value: state.balance + diff })
+        dispatch({ type: 'SET_PENDING_DEBTS', value: Math.max(0, state.pendingDebts - diff) })
+      }
+      showToast('Payment updated', 'success')
+      setEditingPayment(null)
+    } catch {
+      showToast('Failed to update payment', 'error')
     }
   }
 
@@ -186,6 +292,10 @@ export default function Debts() {
               </div>
             </div>
             <div className="text-right">
+              <div className="flex justify-end gap-1.5 mb-1 opacity-60">
+                <button onClick={(e) => handleEditDebtClick(debt, e)} className="p-1 hover:bg-ink/10 rounded-sm" aria-label="Edit debt"><Pencil size={12} /></button>
+                <button onClick={(e) => handleDeleteDebt(debt.id, e)} className="p-1 hover:bg-accent-red/10 text-accent-red rounded-sm" aria-label="Delete debt"><Trash2 size={12} /></button>
+              </div>
               <p className={`font-display text-lg ${c.amount}`}>{formatCurrency(remaining)}</p>
               {paid > 0 && (
                 <p className="text-[10px] text-muted-text">{t('paid_label')} {formatCurrency(paid)} {t('of_total')} {formatCurrency(debt.amount)}</p>
@@ -205,9 +315,13 @@ export default function Debts() {
               <p className="text-[10px] text-muted-text uppercase tracking-wider mb-1.5">{t('payment_history')}</p>
               <div className="space-y-1">
                 {debt.payments.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
+                  <div key={i} className="flex items-center justify-between text-xs py-0.5">
                     <span className="text-muted-text flex items-center gap-1"><CalendarDays size={10} />{formatDate(p.date)}</span>
-                    <span className={`font-display ${c.amount}`}>{formatCurrency(p.amount)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-display ${c.amount}`}>{formatCurrency(p.amount)}</span>
+                      <button onClick={(e) => handleEditPaymentClick(debt, i, e)} className="text-gray-400 hover:text-ink"><Pencil size={10}/></button>
+                      <button onClick={(e) => handleDeletePayment(debt, i, e)} className="text-gray-400 hover:text-accent-red"><Trash2 size={10}/></button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -232,7 +346,11 @@ export default function Debts() {
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-2xl text-ink uppercase tracking-tight">{t('debts')}</h1>
           <button
-            onClick={() => setShowAddDebt(true)}
+            onClick={() => {
+              setEditingDebtId(null)
+              setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '' })
+              setShowAddDebt(true)
+            }}
             className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
           >
             <Plus size={20} strokeWidth={2.5} className="text-white" />
@@ -367,7 +485,37 @@ export default function Debts() {
         )}
       </AnimatePresence>
 
-      {/* Add Debt Sheet */}
+      {/* Edit Payment Sheet */}
+      <AnimatePresence>
+        {editingPayment && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setEditingPayment(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }} animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }} exit={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm p-6 z-50 w-[85vw] max-w-sm">
+              <p className="font-display text-lg text-ink uppercase text-center mb-4">Edit Payment</p>
+
+              <label className="text-micro text-muted-text mb-1.5 block">{t('payment_amount')} (GH₵)</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                autoFocus
+                value={editingPayment.amount || ''}
+                onChange={(e) => setEditingPayment({ ...editingPayment, amount: parseFloat(e.target.value) || 0 })}
+                onKeyDown={(e) => e.key === 'Enter' && submitEditPayment()}
+                placeholder="0.00"
+                className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body mb-5"
+              />
+
+              <div className="flex gap-3">
+                <button onClick={() => setEditingPayment(null)} className="btn-tactile flex-1 h-12 bg-warm-gray font-display text-sm uppercase tracking-wider rounded-sm">{t('cancel')}</button>
+                <button onClick={submitEditPayment} className="btn-tactile flex-1 h-12 bg-ink font-display text-sm uppercase tracking-wider text-white rounded-sm">Save</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Add/Edit Debt Sheet */}
       <AnimatePresence>
         {showAddDebt && (
           <>
@@ -375,7 +523,7 @@ export default function Debts() {
             <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 300 }}
               className="fixed bottom-0 left-0 right-0 bg-sand rounded-t-2xl z-50 shadow-sheet flex flex-col" style={{ maxHeight: '92dvh' }}>
               <div className="flex items-center justify-between px-5 py-4 border-b-2 border-ink flex-shrink-0">
-                <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{t('debts')}</h2>
+                <h2 className="font-display text-2xl text-ink uppercase tracking-tight">{editingDebtId ? 'Edit Debt' : t('debts')}</h2>
                 <button onClick={() => setShowAddDebt(false)} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
                   <X size={20} strokeWidth={2.5} className="text-ink" />
                 </button>

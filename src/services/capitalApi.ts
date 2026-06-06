@@ -58,6 +58,69 @@ export async function createInjection(input: {
   return injection
 }
 
+export async function deleteInjection(id: string): Promise<void> {
+  const uid = await uidOrThrow()
+  // supabase RLS cascades deleting repayment_installments if defined, 
+  // but if not, we should probably delete the installments first just in case.
+  await supabase.from('repayment_installments').delete().eq('injection_id', id).eq('user_id', uid)
+  
+  const { error } = await supabase.from('capital_injections').delete().eq('id', id).eq('user_id', uid)
+  if (error) throw error
+}
+
+export async function updateInjection(id: string, updates: {
+  source?: CapitalSource
+  lender_name?: string | null
+  principal?: number
+  interest_amount?: number
+  payback_months?: number
+}): Promise<void> {
+  const uid = await uidOrThrow()
+  
+  // If principal or interest changed, we need to recalculate total_repayable
+  // and possibly regenerate the schedule if payback_months also changed.
+  const injection = await fetchInjection(id)
+  if (!injection) throw new Error('Injection not found')
+
+  const newPrincipal = updates.principal ?? injection.principal
+  const newInterest = updates.interest_amount ?? injection.interest_amount
+  const newMonths = updates.payback_months ?? injection.payback_months
+  const total_repayable = Math.round((newPrincipal + newInterest) * 100) / 100
+
+  const { error } = await supabase
+    .from('capital_injections')
+    .update({ 
+      ...updates, 
+      total_repayable,
+      amount_repaid: Math.min(injection.amount_repaid, total_repayable) // Cap repaid at new total
+    })
+    .eq('id', id)
+    .eq('user_id', uid)
+  
+  if (error) throw error
+
+  // If financial parameters changed, regenerate the future schedule?
+  // For simplicity, if these core params change, we recreate the schedule
+  // but keep the `amount_paid` intact. 
+  if (updates.principal !== undefined || updates.interest_amount !== undefined || updates.payback_months !== undefined) {
+    await supabase.from('repayment_installments').delete().eq('injection_id', id).eq('user_id', uid)
+    const rows = generateInstallments(total_repayable, newMonths, injection.injection_date)
+      .map((r) => ({ ...r, user_id: uid, injection_id: injection.id }))
+    
+    // Distribute existing amount_repaid across the new schedule
+    let leftToApply = injection.amount_repaid
+    for (const r of rows) {
+      if (leftToApply <= 0) break
+      const pay = Math.min(leftToApply, r.amount_due)
+      r.amount_paid = pay
+      r.status = pay >= r.amount_due ? 'paid' : 'due'
+      leftToApply -= pay
+    }
+
+    await supabase.from('repayment_installments').insert(rows)
+  }
+}
+
 export async function fetchInstallments(injectionId: string): Promise<RepaymentInstallment[]> {
   const uid = await uidOrThrow()
   const { data, error } = await supabase

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { createInjection } from '@/services/capitalApi'
-import type { CapitalSource } from '@/lib/supabase'
+import { createInjection, updateInjection } from '@/services/capitalApi'
+import type { CapitalSource, CapitalInjection } from '@/lib/supabase'
 
 const SOURCES: { value: CapitalSource; label: string }[] = [
   { value: 'microfinance', label: 'Microfinance loan' },
@@ -12,14 +12,26 @@ const SOURCES: { value: CapitalSource; label: string }[] = [
 ]
 
 export default function CreateInjectionSheet({
-  open, onClose, onCreated,
-}: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  open, onClose, onCreated, injection = null
+}: { open: boolean; onClose: () => void; onCreated: () => void; injection?: CapitalInjection | null }) {
   const [source, setSource] = useState<CapitalSource>('microfinance')
   const [lender, setLender] = useState('')
   const [principal, setPrincipal] = useState('')
   const [interest, setInterest] = useState('')
   const [months, setMonths] = useState('3')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (injection && open) {
+      setSource(injection.source)
+      setLender(injection.lender_name || '')
+      setPrincipal(injection.principal.toString())
+      setInterest(injection.interest_amount.toString())
+      setMonths(injection.payback_months.toString())
+    } else if (open && !injection) {
+      reset()
+    }
+  }, [injection, open])
 
   const reset = () => {
     setSource('microfinance'); setLender(''); setPrincipal(''); setInterest(''); setMonths('3')
@@ -31,16 +43,26 @@ export default function CreateInjectionSheet({
     const m = Math.max(1, parseInt(months) || 3)
     setSaving(true)
     try {
-      await createInjection({
-        source,
-        lender_name: lender.trim() || null,
-        principal: p,
-        interest_amount: parseFloat(interest) || 0,
-        injection_date: new Date().toISOString(),
-        payback_months: m,
-        installment_count: m, // monthly installments, one per month
-        notes: null,
-      })
+      if (injection) {
+        await updateInjection(injection.id, {
+          source,
+          lender_name: lender.trim() || null,
+          principal: p,
+          interest_amount: parseFloat(interest) || 0,
+          payback_months: m,
+        })
+      } else {
+        await createInjection({
+          source,
+          lender_name: lender.trim() || null,
+          principal: p,
+          interest_amount: parseFloat(interest) || 0,
+          injection_date: new Date().toISOString(),
+          payback_months: m,
+          installment_count: m, // monthly installments, one per month
+          notes: null,
+        })
+      }
       reset()
       onCreated()
       onClose()
@@ -54,7 +76,7 @@ export default function CreateInjectionSheet({
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl">
-        <SheetHeader><SheetTitle>Add capital</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>{injection ? 'Edit capital' : 'Add capital'}</SheetTitle></SheetHeader>
         <div className="space-y-3 p-4">
           <div className="grid grid-cols-2 gap-2">
             {SOURCES.map((s) => (
@@ -94,7 +116,7 @@ export default function CreateInjectionSheet({
           )}
           <button onClick={submit} disabled={saving || !principal}
             className="w-full bg-accent-red text-white rounded-sm py-3 text-sm font-medium disabled:opacity-50">
-            {saving ? 'Saving…' : 'Add capital & build schedule'}
+            {saving ? 'Saving…' : (injection ? 'Save changes' : 'Add capital & build schedule')}
           </button>
         </div>
       </SheetContent>

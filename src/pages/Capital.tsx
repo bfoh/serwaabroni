@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ArrowLeft, Plus, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Plus, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/data'
-import { fetchInjections, fetchRecoveredProfitMap } from '@/services/capitalApi'
+import { fetchInjections, fetchRecoveredProfitMap, deleteInjection } from '@/services/capitalApi'
 import { computeRisk } from '@/lib/capitalRisk'
 import type { CapitalInjection, RiskTier } from '@/lib/supabase'
 import CreateInjectionSheet from '@/components/CreateInjectionSheet'
@@ -26,7 +26,24 @@ export default function Capital() {
   const [injections, setInjections] = useState<CapitalInjection[]>([])
   const [recovered, setRecovered] = useState<Record<string, number>>({})
   const [showCreate, setShowCreate] = useState(false)
+  const [editingInjection, setEditingInjection] = useState<CapitalInjection | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to delete this capital injection? This cannot be undone.')) return
+    try {
+      await deleteInjection(id)
+      load()
+    } catch (err) {
+      alert('Failed to delete injection')
+    }
+  }
+
+  const handleEdit = (inj: CapitalInjection, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingInjection(inj)
+  }
 
   const load = async () => {
     setLoading(true)
@@ -80,19 +97,29 @@ export default function Capital() {
           const style = TIER_STYLE[tier]
           const pct = Math.min(100, Math.round((recoveredProfit / inj.total_repayable) * 100))
           return (
-            <button
+            <div
               key={inj.id}
               onClick={() => navigate(`/capital/${inj.id}`)}
-              className="w-full text-left bg-white harsh-border rounded-sm p-4"
+              className="w-full text-left bg-white harsh-border rounded-sm p-4 relative cursor-pointer"
             >
               <div className="flex justify-between items-start">
-                <div>
+                <div className="pr-16">
                   <p className="text-xs text-muted-text">{SOURCE_LABEL[inj.source]}</p>
                   <p className="font-medium text-sm">{inj.lender_name || formatCurrency(inj.principal)}</p>
                 </div>
-                <span className={`text-[11px] font-medium px-2 py-1 rounded-full ${style.cls}`}>
-                  {style.dot} {inj.status === 'repaid' ? 'Repaid' : style.label}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    <button onClick={(e) => handleEdit(inj, e)} className="p-1.5 text-gray-400 hover:text-ink transition-colors bg-gray-50 rounded-sm" aria-label="Edit capital">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={(e) => handleDelete(inj.id, e)} className="p-1.5 text-gray-400 hover:text-accent-red transition-colors bg-gray-50 rounded-sm" aria-label="Delete capital">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <span className={`text-[11px] font-medium px-2 py-1 rounded-full ${style.cls}`}>
+                    {style.dot} {inj.status === 'repaid' ? 'Repaid' : style.label}
+                  </span>
+                </div>
               </div>
               <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-accent-green" style={{ width: `${pct}%` }} />
@@ -106,7 +133,7 @@ export default function Capital() {
                   <AlertTriangle size={12} /> Behind — tap to see what to do
                 </p>
               )}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -120,6 +147,7 @@ export default function Capital() {
       </button>
 
       <CreateInjectionSheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+      <CreateInjectionSheet open={!!editingInjection} onClose={() => setEditingInjection(null)} onCreated={load} injection={editingInjection} />
     </div>
   )
 }

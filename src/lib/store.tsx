@@ -12,7 +12,7 @@ import { checkAuth, signOut as supabaseSignOut, updateProfile } from '@/services
 import {
   fetchProducts, insertProduct, updateProductDb, deleteProductDb,
   fetchSales, recordSale, recordSaleBatch, deleteSaleGroup,
-  fetchDebts, insertDebt, updateDebtDb,
+  fetchDebts, insertDebt, updateDebtDb, deleteDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
   fetchBusinessProfile, upsertBusinessProfile,
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
@@ -75,6 +75,7 @@ type Action =
   | { type: 'UPDATE_DEBT'; debt: Debt }
   | { type: 'SET_EXPENSES'; expenses: Expense[] }
   | { type: 'ADD_EXPENSE'; expense: Expense }
+  | { type: 'DELETE_DEBT'; id: string }
   | { type: 'DELETE_EXPENSE'; id: string }
   | { type: 'SET_CUSTOMERS'; customers: Customer[] }
   | { type: 'ADD_CUSTOMER'; customer: Customer }
@@ -154,6 +155,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_DEBTS': return { ...state, debts: action.debts }
     case 'ADD_DEBT': return { ...state, debts: [action.debt, ...state.debts] }
     case 'UPDATE_DEBT': return { ...state, debts: state.debts.map((d) => (d.id === action.debt.id ? action.debt : d)) }
+    case 'DELETE_DEBT': return { ...state, debts: state.debts.filter((d) => d.id !== action.id) }
     case 'SET_EXPENSES': return { ...state, expenses: action.expenses }
     case 'ADD_EXPENSE': return { ...state, expenses: [action.expense, ...state.expenses] }
     case 'DELETE_EXPENSE': return { ...state, expenses: state.expenses.filter((e) => e.id !== action.id) }
@@ -210,6 +212,7 @@ interface StoreContextType {
   deleteSale: (group: SaleGroup) => Promise<void>
   addDebt: (debt: Omit<Debt, 'user_id'>) => Promise<void>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
+  removeDebt: (id: string) => Promise<void>
   addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
   removeExpense: (id: string) => Promise<void>
   addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
@@ -596,6 +599,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state])
 
+  const removeDebt = useCallback(async (id: string) => {
+    try { await deleteDebtDb(id) } catch { /* may not exist in db */ }
+    dispatch({ type: 'DELETE_DEBT', id })
+    // We should also recalculate pending debts or balance if necessary, but we can just let
+    // the UI rely on derived state or manually update the state since they do that.
+    showToast('Debt deleted', 'success')
+  }, [showToast])
+
   const addExpense = useCallback(async (expense: Omit<Expense, 'user_id'>) => {
     try {
       const inserted = await insertExpense(expense)
@@ -685,7 +696,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       state, dispatch, setTab, showToast, t, refreshData,
       addProduct, updateProduct, removeProduct,
-      addSale, addSaleBatch, deleteSale, addDebt, updateDebt, addExpense, removeExpense,
+      addSale, addSaleBatch, deleteSale, addDebt, updateDebt, removeDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
       updateBusinessProfile,
       resetAllData,

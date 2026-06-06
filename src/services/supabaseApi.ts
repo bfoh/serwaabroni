@@ -308,6 +308,20 @@ export async function updateDebtDb(id: string, updates: Partial<Debt>): Promise<
   return data as Debt
 }
 
+export async function deleteDebtDb(id: string): Promise<void> {
+  const uid = await getCurrentUserId()
+  if (!uid) throw new Error('Not authenticated')
+
+  const { error } = await supabase
+    .from('debts')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', uid)
+
+  if (error) throw error
+}
+
+
 // ============================================
 // EXPENSES (scoped to user)
 // ============================================

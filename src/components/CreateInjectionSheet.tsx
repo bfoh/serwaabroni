@@ -67,14 +67,26 @@ export default function CreateInjectionSheet({
               </button>
             ))}
           </div>
-          <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" placeholder="Lender / source name (optional)"
-            value={lender} onChange={(e) => setLender(e.target.value)} />
-          <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="decimal"
-            placeholder="Principal received (GHS)" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
-          <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="decimal"
-            placeholder="Interest amount (GHS, optional)" value={interest} onChange={(e) => setInterest(e.target.value)} />
-          <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="numeric"
-            placeholder="Payback months" value={months} onChange={(e) => setMonths(e.target.value)} />
+          <div className="space-y-1">
+            <label className="text-xs text-ink font-medium">Lender / source name (optional)</label>
+            <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" placeholder="e.g. Sinapi Aba"
+              value={lender} onChange={(e) => setLender(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-ink font-medium">Principal received (GHS)</label>
+            <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="decimal"
+              placeholder="0.00" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-ink font-medium">Interest amount (GHS, optional)</label>
+            <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="decimal"
+              placeholder="0.00" value={interest} onChange={(e) => setInterest(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-ink font-medium">Payback months</label>
+            <input className="w-full harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="numeric"
+              placeholder="3" value={months} onChange={(e) => setMonths(e.target.value)} />
+          </div>
           {total > 0 && (
             <p className="text-xs text-muted-text">
               Total to repay: <strong>GHS {total.toFixed(2)}</strong> over {months || '3'} monthly installments.

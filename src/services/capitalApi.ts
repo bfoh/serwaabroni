@@ -105,7 +105,13 @@ export async function updateInjection(id: string, updates: {
   if (updates.principal !== undefined || updates.interest_amount !== undefined || updates.payback_months !== undefined) {
     await supabase.from('repayment_installments').delete().eq('injection_id', id).eq('user_id', uid)
     const rows = generateInstallments(total_repayable, newMonths, injection.injection_date)
-      .map((r) => ({ ...r, user_id: uid, injection_id: injection.id }))
+      .map((r) => ({ 
+        ...r, 
+        user_id: uid, 
+        injection_id: injection.id, 
+        amount_paid: 0, 
+        status: 'due' as 'due' | 'paid' | 'overdue' 
+      }))
     
     // Distribute existing amount_repaid across the new schedule
     let leftToApply = injection.amount_repaid

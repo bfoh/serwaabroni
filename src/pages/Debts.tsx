@@ -21,7 +21,6 @@ export default function Debts() {
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
   const [paymentInput, setPaymentInput] = useState('')
-  const [paymentInput, setPaymentInput] = useState('')
   const [saving, setSaving] = useState(false)
   
   const [editingDebtId, setEditingDebtId] = useState<string | null>(null)
@@ -53,8 +52,6 @@ export default function Debts() {
 
     setSaving(true)
 
-    setSaving(true)
-
     try {
       if (editingDebtId) {
         await updateDebt(editingDebtId, {
@@ -78,7 +75,6 @@ export default function Debts() {
         type: newDebt.type,
         due_date: newDebt.due_date || null,
         is_paid: false,
-        paid_at: null,
         paid_at: null,
         created_at: new Date().toISOString(),
       })

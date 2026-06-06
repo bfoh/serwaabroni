@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User } from 'lucide-react'
+import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User, Landmark } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import Odometer from '@/components/Odometer'
@@ -18,6 +19,7 @@ interface DashboardProps {
 
 export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
   const { state, t, setTab } = useStore()
+  const navigate = useNavigate()
   const [showScanner, setShowScanner] = useState(false)
   const [receiptSales, setReceiptSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
@@ -114,6 +116,13 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Customers</span>
+        </button>
+        <button
+          onClick={() => navigate('/capital')}
+          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
+        >
+          <Landmark size={24} className="text-ink" />
+          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Capital<br/>& Loans</span>
         </button>
       </section>
 

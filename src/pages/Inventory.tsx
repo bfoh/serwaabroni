@@ -13,6 +13,8 @@ export default function Inventory() {
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
   const [restockUnitCost, setRestockUnitCost] = useState('')
+  const [restockInjectionId, setRestockInjectionId] = useState<string>('')
+  const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [addingProduct, setAddingProduct] = useState(false)
 
   // Inline edit state
@@ -49,6 +51,17 @@ export default function Inventory() {
       }
     }
   }, [state.products.length, dispatch])
+
+  // Load active capital injections so restock can be tagged to its funding source.
+  useEffect(() => {
+    import('@/services/capitalApi').then(({ fetchInjections }) =>
+      fetchInjections().then((list) =>
+        setActiveInjections(
+          list.filter((i) => i.status !== 'repaid').map((i) => ({ id: i.id, lender_name: i.lender_name, source: i.source }))
+        )
+      ).catch(() => {})
+    )
+  }, [])
 
   const filteredProducts = state.products.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -124,7 +137,7 @@ export default function Inventory() {
     // Create the costed batch (online; offline restock still bumps the cache above).
     try {
       const { receiveStock } = await import('@/services/batchApi')
-      await receiveStock({ productId: product.id, qty: editQty, unitCost })
+      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null })
     } catch {
       /* offline or error — cache already bumped; batch can be reconciled later */
     }
@@ -132,6 +145,7 @@ export default function Inventory() {
     setEditingProduct(null)
     setEditQty(0)
     setRestockUnitCost('')
+    setRestockInjectionId('')
   }
 
   const handleOpenEdit = (productId: string) => {
@@ -438,6 +452,20 @@ export default function Inventory() {
                       placeholder="Unit cost (GHS)"
                       className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-3"
                     />
+                    {activeInjections.length > 0 && (
+                      <select
+                        value={restockInjectionId}
+                        onChange={(e) => setRestockInjectionId(e.target.value)}
+                        className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-2"
+                      >
+                        <option value="">Not funded by tracked capital</option>
+                        {activeInjections.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            Bought with: {i.lender_name || i.source}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 ) : (
                   <div className="flex border-t border-ink/10">

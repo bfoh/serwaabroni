@@ -4,7 +4,7 @@
 // ============================================
 import { supabase } from '@/lib/supabase'
 import type { Product, Sale, Debt, Expense, Customer } from '@/lib/supabase'
-import { consumeForSale } from '@/services/batchApi'
+import { consumeForSale, reverseConsumptions } from '@/services/batchApi'
 
 // Get the real Supabase user UUID — this is the tenant key
 async function getCurrentUserId(): Promise<string | null> {
@@ -213,6 +213,9 @@ export async function deleteSaleGroup(sales: Sale[]): Promise<void> {
   if (!deleted || deleted.length === 0) {
     throw new Error('Sale not deleted — no rows affected (check RLS delete policy).')
   }
+
+  // Restore batch stock and drop this sale's consumption rows.
+  await reverseConsumptions(ids)
 
   // Restore stock: sum the deleted quantity per product, add it back.
   // One read for all products, writes in parallel — avoids N serial round-trips.

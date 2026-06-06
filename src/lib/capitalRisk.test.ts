@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateInstallments, computeRisk, type RiskInput } from './capitalRisk'
+import { generateInstallments, generateInterestOnlyInstallments, computeRisk, type RiskInput } from './capitalRisk'
 
 describe('generateInstallments', () => {
   it('splits the total into equal monthly amounts', () => {
@@ -22,6 +22,49 @@ describe('generateInstallments', () => {
     expect(rows[0].due_date.slice(0, 10)).toBe('2026-02-15')
     expect(rows[1].due_date.slice(0, 10)).toBe('2026-03-15')
     expect(rows[2].due_date.slice(0, 10)).toBe('2026-04-15')
+  })
+})
+
+describe('generateInterestOnlyInstallments', () => {
+  it('pays equal interest each month and the principal on the final month', () => {
+    const rows = generateInterestOnlyInstallments(100000, 18000, 6, '2026-01-06T00:00:00.000Z')
+    expect(rows).toHaveLength(6)
+    expect(rows.map((r) => r.seq)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(rows.slice(0, 5).map((r) => r.amount_due)).toEqual([3000, 3000, 3000, 3000, 3000])
+    expect(rows[5].amount_due).toBe(103000)
+  })
+
+  it('sums exactly to principal + interest', () => {
+    const rows = generateInterestOnlyInstallments(100000, 18000, 6, '2026-01-06T00:00:00.000Z')
+    const sum = rows.reduce((s, r) => s + r.amount_due, 0)
+    expect(sum).toBeCloseTo(118000, 2)
+  })
+
+  it('puts the interest rounding remainder on the final month, then adds principal', () => {
+    // 1000 interest / 3 = 333.33; remainder 0.01 lands on the last interest slice.
+    const rows = generateInterestOnlyInstallments(9000, 1000, 3, '2026-01-15T00:00:00.000Z')
+    expect(rows[0].amount_due).toBe(333.33)
+    expect(rows[1].amount_due).toBe(333.33)
+    expect(rows[2].amount_due).toBeCloseTo(9333.34, 2) // 333.34 interest + 9000 principal
+    const sum = rows.reduce((s, r) => s + r.amount_due, 0)
+    expect(sum).toBeCloseTo(10000, 2)
+  })
+
+  it('spaces due dates one month apart from the injection date', () => {
+    const rows = generateInterestOnlyInstallments(100000, 18000, 3, '2026-01-15T00:00:00.000Z')
+    expect(rows[0].due_date.slice(0, 10)).toBe('2026-02-15')
+    expect(rows[2].due_date.slice(0, 10)).toBe('2026-04-15')
+  })
+
+  it('handles zero interest as a pure balloon', () => {
+    const rows = generateInterestOnlyInstallments(5000, 0, 3, '2026-01-15T00:00:00.000Z')
+    expect(rows.map((r) => r.amount_due)).toEqual([0, 0, 5000])
+  })
+
+  it('handles a single installment as principal + interest', () => {
+    const rows = generateInterestOnlyInstallments(5000, 500, 1, '2026-01-15T00:00:00.000Z')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].amount_due).toBe(5500)
   })
 })
 

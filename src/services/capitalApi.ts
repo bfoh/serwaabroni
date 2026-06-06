@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import type { CapitalInjection, RepaymentInstallment, CapitalSource } from '@/lib/supabase'
 import { generateInstallments, generateInterestOnlyInstallments, computeRisk } from '@/lib/capitalRisk'
+import { summarizeInjectionStock } from '@/lib/capitalStock'
+import type { InjectionStockSummary } from '@/lib/capitalStock'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -309,6 +311,57 @@ export async function fetchCapitalSummary(): Promise<CapitalSummary> {
     atRiskCount,
     activeCount: active.length,
   }
+}
+
+export async function fetchInjectionStockSummary(injectionId: string): Promise<InjectionStockSummary> {
+  const uid = await uidOrThrow()
+  
+  const { data: batches, error: batchesError } = await supabase
+    .from('stock_batches')
+    .select('product_id, qty_purchased, qty_remaining, unit_cost, total_cost, products(name)')
+    .eq('injection_id', injectionId)
+    .eq('user_id', uid)
+  if (batchesError) throw batchesError
+
+  const { data: cons, error: consError } = await supabase
+    .from('batch_consumptions')
+    .select('product_id, qty, profit')
+    .eq('injection_id', injectionId)
+    .eq('user_id', uid)
+  if (consError) throw consError
+
+  const productIds = Array.from(new Set((batches as any[] || []).map(b => b.product_id)))
+  const sellingPriceById: Record<string, number> = {}
+
+  if (productIds.length > 0) {
+    const { data: prods, error: prodError } = await supabase
+      .from('products')
+      .select('id, selling_price')
+      .in('id', productIds)
+      .eq('user_id', uid)
+    if (prodError) throw prodError
+    
+    for (const p of prods || []) {
+      sellingPriceById[p.id] = p.selling_price
+    }
+  }
+
+  const batchLites = (batches as any[] || []).map(b => ({
+    product_id: b.product_id,
+    product_name: b.products?.name ?? 'Unknown',
+    qty_purchased: b.qty_purchased,
+    qty_remaining: b.qty_remaining,
+    unit_cost: b.unit_cost,
+    total_cost: b.total_cost,
+  }))
+
+  const consLites = (cons as any[] || []).map(c => ({
+    product_id: c.product_id,
+    qty: c.qty,
+    profit: c.profit,
+  }))
+
+  return summarizeInjectionStock(batchLites, consLites, sellingPriceById)
 }
 
 export async function updateInjectionRisk(injectionId: string, tier: string): Promise<void> {

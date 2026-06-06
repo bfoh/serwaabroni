@@ -4,6 +4,7 @@ import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle } f
 import { useStore } from '@/lib/store'
 import { formatCurrency, uid, loadData } from '@/lib/data'
 import type { Product } from '@/lib/supabase'
+import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
 
 export default function Inventory() {
@@ -16,6 +17,9 @@ export default function Inventory() {
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
   const [addProductInjectionId, setAddProductInjectionId] = useState<string>('')
   const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
+  const [allInjections, setAllInjections] = useState<{ id: string; lender_name: string | null; source: string; status: string }[]>([])
+  const [filterInjectionId, setFilterInjectionId] = useState<string>('')
+  const [injectionSummary, setInjectionSummary] = useState<InjectionStockSummary | null>(null)
   const [addingProduct, setAddingProduct] = useState(false)
 
   // Inline edit state
@@ -56,23 +60,45 @@ export default function Inventory() {
   // Load active capital injections so restock can be tagged to its funding source.
   useEffect(() => {
     import('@/services/capitalApi').then(({ fetchInjections }) =>
-      fetchInjections().then((list) =>
+      fetchInjections().then((list) => {
+        setAllInjections(list.map(i => ({ id: i.id, lender_name: i.lender_name, source: i.source, status: i.status })))
         setActiveInjections(
           list.filter((i) => i.status !== 'repaid').map((i) => ({ id: i.id, lender_name: i.lender_name, source: i.source }))
         )
-      ).catch(() => {})
+      }).catch(() => {})
     )
   }, [])
 
-  const filteredProducts = state.products.filter((p) =>
+  useEffect(() => {
+    if (!filterInjectionId) {
+      setInjectionSummary(null)
+      return
+    }
+    setInjectionSummary(null) // Reset while loading
+    import('@/services/capitalApi').then(({ fetchInjectionStockSummary }) =>
+      fetchInjectionStockSummary(filterInjectionId).then(setInjectionSummary).catch(() => {})
+    )
+  }, [filterInjectionId])
+
+  const baseFilteredProducts = state.products.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const totalStockValue = state.products.reduce((s, p) => s + p.cost_price * p.quantity, 0)
-  const projectedProfit = state.products.reduce(
-    (s, p) => s + (p.selling_price - p.cost_price) * p.quantity,
-    0
-  )
+  const filteredProducts = filterInjectionId && injectionSummary
+    ? baseFilteredProducts.filter(p => injectionSummary.rows.some(r => r.product_id === p.id))
+    : baseFilteredProducts
+
+  const totalStockValue = filterInjectionId && injectionSummary 
+    ? injectionSummary.totalCost 
+    : state.products.reduce((s, p) => s + p.cost_price * p.quantity, 0)
+
+  const projectedProfit = filterInjectionId && injectionSummary 
+    ? injectionSummary.projectedProfit 
+    : state.products.reduce((s, p) => s + (p.selling_price - p.cost_price) * p.quantity, 0)
+
+  const itemsCount = filterInjectionId && injectionSummary
+    ? injectionSummary.rows.length
+    : state.products.length
 
   const handleAddProduct = async () => {
     if (!newProduct.name || !newProduct.cost_price || !newProduct.selling_price || !newProduct.quantity) {
@@ -250,18 +276,35 @@ export default function Inventory() {
         {/* Summary cards */}
         <div className="flex gap-2">
           <div className="flex-1 bg-ink rounded-sm px-3 py-2">
-            <p className="text-[10px] text-white/50 uppercase">{t('stock_value')}</p>
-            <p className="font-display text-sm text-white">{formatCurrency(totalStockValue)}</p>
+            <p className="text-[10px] text-white/50 uppercase">{filterInjectionId ? 'Cost (loan)' : t('stock_value')}</p>
+            <p className="font-display text-sm text-white">
+              {filterInjectionId && !injectionSummary ? '...' : formatCurrency(totalStockValue)}
+            </p>
           </div>
           <div className="flex-1 bg-accent-green rounded-sm px-3 py-2">
-            <p className="text-[10px] text-white/50 uppercase">{t('proj_profit')}</p>
-            <p className="font-display text-sm text-white">{formatCurrency(projectedProfit)}</p>
+            <p className="text-[10px] text-white/50 uppercase">{filterInjectionId ? 'Proj. profit' : t('proj_profit')}</p>
+            <p className="font-display text-sm text-white">
+              {filterInjectionId && !injectionSummary ? '...' : formatCurrency(projectedProfit)}
+            </p>
+            {filterInjectionId && injectionSummary && (
+              <p className="text-[9px] text-white/80 leading-none mt-1">
+                realized {formatCurrency(injectionSummary.realizedProfit)} · left {formatCurrency(injectionSummary.remainingProfit)}
+              </p>
+            )}
           </div>
           <div className="flex-1 bg-warm-gray rounded-sm px-3 py-2">
             <p className="text-[10px] text-ink/50 uppercase">{t('items')}</p>
-            <p className="font-display text-sm text-ink">{state.products.length}</p>
+            <p className="font-display text-sm text-ink">
+              {filterInjectionId && !injectionSummary ? '...' : itemsCount}
+            </p>
           </div>
         </div>
+
+        {filterInjectionId && injectionSummary && (
+          <p className="text-xs text-muted-text mt-2 mb-1">
+            Showing stock bought with {allInjections.find(i => i.id === filterInjectionId)?.lender_name || allInjections.find(i => i.id === filterInjectionId)?.source}
+          </p>
+        )}
 
         {/* Search */}
         <div className="relative mt-3">
@@ -277,6 +320,24 @@ export default function Inventory() {
             <Mic size={14} className="text-muted-text" />
           </button>
         </div>
+
+        {/* Filter Dropdown */}
+        {allInjections.length > 0 && (
+          <div className="mt-2">
+            <select
+              value={filterInjectionId}
+              onChange={(e) => setFilterInjectionId(e.target.value)}
+              className="w-full h-10 px-3 bg-white harsh-border rounded-sm text-sm font-body text-ink"
+            >
+              <option value="">All stock</option>
+              {allInjections.map(i => (
+                <option key={i.id} value={i.id}>
+                  {i.lender_name || i.source} {i.status === 'repaid' ? '(repaid)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </header>
 
       {/* Product List */}

@@ -335,22 +335,23 @@ export default function AddSaleSheet() {
                               <input
                                 type="number"
                                 inputMode="numeric"
-                                value={i.quantity}
+                                value={i.quantity || ''}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => {
-                                  const val = parseInt(e.target.value)
+                                  const raw = e.target.value
+                                  const val = raw === '' ? 0 : parseInt(raw)
                                   if (!isNaN(val)) {
                                     setCart((prev) =>
                                       prev.map((item) =>
                                         item.product_id === i.product_id
-                                          ? { ...item, quantity: Math.max(1, Math.min(item.stock, val)) }
+                                          ? { ...item, quantity: Math.min(item.stock, Math.max(0, val)) }
                                           : item
                                       )
                                     )
                                   }
                                 }}
-                                onBlur={(e) => {
-                                  const val = parseInt(e.target.value)
-                                  if (isNaN(val) || val < 1) {
+                                onBlur={() => {
+                                  if (!i.quantity || i.quantity < 1) {
                                     setCart((prev) =>
                                       prev.map((item) =>
                                         item.product_id === i.product_id

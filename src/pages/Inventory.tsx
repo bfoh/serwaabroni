@@ -489,14 +489,15 @@ export default function Inventory() {
                         <input
                           type="number"
                           inputMode="numeric"
-                          value={editQty}
+                          value={editQty || ''}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => {
-                            const val = parseInt(e.target.value)
+                            const raw = e.target.value
+                            const val = raw === '' ? 0 : parseInt(raw)
                             if (!isNaN(val)) setEditQty(Math.max(0, val))
                           }}
-                          onBlur={(e) => {
-                            const val = parseInt(e.target.value)
-                            if (isNaN(val) || val < 0) setEditQty(0)
+                          onBlur={() => {
+                            if (editQty < 0) setEditQty(0)
                           }}
                           className="font-display text-xl w-14 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />

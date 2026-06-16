@@ -775,14 +775,15 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   <input
                     type="number"
                     inputMode="numeric"
-                    value={manualQty}
+                    value={manualQty || ''}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      if (!isNaN(val)) setManualQty(Math.max(1, val))
+                      const raw = e.target.value
+                      const val = raw === '' ? 0 : parseInt(raw)
+                      if (!isNaN(val)) setManualQty(Math.max(0, val))
                     }}
-                    onBlur={(e) => {
-                      const val = parseInt(e.target.value)
-                      if (isNaN(val) || val < 1) setManualQty(1)
+                    onBlur={() => {
+                      if (!manualQty || manualQty < 1) setManualQty(1)
                     }}
                     className="font-display text-3xl text-white w-20 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-white/30 rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
@@ -1009,14 +1010,15 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                       <input
                         type="number"
                         inputMode="numeric"
-                        value={currentItem.quantity}
+                        value={currentItem.quantity || ''}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value)
-                          if (!isNaN(val)) setCurrentItem((prev) => prev ? { ...prev, quantity: Math.max(1, val) } : null)
+                          const raw = e.target.value
+                          const val = raw === '' ? 0 : parseInt(raw)
+                          if (!isNaN(val)) setCurrentItem((prev) => prev ? { ...prev, quantity: Math.max(0, val) } : null)
                         }}
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value)
-                          if (isNaN(val) || val < 1) setCurrentItem((prev) => prev ? { ...prev, quantity: 1 } : null)
+                        onBlur={() => {
+                          if (!currentItem.quantity || currentItem.quantity < 1) setCurrentItem((prev) => prev ? { ...prev, quantity: 1 } : null)
                         }}
                         className="font-display text-3xl text-ink w-20 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink/30 rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />

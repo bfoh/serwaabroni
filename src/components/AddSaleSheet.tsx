@@ -332,7 +332,36 @@ export default function AddSaleSheet() {
                               >
                                 <Minus size={16} strokeWidth={2.5} className="text-ink" />
                               </button>
-                              <span className="font-display text-xl text-ink w-7 text-center">{i.quantity}</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                value={i.quantity}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value)
+                                  if (!isNaN(val)) {
+                                    setCart((prev) =>
+                                      prev.map((item) =>
+                                        item.product_id === i.product_id
+                                          ? { ...item, quantity: Math.max(1, Math.min(item.stock, val)) }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const val = parseInt(e.target.value)
+                                  if (isNaN(val) || val < 1) {
+                                    setCart((prev) =>
+                                      prev.map((item) =>
+                                        item.product_id === i.product_id
+                                          ? { ...item, quantity: 1 }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                }}
+                                className="font-display text-xl text-ink w-12 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
                               <button
                                 onClick={() => changeQty(i.product_id, 1)}
                                 className="btn-tactile w-11 h-11 bg-warm-gray flex items-center justify-center rounded-sm"

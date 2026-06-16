@@ -772,7 +772,20 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   <button onClick={() => setManualQty((q) => Math.max(1, q - 1))} className="w-12 h-12 bg-white/10 rounded-sm flex items-center justify-center">
                     <Minus size={18} strokeWidth={2.5} className="text-white" />
                   </button>
-                  <span className="font-display text-3xl text-white w-16 text-center">{manualQty}</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={manualQty}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      if (!isNaN(val)) setManualQty(Math.max(1, val))
+                    }}
+                    onBlur={(e) => {
+                      const val = parseInt(e.target.value)
+                      if (isNaN(val) || val < 1) setManualQty(1)
+                    }}
+                    className="font-display text-3xl text-white w-20 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-white/30 rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
                   <button onClick={() => setManualQty((q) => q + 1)} className="w-12 h-12 bg-white/10 rounded-sm flex items-center justify-center">
                     <Plus size={18} strokeWidth={2.5} className="text-white" />
                   </button>
@@ -993,7 +1006,20 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                       <button onClick={() => setCurrentItem((prev) => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : null)} className="w-12 h-12 bg-warm-gray rounded-sm flex items-center justify-center">
                         <Minus size={18} strokeWidth={2.5} className="text-ink" />
                       </button>
-                      <span className="font-display text-3xl text-ink w-16 text-center">{currentItem.quantity}</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={currentItem.quantity}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value)
+                          if (!isNaN(val)) setCurrentItem((prev) => prev ? { ...prev, quantity: Math.max(1, val) } : null)
+                        }}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value)
+                          if (isNaN(val) || val < 1) setCurrentItem((prev) => prev ? { ...prev, quantity: 1 } : null)
+                        }}
+                        className="font-display text-3xl text-ink w-20 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink/30 rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
                       <button onClick={() => setCurrentItem((prev) => prev ? { ...prev, quantity: prev.quantity + 1 } : null)} className="w-12 h-12 bg-warm-gray rounded-sm flex items-center justify-center">
                         <Plus size={18} strokeWidth={2.5} className="text-ink" />
                       </button>

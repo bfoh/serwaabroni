@@ -94,13 +94,17 @@ export default function AddSaleSheet() {
   }
 
   const changeQty = (productId: string, delta: number) => {
-    setCart((prev) =>
-      prev.map((i) =>
+    setCart((prev) => {
+      const item = prev.find((i) => i.product_id === productId)
+      if (item && delta > 0 && item.quantity + delta > item.stock) {
+        showToast(`Only ${item.stock} in stock`, 'error')
+      }
+      return prev.map((i) =>
         i.product_id === productId
           ? { ...i, quantity: Math.max(1, Math.min(i.stock, i.quantity + delta)) }
           : i
       )
-    )
+    })
   }
 
   const removeFromCart = (productId: string) => {
@@ -341,6 +345,9 @@ export default function AddSaleSheet() {
                                   const raw = e.target.value
                                   const val = raw === '' ? 0 : parseInt(raw)
                                   if (!isNaN(val)) {
+                                    if (val > i.stock) {
+                                      showToast(`Only ${i.stock} in stock`, 'error')
+                                    }
                                     setCart((prev) =>
                                       prev.map((item) =>
                                         item.product_id === i.product_id

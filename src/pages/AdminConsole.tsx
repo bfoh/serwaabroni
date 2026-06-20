@@ -77,7 +77,7 @@ export default function AdminConsole() {
 
   if (drill) {
     return (
-      <div className="h-full w-full overflow-y-auto bg-sand p-4">
+      <div className="h-full w-full overflow-y-auto bg-sand px-4 pb-4 pt-[calc(env(safe-area-inset-top)_+_1rem)]">
         <button onClick={() => setDrill(null)}
           className="btn-tactile inline-flex items-center gap-1 text-xs text-muted-text mb-3">
           <ArrowLeft size={14} /> Back to tenants
@@ -109,7 +109,7 @@ export default function AdminConsole() {
   }
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-sand p-4 pb-24">
+    <div className="h-full w-full overflow-y-auto bg-sand px-4 pb-24 pt-[calc(env(safe-area-inset-top)_+_1rem)]">
       <div className="flex items-center gap-2 mb-4">
         <button onClick={() => navigate('/')}
           className="btn-tactile w-9 h-9 flex items-center justify-center rounded-sm bg-warm-gray">

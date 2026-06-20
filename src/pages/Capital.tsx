@@ -72,7 +72,7 @@ export default function Capital() {
 
   return (
     <div className="min-h-screen bg-light pb-40">
-      <header className="bg-ink text-white px-5 pt-6 pb-5">
+      <header className="bg-ink text-white px-5 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-5">
         <button onClick={() => navigate('/')} className="flex items-center gap-1 text-white/70 text-sm mb-3">
           <ArrowLeft size={16} /> Back
         </button>

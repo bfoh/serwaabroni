@@ -159,16 +159,32 @@ export async function fetchRecoveredProfit(injectionId: string): Promise<number>
 }
 
 // Raw consumption rows for the weekly report (shape matches ReportConsumption).
-export async function fetchConsumptions(injectionId: string): Promise<{ created_at: string; qty: number; profit: number }[]> {
+// Embeds the product name (via batch_id -> stock_batches.product_id -> products)
+// and unit_price so the report can list the individual sales behind each week.
+export async function fetchConsumptions(injectionId: string): Promise<{ created_at: string; qty: number; profit: number; product_name: string | null; unit_price: number }[]> {
   const uid = await uidOrThrow()
   const { data, error } = await supabase
     .from('batch_consumptions')
-    .select('created_at, qty, profit')
+    .select('created_at, qty, profit, unit_price, stock_batches(products(name))')
     .eq('injection_id', injectionId)
     .eq('user_id', uid)
     .order('created_at', { ascending: true })
   if (error) throw error
-  return (data as { created_at: string; qty: number; profit: number }[]) || []
+  // The embedded relation may arrive as an object or a single-element array.
+  type Row = { created_at: string; qty: number; profit: number; unit_price: number | null; stock_batches: unknown }
+  const pickName = (sb: unknown): string | null => {
+    const batch = Array.isArray(sb) ? sb[0] : sb
+    const prod = (batch as { products?: unknown } | null)?.products
+    const p = Array.isArray(prod) ? prod[0] : prod
+    return (p as { name?: string } | null)?.name ?? null
+  }
+  return ((data as Row[] | null) || []).map((r) => ({
+    created_at: r.created_at,
+    qty: r.qty,
+    profit: r.profit,
+    product_name: pickName(r.stock_batches),
+    unit_price: r.unit_price || 0,
+  }))
 }
 
 // Recovered profit per injection. Pass sinceIso to restrict to a period (credit

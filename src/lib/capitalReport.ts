@@ -2,6 +2,17 @@ export interface ReportConsumption {
   created_at: string
   qty: number
   profit: number
+  product_name?: string | null
+  unit_price?: number
+}
+
+// One underlying sale line that contributes to a week's total.
+export interface WeeklyReportLine {
+  date: string
+  productName: string
+  qty: number
+  turnover: number
+  profit: number
 }
 
 export interface WeeklyReportRow {
@@ -10,6 +21,7 @@ export interface WeeklyReportRow {
   units: number         // units of funded stock sold that week
   cumulative: number    // total recovered profit up to and including this week
   deltaVsPrev: number   // this week's profit minus the previous week's
+  lines: WeeklyReportLine[] // the individual sales behind this week, newest first
 }
 
 function round2(n: number): number {
@@ -33,12 +45,19 @@ export function isoWeekKey(iso: string): string {
 // Bucket consumptions into ISO weeks. Returns rows newest-week-first; cumulative
 // and deltaVsPrev are computed in chronological order then the list is reversed.
 export function buildWeeklyReport(consumptions: ReportConsumption[]): WeeklyReportRow[] {
-  const byWeek = new Map<string, { profit: number; units: number }>()
+  const byWeek = new Map<string, { profit: number; units: number; lines: WeeklyReportLine[] }>()
   for (const c of consumptions) {
     const key = isoWeekKey(c.created_at)
-    const agg = byWeek.get(key) || { profit: 0, units: 0 }
+    const agg = byWeek.get(key) || { profit: 0, units: 0, lines: [] }
     agg.profit += c.profit
     agg.units += c.qty
+    agg.lines.push({
+      date: c.created_at,
+      productName: c.product_name || 'Item',
+      qty: c.qty,
+      turnover: round2(c.qty * (c.unit_price || 0)),
+      profit: round2(c.profit),
+    })
     byWeek.set(key, agg)
   }
 
@@ -47,7 +66,7 @@ export function buildWeeklyReport(consumptions: ReportConsumption[]): WeeklyRepo
   let cumulative = 0
   let prevProfit = 0
   for (const week of weeksAsc) {
-    const { profit, units } = byWeek.get(week)!
+    const { profit, units, lines } = byWeek.get(week)!
     cumulative = round2(cumulative + profit)
     rows.push({
       week,
@@ -55,6 +74,7 @@ export function buildWeeklyReport(consumptions: ReportConsumption[]): WeeklyRepo
       units,
       cumulative,
       deltaVsPrev: round2(profit - prevProfit),
+      lines: lines.sort((a, b) => b.date.localeCompare(a.date)), // newest first within the week
     })
     prevProfit = profit
   }

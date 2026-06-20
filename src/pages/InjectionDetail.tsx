@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { ArrowLeft, AlertTriangle, Users } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/data'
+import { ArrowLeft, AlertTriangle, Users, ChevronRight } from 'lucide-react'
+import { formatCurrency, formatDate, formatTime } from '@/lib/data'
 import {
   fetchInjection, fetchInstallments, fetchRecoveredProfit, fetchFundedStock, fetchConsumptions,
   fetchInjectionReceivables, recordInstallmentPayment, updateInjectionRisk,
@@ -28,6 +28,9 @@ export default function InjectionDetail() {
   const [receivables, setReceivables] = useState<InjectionReceivable[]>([])
   const [payInput, setPayInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [openWeeks, setOpenWeeks] = useState<Record<string, boolean>>({})
+
+  const toggleWeek = (week: string) => setOpenWeeks((prev) => ({ ...prev, [week]: !prev[week] }))
 
   const load = async () => {
     if (!id) return
@@ -76,7 +79,7 @@ export default function InjectionDetail() {
 
   return (
     <div className="min-h-screen bg-light pb-12">
-      <header className="bg-ink text-white px-5 pt-6 pb-4">
+      <header className="bg-ink text-white px-5 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-4">
         <button onClick={() => navigate('/capital')} className="flex items-center gap-1 text-white/70 text-sm mb-3">
           <ArrowLeft size={16} /> Capital
         </button>
@@ -202,24 +205,53 @@ export default function InjectionDetail() {
           )
         })()}
 
-        {/* 5. Weekly report */}
+        {/* 5. Weekly report — each week expands to the sales behind it */}
         <div className="bg-white harsh-border rounded-sm p-4">
           <p className="text-sm font-medium mb-2">Weekly report</p>
           {report.length === 0 && <p className="text-xs text-muted-text">No sales of this stock yet.</p>}
-          <div className="space-y-1 text-sm">
-            {report.map((w) => (
-              <div key={w.week} className="flex justify-between">
-                <span>{w.week.replace('-W', ' · week ')} — {w.units} sold</span>
-                <span className="text-muted-text">
-                  {formatCurrency(w.profit)} profit
-                  {w.deltaVsPrev !== 0 && (
-                    <span className={w.deltaVsPrev > 0 ? 'text-accent-green' : 'text-accent-red'}>
-                      {' '}{w.deltaVsPrev > 0 ? '↑' : '↓'}{formatCurrency(Math.abs(w.deltaVsPrev))}
+          <div className="divide-y divide-gray-100">
+            {report.map((w) => {
+              const open = !!openWeeks[w.week]
+              return (
+                <div key={w.week} className="py-1">
+                  <button
+                    onClick={() => toggleWeek(w.week)}
+                    className="w-full flex items-center justify-between gap-2 text-sm py-1.5 text-left"
+                    aria-expanded={open}
+                  >
+                    <span className="flex items-center gap-1 min-w-0">
+                      <ChevronRight size={14} className={`shrink-0 text-muted-text transition-transform ${open ? 'rotate-90' : ''}`} />
+                      <span className="truncate">{w.week.replace('-W', ' · week ')} — {w.units} sold</span>
                     </span>
+                    <span className="text-muted-text shrink-0 text-right">
+                      {formatCurrency(w.profit)} profit
+                      {w.deltaVsPrev !== 0 && (
+                        <span className={w.deltaVsPrev > 0 ? 'text-accent-green' : 'text-accent-red'}>
+                          {' '}{w.deltaVsPrev > 0 ? '↑' : '↓'}{formatCurrency(Math.abs(w.deltaVsPrev))}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="pl-5 pb-2 pt-1 space-y-1">
+                      {w.lines.length === 0 && <p className="text-[11px] text-muted-text">No line detail.</p>}
+                      {w.lines.map((l, i) => (
+                        <div key={i} className="flex items-start justify-between gap-2 text-xs">
+                          <span className="min-w-0">
+                            <span className="text-ink">{l.qty}× {l.productName}</span>
+                            <span className="block text-[10px] text-muted-text">{formatDate(l.date)} · {formatTime(l.date)}</span>
+                          </span>
+                          <span className="shrink-0 text-right text-muted-text">
+                            {formatCurrency(l.turnover)}
+                            <span className="block text-accent-green">+{formatCurrency(l.profit)}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </span>
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

@@ -275,6 +275,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Real-time cash balances: recompute Cash in Hand / Bank straight from the
+  // ledger whenever any cash_movements row changes (from any screen). Keeps the
+  // Home hero in lock-step with the Cash Flow page.
+  useEffect(() => {
+    const uid = state.user?.id
+    if (!uid) return
+    let cancelled = false
+    const refreshBalances = async () => {
+      try {
+        const { fetchBalances } = await import('@/services/cashApi')
+        const bal = await fetchBalances()
+        if (!cancelled) {
+          dispatch({ type: 'SET_BALANCE', value: bal.cash })
+          dispatch({ type: 'SET_BANK_BALANCE', value: bal.bank })
+        }
+      } catch { /* ledger unavailable — leave current balances */ }
+    }
+    refreshBalances() // initial sync on login
+    const channel = supabase
+      .channel(`cash_movements:${uid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_movements', filter: `user_id=eq.${uid}` }, refreshBalances)
+      .subscribe()
+    return () => { cancelled = true; supabase.removeChannel(channel) }
+  }, [state.user?.id])
+
   // Auto-persist state to localStorage whenever core data changes
   useEffect(() => {
     if (state.dataLoading) return // don't persist during initial load

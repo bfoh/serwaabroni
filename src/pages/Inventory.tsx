@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, uid, loadData } from '@/lib/data'
-import type { Product } from '@/lib/supabase'
+import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
 
 export default function Inventory() {
-  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct } = useStore()
+  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
@@ -17,6 +17,8 @@ export default function Inventory() {
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
   const [restockPayFrom, setRestockPayFrom] = useState<'cash' | 'bank'>('cash')
   const [restockUnpaid, setRestockUnpaid] = useState(false)
+  const [supplierName, setSupplierName] = useState('')
+  const [supplierPhone, setSupplierPhone] = useState('')
   const [addProductInjectionId, setAddProductInjectionId] = useState<string>('')
   const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [allInjections, setAllInjections] = useState<{ id: string; lender_name: string | null; source: string; status: string }[]>([])
@@ -158,6 +160,10 @@ export default function Inventory() {
       setEditingProduct(null)
       return
     }
+    if (restockUnpaid && !supplierName.trim()) {
+      showToast('Supplier name required for supplier credit', 'error')
+      return
+    }
     const unitCost = parseFloat(restockUnitCost) || product.cost_price
     const newQty = product.quantity + editQty
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
@@ -171,13 +177,35 @@ export default function Inventory() {
     } catch {
       /* offline or error — cache already bumped; batch can be reconciled later */
     }
-    showToast(`Restocked ${editQty} ${product.unit}(s)`, 'success')
+    // Supplier credit → record what you owe the supplier as an "I owe them" debt.
+    if (restockUnpaid) {
+      const cost = Math.round(unitCost * editQty * 100) / 100
+      await addDebt({
+        id: uid(),
+        person_name: supplierName.trim(),
+        phone: supplierPhone || null,
+        amount: cost,
+        amount_paid: 0,
+        payments: [],
+        description: `Stock: ${product.name} (${editQty} ${product.unit})`,
+        type: 'owing',
+        due_date: null,
+        injection_id: null,
+        sale_group_id: null,
+        is_paid: false,
+        paid_at: null,
+        created_at: new Date().toISOString(),
+      } as Omit<Debt, 'user_id'>)
+    }
+    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${product.unit}(s)`, 'success')
     setEditingProduct(null)
     setEditQty(0)
     setRestockUnitCost('')
     setRestockInjectionId('')
     setRestockPayFrom('cash')
     setRestockUnpaid(false)
+    setSupplierName('')
+    setSupplierPhone('')
   }
 
   const handleOpenEdit = (productId: string) => {
@@ -559,6 +587,17 @@ export default function Inventory() {
                       className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${restockUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
                       {restockUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
                     </button>
+                    {restockUnpaid && (
+                      <div className="mt-2 space-y-2">
+                        <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)}
+                          placeholder="Supplier name (required)"
+                          className="block w-full min-w-0 max-w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                        <input type="tel" value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)}
+                          placeholder="Supplier phone (optional)"
+                          className="block w-full min-w-0 max-w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                        <p className="text-[10px] text-muted-text">Saved to “I owe them” for {formatCurrency((parseFloat(restockUnitCost) || 0) * editQty)}.</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex border-t border-ink/10">

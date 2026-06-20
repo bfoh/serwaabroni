@@ -6,6 +6,7 @@ import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
 import { fetchInjections } from '@/services/capitalApi'
+import { postMovement } from '@/services/cashApi'
 import type { Debt, DebtPayment, CapitalInjection } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
@@ -34,6 +35,7 @@ export default function Debts() {
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
   const [paymentInput, setPaymentInput] = useState('')
+  const [payAccount, setPayAccount] = useState<'cash' | 'bank'>('cash')
   const [saving, setSaving] = useState(false)
   
   const [editingDebtId, setEditingDebtId] = useState<string | null>(null)
@@ -148,6 +150,17 @@ export default function Debts() {
         dispatch({ type: 'SET_PENDING_DEBTS', value: Math.max(0, state.pendingDebts - pay) })
       }
 
+      // Ledger: an 'owed' debtor pays IN; an 'owing' debt you settle pays OUT.
+      try {
+        await postMovement({
+          account: payAccount,
+          direction: debt.type === 'owed' ? 'in' : 'out',
+          amount: pay,
+          category: debt.type === 'owed' ? 'debtor_payment' : 'debt_repayment',
+          ref_table: 'debts', ref_id: debt.id, note: debt.person_name,
+        })
+      } catch { /* best-effort */ }
+
       showToast(fullyPaid ? `${debt.person_name} marked as paid!` : t('payment_recorded'), 'success')
     } catch {
       showToast('Failed to record payment', 'error')
@@ -198,6 +211,16 @@ export default function Debts() {
         dispatch({ type: 'SET_BALANCE', value: state.balance - p.amount })
         dispatch({ type: 'SET_PENDING_DEBTS', value: state.pendingDebts + p.amount })
       }
+      // Ledger: remove the most recent movement for this debt matching the amount.
+      try {
+        const { fetchMovements } = await import('@/services/cashApi')
+        const rows = await fetchMovements(500)
+        const match = rows.find((m) => m.ref_table === 'debts' && m.ref_id === debt.id && Math.abs(m.amount - p.amount) < 0.001)
+        if (match) {
+          const { supabase } = await import('@/lib/supabase')
+          await supabase.from('cash_movements').delete().eq('id', match.id)
+        }
+      } catch { /* best-effort */ }
       showToast('Payment deleted', 'success')
     } catch {
       showToast('Failed to delete payment', 'error')
@@ -269,6 +292,7 @@ export default function Debts() {
 
   const openPayment = (debtId: string) => {
     setPaymentInput('')
+    setPayAccount('cash')
     setPaymentDebtId(debtId)
   }
 
@@ -490,6 +514,15 @@ export default function Debts() {
               <div className="flex justify-between text-xs text-muted-text mb-2">
                 <span>{t('remaining_label')}</span>
                 <span className="font-display text-ink">{formatCurrency(remainingAmount(paymentDebt))}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {(['cash','bank'] as const).map((a) => (
+                  <button key={a} type="button" onClick={() => setPayAccount(a)}
+                    className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${payAccount === a ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                    {a === 'cash' ? 'Cash' : 'Bank'}
+                  </button>
+                ))}
               </div>
 
               <label className="text-micro text-muted-text mb-1.5 block">{t('payment_amount')} (GH₵)</label>

@@ -36,6 +36,7 @@ export interface UserState {
 export interface AppState {
   activeTab: Tab
   balance: number
+  bankBalance: number
   todaySales: number
   todayProfit: number
   pendingDebts: number
@@ -62,6 +63,7 @@ export interface AppState {
 type Action =
   | { type: 'SET_TAB'; tab: Tab }
   | { type: 'SET_BALANCE'; value: number }
+  | { type: 'SET_BANK_BALANCE'; value: number }
   | { type: 'SET_TODAY_SALES'; value: number }
   | { type: 'SET_TODAY_PROFIT'; value: number }
   | { type: 'SET_PENDING_DEBTS'; value: number }
@@ -104,6 +106,7 @@ function getStoredLang(): Language {
 const initialState: AppState = {
   activeTab: 'home',
   balance: 0,
+  bankBalance: 0,
   todaySales: 0,
   todayProfit: 0,
   pendingDebts: 0,
@@ -144,6 +147,7 @@ function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_TAB': return { ...state, activeTab: action.tab }
     case 'SET_BALANCE': return { ...state, balance: action.value }
+    case 'SET_BANK_BALANCE': return { ...state, bankBalance: action.value }
     case 'SET_TODAY_SALES': return { ...state, todaySales: action.value }
     case 'SET_TODAY_PROFIT': return { ...state, todayProfit: action.value }
     case 'SET_PENDING_DEBTS': return { ...state, pendingDebts: action.value }
@@ -309,7 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const remoteSales = results[1].status === 'fulfilled' ? results[1].value : []
       const remoteDebts = results[2].status === 'fulfilled' ? results[2].value : []
       const remoteExpenses = results[3].status === 'fulfilled' ? results[3].value : []
-      const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0 }
+      const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0, cashInBank: 0 }
       const profile = results[5].status === 'fulfilled' ? results[5].value : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
 
@@ -340,7 +344,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         todayProfit: summary.todayProfit || 0,
         pendingDebts: summary.pendingDebts || 0,
       })
-      
+      dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank || 0 })
+
       if (profile) {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
 
@@ -488,6 +493,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary()
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
+      dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       showToast('Sale recorded!', 'success')
@@ -513,6 +519,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary()
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
+      dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       showToast('Sale recorded!', 'success')
@@ -545,6 +552,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ])
       dispatch({ type: 'SET_PRODUCTS', products })
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
+      dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       dispatch({ type: 'SET_CUSTOMERS', customers })

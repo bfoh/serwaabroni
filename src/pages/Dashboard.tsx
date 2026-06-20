@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
 import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -19,6 +20,7 @@ interface DashboardProps {
 
 export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
   const { state, t, setTab } = useStore()
+  const navigate = useNavigate()
   const [showScanner, setShowScanner] = useState(false)
   const [receiptSales, setReceiptSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
@@ -61,6 +63,12 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         <div className="text-center">
           <p className="text-micro text-muted-text mb-2">{t('total_cash')}</p>
           <Odometer value={state.balance} />
+          <button
+            onClick={() => navigate('/cash')}
+            className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-text active:opacity-60"
+          >
+            <span className="font-display text-ink">{formatCurrency(state.bankBalance)}</span> in bank →
+          </button>
         </div>
 
         {/* Sub stats */}

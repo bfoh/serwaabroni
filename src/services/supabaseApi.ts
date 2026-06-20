@@ -440,12 +440,13 @@ export async function getDashboardSummary(): Promise<{
   owingDebts: number
   creditSalesOutstanding: number
   cashInHand: number
+  cashInBank: number
   stockValue: number
   projectedProfit: number
 }> {
   const uid = await getCurrentUserId()
   if (!uid) {
-    return { totalSales: 0, totalProfit: 0, totalExpenses: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, owingDebts: 0, creditSalesOutstanding: 0, cashInHand: 0, stockValue: 0, projectedProfit: 0 }
+    return { totalSales: 0, totalProfit: 0, totalExpenses: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, owingDebts: 0, creditSalesOutstanding: 0, cashInHand: 0, cashInBank: 0, stockValue: 0, projectedProfit: 0 }
   }
 
   const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00'
@@ -477,11 +478,19 @@ export async function getDashboardSummary(): Promise<{
   const creditSalesOutstanding = debts
     .filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid && d.sale_group_id)
     .reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
-  const cashInHand = totalSales - totalExpenses - creditSalesOutstanding
+  // Cash now comes from the ledger (source of truth), not a derived formula.
+  let cashInHand = totalSales - totalExpenses - creditSalesOutstanding // fallback
+  let cashInBank = 0
+  try {
+    const { fetchBalances } = await import('@/services/cashApi')
+    const bal = await fetchBalances()
+    cashInHand = bal.cash
+    cashInBank = bal.bank
+  } catch { /* ledger unavailable (pre-migration / offline) — keep fallback */ }
   const stockValue = products.reduce((sum: number, p: Record<string, number>) => sum + (p.cost_price || 0) * (p.quantity || 0), 0)
   const projectedProfit = products.reduce((sum: number, p: Record<string, number>) => sum + ((p.selling_price || 0) - (p.cost_price || 0)) * (p.quantity || 0), 0)
 
-  return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, creditSalesOutstanding, cashInHand, stockValue, projectedProfit }
+  return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, creditSalesOutstanding, cashInHand, cashInBank, stockValue, projectedProfit }
 }
 
 // ============================================

@@ -3,6 +3,7 @@ import type { CapitalInjection, RepaymentInstallment, CapitalSource } from '@/li
 import { generateInstallments, generateInterestOnlyInstallments, computeRisk } from '@/lib/capitalRisk'
 import { summarizeInjectionStock } from '@/lib/capitalStock'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
+import { computeRecovered, type RecoverySale, type RecoveryTab } from '@/lib/capitalRecovery'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -149,17 +150,11 @@ export async function fetchInstallments(injectionId: string): Promise<RepaymentI
   return (data as RepaymentInstallment[]) || []
 }
 
-// Cumulative profit recovered from the stock this injection funded — the one
-// query that powers the risk engine and the report.
+// Cumulative profit recovered from the stock this injection funded, withholding
+// credit sales until paid. Powers the risk engine and the report.
 export async function fetchRecoveredProfit(injectionId: string): Promise<number> {
-  const uid = await uidOrThrow()
-  const { data, error } = await supabase
-    .from('batch_consumptions')
-    .select('profit')
-    .eq('injection_id', injectionId)
-    .eq('user_id', uid)
-  if (error) throw error
-  return (data || []).reduce((s, r: { profit: number }) => s + (r.profit || 0), 0)
+  const map = await fetchRecoveredProfitMap([injectionId])
+  return map[injectionId] || 0
 }
 
 // Raw consumption rows for the weekly report (shape matches ReportConsumption).
@@ -175,26 +170,55 @@ export async function fetchConsumptions(injectionId: string): Promise<{ created_
   return (data as { created_at: string; qty: number; profit: number }[]) || []
 }
 
-// Recovered profit for several injections at once (for the list view). Returns a
-// map injectionId -> profit.
-// Recovered profit per injection. Pass sinceIso to restrict to a period (e.g. the
-// last week/month); omit it for lifetime recovery.
+// Recovered profit per injection. Pass sinceIso to restrict to a period (credit
+// profit is then counted by when its payments landed, not when goods left).
 export async function fetchRecoveredProfitMap(injectionIds: string[], sinceIso?: string): Promise<Record<string, number>> {
   const uid = await uidOrThrow()
   if (injectionIds.length === 0) return {}
-  let query = supabase
+
+  // 1. Consumptions of these injections.
+  const { data: consData, error } = await supabase
     .from('batch_consumptions')
-    .select('injection_id, profit')
+    .select('injection_id, sale_id, profit')
     .in('injection_id', injectionIds)
     .eq('user_id', uid)
-  if (sinceIso) query = query.gte('created_at', sinceIso)
-  const { data, error } = await query
   if (error) throw error
-  const map: Record<string, number> = {}
-  for (const r of (data as { injection_id: string; profit: number }[]) || []) {
-    map[r.injection_id] = (map[r.injection_id] || 0) + (r.profit || 0)
+  const consumptions = (consData as { injection_id: string; sale_id: string; profit: number }[] | null) || []
+  if (consumptions.length === 0) return {}
+
+  // 2. The sales those consumptions belong to (for method + group).
+  const saleIds = Array.from(new Set(consumptions.map((c) => c.sale_id).filter(Boolean)))
+  const salesById: Record<string, RecoverySale> = {}
+  if (saleIds.length) {
+    const { data: salesData } = await supabase
+      .from('sales')
+      .select('id, sale_group_id, payment_method, created_at')
+      .in('id', saleIds)
+      .eq('user_id', uid)
+    for (const s of (salesData as { id: string; sale_group_id: string | null; payment_method: string; created_at: string }[] | null) || []) {
+      salesById[s.id] = { sale_group_id: s.sale_group_id, payment_method: s.payment_method, created_at: s.created_at }
+    }
   }
-  return map
+
+  // 3. Credit tabs for the credit sales, keyed by sale_group_id.
+  const creditGroups = Array.from(new Set(
+    Object.values(salesById)
+      .filter((s) => s.payment_method === 'credit' && s.sale_group_id)
+      .map((s) => s.sale_group_id as string),
+  ))
+  const tabsByGroup: Record<string, RecoveryTab> = {}
+  if (creditGroups.length) {
+    const { data: tabsData } = await supabase
+      .from('debts')
+      .select('sale_group_id, amount, amount_paid, payments')
+      .in('sale_group_id', creditGroups)
+      .eq('user_id', uid)
+    for (const t of (tabsData as { sale_group_id: string; amount: number; amount_paid: number | null; payments: { amount: number; date: string }[] | null }[] | null) || []) {
+      tabsByGroup[t.sale_group_id] = { amount: t.amount, amount_paid: t.amount_paid || 0, payments: t.payments || [] }
+    }
+  }
+
+  return computeRecovered(consumptions, salesById, tabsByGroup, sinceIso)
 }
 
 // Stock bought with this injection + how much of each batch has sold.
@@ -277,6 +301,67 @@ export async function recordInstallmentPayment(injectionId: string, amount: numb
       .update({ amount_repaid: newRepaid, status })
       .eq('id', injectionId).eq('user_id', uid)
   }
+}
+
+// ── Receivables: "who owes me" debts tagged to an injection ──────────────────
+// Goods funded by a loan that customers took on credit. Outstanding = unpaid
+// balance still in customers' hands against this capital.
+export interface InjectionReceivable {
+  id: string
+  person_name: string
+  phone: string | null
+  amount: number
+  amount_paid: number
+  outstanding: number
+  is_paid: boolean
+  due_date: string | null
+  created_at: string
+}
+
+export async function fetchInjectionReceivables(injectionId: string): Promise<InjectionReceivable[]> {
+  const uid = await uidOrThrow()
+  const { data, error } = await supabase
+    .from('debts')
+    .select('id, person_name, phone, amount, amount_paid, is_paid, due_date, created_at')
+    .eq('injection_id', injectionId)
+    .eq('user_id', uid)
+    .eq('type', 'owed')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return ((data as Array<{
+    id: string; person_name: string; phone: string | null; amount: number
+    amount_paid: number; is_paid: boolean; due_date: string | null; created_at: string
+  }>) || []).map((d) => ({
+    ...d,
+    amount_paid: d.amount_paid || 0,
+    outstanding: Math.max(0, d.amount - (d.amount_paid || 0)),
+  }))
+}
+
+// Outstanding receivable totals for several injections at once (list view).
+// Returns map injectionId -> { outstanding, count } counting only unpaid debts.
+export async function fetchReceivablesMap(
+  injectionIds: string[],
+): Promise<Record<string, { outstanding: number; count: number }>> {
+  const uid = await uidOrThrow()
+  if (injectionIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('debts')
+    .select('injection_id, amount, amount_paid, is_paid')
+    .in('injection_id', injectionIds)
+    .eq('user_id', uid)
+    .eq('type', 'owed')
+    .eq('is_paid', false)
+  if (error) throw error
+  const map: Record<string, { outstanding: number; count: number }> = {}
+  for (const r of (data as Array<{ injection_id: string; amount: number; amount_paid: number }>) || []) {
+    const outstanding = Math.max(0, r.amount - (r.amount_paid || 0))
+    const cur = map[r.injection_id] || { outstanding: 0, count: 0 }
+    cur.outstanding += outstanding
+    cur.count += 1
+    map[r.injection_id] = cur
+  }
+  return map
 }
 
 export interface CapitalSummary {

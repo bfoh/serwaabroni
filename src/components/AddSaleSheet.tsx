@@ -7,6 +7,8 @@ import { sendNotification } from '@/services/notify'
 import ProductIcon from './ProductIcon'
 import SaleScanner from './SaleScanner'
 import type { Debt } from '@/lib/supabase'
+import { postMovement } from '@/services/cashApi'
+import { saleMovement } from '@/lib/cashPosting'
 
 type CartItem = {
   product_id: string
@@ -168,6 +170,18 @@ export default function AddSaleSheet() {
           paid_at: deposit >= total - 0.001 ? nowIso : null,
           created_at: nowIso,
         } as Omit<Debt, 'user_id'>)
+      }
+
+      // Ledger: post the cash actually received for this sale.
+      const depositForLedger = paymentMethod === 'credit'
+        ? Math.min(Math.max(0, parseFloat(depositInput) || 0), total)
+        : 0
+      const mv = saleMovement(paymentMethod, total, depositForLedger)
+      if (mv) {
+        await postMovement({
+          account: mv.account, direction: 'in', amount: mv.amount, category: 'sale',
+          ref_table: 'sales', ref_id: groupId, note: customerName || null, created_at: createdAt,
+        })
       }
 
       if (customerName) {

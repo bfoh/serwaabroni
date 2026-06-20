@@ -264,6 +264,8 @@ export async function deleteSaleGroup(sales: Sale[]): Promise<void> {
   const groupIds = Array.from(new Set(sales.map((s) => s.sale_group_id).filter(Boolean))) as string[]
   if (groupIds.length) {
     await supabase.from('debts').delete().in('sale_group_id', groupIds).eq('user_id', uid)
+    const { deleteMovementsByRef } = await import('@/services/cashApi')
+    for (const g of groupIds) await deleteMovementsByRef('sales', g)
   }
 }
 

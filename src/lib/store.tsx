@@ -20,6 +20,8 @@ import {
 } from '@/services/supabaseApi'
 import { amISuperAdmin } from '@/services/adminApi'
 import { contributeCatalog } from '@/services/catalogApi'
+import { postMovement as postCashMovement, deleteMovementsByRef as deleteCashByRef } from '@/services/cashApi'
+import type { CashAccount } from '@/lib/cashBalances'
 
 export type Tab = 'home' | 'stock' | 'debts' | 'reports'
 
@@ -213,7 +215,7 @@ interface StoreContextType {
   addDebt: (debt: Omit<Debt, 'user_id'>) => Promise<void>
   updateDebt: (id: string, updates: Partial<Debt>) => Promise<void>
   removeDebt: (id: string) => Promise<void>
-  addExpense: (expense: Omit<Expense, 'user_id'>) => Promise<void>
+  addExpense: (expense: Omit<Expense, 'user_id'>, account?: CashAccount) => Promise<void>
   removeExpense: (id: string) => Promise<void>
   addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
@@ -626,10 +628,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state, showToast])
 
-  const addExpense = useCallback(async (expense: Omit<Expense, 'user_id'>) => {
+  const addExpense = useCallback(async (expense: Omit<Expense, 'user_id'>, account: CashAccount = 'cash') => {
     try {
       const inserted = await insertExpense(expense)
       dispatch({ type: 'ADD_EXPENSE', expense: inserted })
+      // Ledger: an expense leaves the chosen account (defaults to cash in hand).
+      try {
+        await postCashMovement({
+          account, direction: 'out', amount: inserted.amount, category: 'expense',
+          ref_table: 'expenses', ref_id: inserted.id, note: inserted.name, created_at: inserted.created_at,
+        })
+      } catch { /* ledger post best-effort; balance reconciles on next refresh */ }
     } catch {
       const localExpense: Expense = { ...expense, user_id: 'local' } as Expense
       dispatch({ type: 'ADD_EXPENSE', expense: localExpense })
@@ -638,6 +647,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const removeExpense = useCallback(async (id: string) => {
     try { await deleteExpenseDb(id) } catch { /* */ }
+    try { await deleteCashByRef('expenses', id) } catch { /* */ }
     dispatch({ type: 'DELETE_EXPENSE', id })
   }, [])
 

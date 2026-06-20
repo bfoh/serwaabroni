@@ -27,6 +27,7 @@ export default function InjectionDetail() {
   const [report, setReport] = useState<WeeklyReportRow[]>([])
   const [receivables, setReceivables] = useState<InjectionReceivable[]>([])
   const [payInput, setPayInput] = useState('')
+  const [payFrom, setPayFrom] = useState<'cash' | 'bank'>('cash')
   const [busy, setBusy] = useState(false)
   const [openWeeks, setOpenWeeks] = useState<Record<string, boolean>>({})
 
@@ -73,7 +74,7 @@ export default function InjectionDetail() {
     const amt = parseFloat(payInput)
     if (!amt || amt <= 0) return
     setBusy(true)
-    try { await recordInstallmentPayment(inj.id, amt); setPayInput(''); await load() }
+    try { await recordInstallmentPayment(inj.id, amt, payFrom); setPayInput(''); await load() }
     finally { setBusy(false) }
   }
 
@@ -137,12 +138,22 @@ export default function InjectionDetail() {
             })}
           </div>
           {inj.status !== 'repaid' && (
-            <div className="flex gap-2 mt-3">
+            <>
+            <div className="grid grid-cols-2 gap-2 mt-3 mb-2">
+              {(['cash','bank'] as const).map((a) => (
+                <button key={a} type="button" onClick={() => setPayFrom(a)}
+                  className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${payFrom === a ? 'bg-ink text-white border-ink' : 'bg-white text-ink border-ink'}`}>
+                  {a === 'cash' ? 'From cash' : 'From bank'}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
               <input className="flex-1 harsh-border rounded-sm px-3 py-2 text-sm" type="number" inputMode="decimal"
                 placeholder="Record payment (GHS)" value={payInput} onChange={(e) => setPayInput(e.target.value)} />
               <button onClick={pay} disabled={busy || !payInput}
                 className="bg-accent-red text-white rounded-sm px-4 text-sm disabled:opacity-50">Pay</button>
             </div>
+            </>
           )}
         </div>
 

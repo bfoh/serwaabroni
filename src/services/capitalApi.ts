@@ -289,7 +289,7 @@ export async function fetchFundedStock(injectionId: string): Promise<FundedStock
 
 // Record a repayment against the earliest unpaid installment(s), and bump the
 // injection's amount_repaid. Mirrors the Debts partial-payment flow.
-export async function recordInstallmentPayment(injectionId: string, amount: number): Promise<void> {
+export async function recordInstallmentPayment(injectionId: string, amount: number, account: import('@/lib/cashBalances').CashAccount = 'cash'): Promise<void> {
   const uid = await uidOrThrow()
   const installments = await fetchInstallments(injectionId)
   let left = amount
@@ -317,6 +317,16 @@ export async function recordInstallmentPayment(injectionId: string, amount: numb
       .from('capital_injections')
       .update({ amount_repaid: newRepaid, status })
       .eq('id', injectionId).eq('user_id', uid)
+  }
+
+  // Ledger: the cash actually applied leaves the chosen account.
+  const applied = Math.round((amount - Math.max(0, left)) * 100) / 100
+  if (applied > 0) {
+    const { postMovement } = await import('@/services/cashApi')
+    await postMovement({
+      account, direction: 'out', amount: applied, category: 'loan_repayment',
+      ref_table: 'capital_injections', ref_id: injectionId, note: 'Loan repayment',
+    })
   }
 }
 

@@ -21,6 +21,7 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('Other')
   const [notes, setNotes] = useState('')
+  const [payFrom, setPayFrom] = useState<'cash' | 'bank'>('cash')
   const [saving, setSaving] = useState(false)
 
   const filtered = useMemo(() => {
@@ -50,13 +51,14 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
         category,
         notes: notes || null,
         created_at: new Date().toISOString(),
-      })
+      }, payFrom)
       showToast('Expense added!', 'success')
       setShowAdd(false)
       setName('')
       setAmount('')
       setCategory('Other')
       setNotes('')
+      setPayFrom('cash')
     } catch { showToast('Failed to add', 'error') }
     setSaving(false)
   }
@@ -179,6 +181,17 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
                       {cat}
                     </button>
                   ))}
+                </div>
+                <div>
+                  <label className="text-micro text-muted-text mb-2 block">PAID FROM</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['cash','bank'] as const).map((a) => (
+                      <button key={a} type="button" onClick={() => setPayFrom(a)}
+                        className={`py-3 font-display text-xs uppercase tracking-wide rounded-sm border-2 ${payFrom === a ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                        {a === 'cash' ? 'Cash in hand' : 'Cash in bank'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 </div>
                 

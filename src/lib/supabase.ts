@@ -46,7 +46,7 @@ export interface Sale {
   profit: number
   customer_name: string | null
   customer_phone: string | null
-  payment_method: 'cash' | 'momo' | 'bank'
+  payment_method: 'cash' | 'momo' | 'bank' | 'credit'
   qr_invoice?: string | null
   sale_group_id?: string | null
   created_at: string
@@ -71,6 +71,10 @@ export interface Debt {
   is_paid: boolean
   paid_at: string | null
   reminder_sent?: boolean
+  // For type='owed': the capital injection that funded the goods taken on credit.
+  injection_id?: string | null
+  // For credit sales: links this tab to the originating sale group.
+  sale_group_id?: string | null
   created_at: string
 }
 

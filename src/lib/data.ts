@@ -131,7 +131,7 @@ export interface SaleGroup {
   created_at: string
   customer_name: string | null
   customer_phone: string | null
-  payment_method: 'cash' | 'momo' | 'bank'
+  payment_method: 'cash' | 'momo' | 'bank' | 'credit'
 }
 
 // Fold flat sale rows into groups. Rows sharing a truthy sale_group_id become

@@ -210,7 +210,7 @@ interface StoreContextType {
   t: (key: string) => string
   refreshData: () => Promise<void>
   // Supabase-synced actions
-  addProduct: (product: Omit<Product, 'user_id'>, injectionId?: string | null) => Promise<void>
+  addProduct: (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean }) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   removeProduct: (id: string) => Promise<void>
   addSale: (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => Promise<void>
@@ -459,12 +459,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // SUPABASE-SYNCED CRUD — ALL MULTI-TENANT
   // ==========================================================
 
-  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>, injectionId?: string | null) => {
+  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean }) => {
     try {
       const inserted = await insertProduct(product)
       dispatch({ type: 'ADD_PRODUCT', product: inserted })
       // Create the opening stock batch so the product's sales are costed and
-      // traceable (FIFO). Optionally tag it to the capital injection that funded it.
+      // traceable (FIFO). Optionally tag it to the capital injection that funded it,
+      // and post the cash outflow (unless bought on supplier credit).
       if ((inserted.quantity || 0) > 0) {
         try {
           const { receiveStock } = await import('@/services/batchApi')
@@ -474,6 +475,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             unitCost: inserted.cost_price,
             injectionId: injectionId || null,
             purchasedAt: inserted.created_at,
+            account: opts?.account ?? 'cash',
+            unpaid: opts?.unpaid ?? false,
           })
         } catch {
           /* offline or error — batch can be reconciled later; product already added */

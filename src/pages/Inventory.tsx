@@ -20,6 +20,10 @@ export default function Inventory() {
   const [supplierName, setSupplierName] = useState('')
   const [supplierPhone, setSupplierPhone] = useState('')
   const [addProductInjectionId, setAddProductInjectionId] = useState<string>('')
+  const [addPayFrom, setAddPayFrom] = useState<'cash' | 'bank'>('cash')
+  const [addUnpaid, setAddUnpaid] = useState(false)
+  const [addSupplierName, setAddSupplierName] = useState('')
+  const [addSupplierPhone, setAddSupplierPhone] = useState('')
   const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [allInjections, setAllInjections] = useState<{ id: string; lender_name: string | null; source: string; status: string }[]>([])
   const [filterInjectionId, setFilterInjectionId] = useState<string>('')
@@ -118,6 +122,10 @@ export default function Inventory() {
       showToast('Selling price must be higher than cost price', 'error')
       return
     }
+    if (addUnpaid && !addSupplierName.trim()) {
+      showToast('Supplier name required for supplier credit', 'error')
+      return
+    }
 
     setAddingProduct(true)
 
@@ -134,11 +142,35 @@ export default function Inventory() {
         barcode: null,
         qr_code: null,
         created_at: new Date().toISOString(),
-      }, addProductInjectionId || null)
-      showToast(t('product_added') || 'Product added!', 'success')
+      }, addProductInjectionId || null, { account: addPayFrom, unpaid: addUnpaid })
+      // Supplier credit → record what you owe the supplier as an "I owe them" debt.
+      if (addUnpaid) {
+        const cost = Math.round(costPrice * qty * 100) / 100
+        await addDebt({
+          id: uid(),
+          person_name: addSupplierName.trim(),
+          phone: addSupplierPhone || null,
+          amount: cost,
+          amount_paid: 0,
+          payments: [],
+          description: `Stock: ${newProduct.name} (${qty} ${newProduct.unit})`,
+          type: 'owing',
+          due_date: null,
+          injection_id: null,
+          sale_group_id: null,
+          is_paid: false,
+          paid_at: null,
+          created_at: new Date().toISOString(),
+        } as Omit<Debt, 'user_id'>)
+      }
+      showToast(addUnpaid ? `Product added — owe ${addSupplierName.trim()}` : (t('product_added') || 'Product added!'), 'success')
       setShowAddProduct(false)
       setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries' })
       setAddProductInjectionId('')
+      setAddPayFrom('cash')
+      setAddUnpaid(false)
+      setAddSupplierName('')
+      setAddSupplierPhone('')
     } catch {
       showToast('Failed to add product', 'error')
     } finally {
@@ -814,6 +846,34 @@ export default function Inventory() {
                       </select>
                     </div>
                   )}
+
+                  {/* How the stock was paid for */}
+                  <div>
+                    <label className="text-micro text-muted-text mb-1.5 block">PAID FOR WITH</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['cash','bank'] as const).map((a) => (
+                        <button key={a} type="button" onClick={() => { setAddPayFrom(a); setAddUnpaid(false) }}
+                          className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${!addUnpaid && addPayFrom === a ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                          {a === 'cash' ? 'Paid cash' : 'Paid bank'}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => setAddUnpaid((v) => !v)}
+                      className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${addUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                      {addUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
+                    </button>
+                    {addUnpaid && (
+                      <div className="mt-2 space-y-2">
+                        <input type="text" value={addSupplierName} onChange={(e) => setAddSupplierName(e.target.value)}
+                          placeholder="Supplier name (required)"
+                          className="block w-full min-w-0 max-w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                        <input type="tel" value={addSupplierPhone} onChange={(e) => setAddSupplierPhone(e.target.value)}
+                          placeholder="Supplier phone (optional)"
+                          className="block w-full min-w-0 max-w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                        <p className="text-[10px] text-muted-text">Saved to “I owe them” for {formatCurrency((parseFloat(newProduct.cost_price) || 0) * (parseInt(newProduct.quantity) || 0))}.</p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Projected profit preview */}
                   {newProduct.cost_price && newProduct.selling_price && (

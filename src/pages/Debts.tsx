@@ -613,7 +613,7 @@ export default function Debts() {
                     <div className="relative">
                       <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" />
                       <input type="date" value={newDebt.due_date} onChange={(e) => setNewDebt({ ...newDebt, due_date: e.target.value })}
-                        className="w-full h-12 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body" />
+                        className="block w-full min-w-0 max-w-full h-12 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body appearance-none" />
                     </div>
                   </div>
 

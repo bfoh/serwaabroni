@@ -478,7 +478,7 @@ export default function AddSaleSheet() {
                               type="date"
                               value={creditDueDate}
                               onChange={(e) => setCreditDueDate(e.target.value)}
-                              className="w-full h-12 px-4 bg-sand harsh-border rounded-sm text-base font-body"
+                              className="block w-full min-w-0 max-w-full h-12 px-4 bg-sand harsh-border rounded-sm text-base font-body appearance-none"
                             />
                           </div>
                         </div>

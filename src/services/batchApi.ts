@@ -17,6 +17,8 @@ export async function receiveStock(params: {
   unitCost: number
   injectionId?: string | null
   purchasedAt?: string
+  account?: import('@/lib/cashBalances').CashAccount
+  unpaid?: boolean
 }): Promise<StockBatch> {
   const uid = await uidOrThrow()
   const { data, error } = await supabase
@@ -34,7 +36,20 @@ export async function receiveStock(params: {
     .select()
     .single()
   if (error) throw error
-  return data as StockBatch
+  const batch = data as StockBatch
+  // Ledger: a stock purchase leaves the chosen account, unless bought on supplier
+  // credit (unpaid). Existing callers pass nothing → defaults to a cash outflow.
+  if (!params.unpaid && batch.total_cost > 0) {
+    try {
+      const { postMovement } = await import('@/services/cashApi')
+      await postMovement({
+        account: params.account ?? 'cash', direction: 'out', amount: batch.total_cost,
+        category: 'stock_purchase', ref_table: 'stock_batches', ref_id: batch.id,
+        note: 'Stock purchase', created_at: batch.purchased_at,
+      })
+    } catch { /* best-effort; balance reconciles on next refresh */ }
+  }
+  return batch
 }
 
 // A product's open batches, oldest first — the FIFO input.

@@ -15,6 +15,8 @@ export default function Inventory() {
   const [editQty, setEditQty] = useState(0)
   const [restockUnitCost, setRestockUnitCost] = useState('')
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
+  const [restockPayFrom, setRestockPayFrom] = useState<'cash' | 'bank'>('cash')
+  const [restockUnpaid, setRestockUnpaid] = useState(false)
   const [addProductInjectionId, setAddProductInjectionId] = useState<string>('')
   const [activeInjections, setActiveInjections] = useState<{ id: string; lender_name: string | null; source: string }[]>([])
   const [allInjections, setAllInjections] = useState<{ id: string; lender_name: string | null; source: string; status: string }[]>([])
@@ -165,7 +167,7 @@ export default function Inventory() {
     // Create the costed batch (online; offline restock still bumps the cache above).
     try {
       const { receiveStock } = await import('@/services/batchApi')
-      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null })
+      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null, account: restockPayFrom, unpaid: restockUnpaid })
     } catch {
       /* offline or error — cache already bumped; batch can be reconciled later */
     }
@@ -174,6 +176,8 @@ export default function Inventory() {
     setEditQty(0)
     setRestockUnitCost('')
     setRestockInjectionId('')
+    setRestockPayFrom('cash')
+    setRestockUnpaid(false)
   }
 
   const handleOpenEdit = (productId: string) => {
@@ -543,6 +547,18 @@ export default function Inventory() {
                         ))}
                       </select>
                     )}
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {(['cash','bank'] as const).map((a) => (
+                        <button key={a} type="button" onClick={() => { setRestockPayFrom(a); setRestockUnpaid(false) }}
+                          className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${!restockUnpaid && restockPayFrom === a ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                          {a === 'cash' ? 'Paid cash' : 'Paid bank'}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => setRestockUnpaid((v) => !v)}
+                      className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${restockUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                      {restockUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
+                    </button>
                   </div>
                 ) : (
                   <div className="flex border-t border-ink/10">

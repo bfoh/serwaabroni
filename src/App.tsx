@@ -17,6 +17,7 @@ import SuspendedScreen from '@/components/SuspendedScreen'
 import AdminConsole from '@/pages/AdminConsole'
 import Capital from '@/pages/Capital'
 import InjectionDetail from '@/pages/InjectionDetail'
+import CashFlow from '@/pages/CashFlow'
 
 function MainApp() {
   const { state } = useStore()
@@ -134,6 +135,12 @@ export default function App() {
             path="/capital/:id"
             element={state.isAuthenticated ? (
               <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
+            ) : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/cash"
+            element={state.isAuthenticated ? (
+              <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
             ) : <Navigate to="/login" replace />}
           />
           <Route

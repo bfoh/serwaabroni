@@ -77,11 +77,11 @@ export default function Capital() {
           <ArrowLeft size={16} /> Back
         </button>
         <h1 className="font-display text-xl">Capital & Loans</h1>
-        <div className="flex gap-6 mt-3">
-          <div><p className="text-xs text-white/60">Outstanding</p><p className="font-display text-lg">{formatCurrency(totalOutstanding)}</p></div>
-          <div><p className="text-xs text-white/60">Recovered (profit)</p><p className="font-display text-lg text-accent-green">{formatCurrency(totalRecovered)}</p></div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3">
+          <div className="min-w-0"><p className="text-xs text-white/60">Outstanding</p><p className="font-display text-lg truncate">{formatCurrency(totalOutstanding)}</p></div>
+          <div className="min-w-0"><p className="text-xs text-white/60">Recovered (profit)</p><p className="font-display text-lg text-accent-green truncate">{formatCurrency(totalRecovered)}</p></div>
           {totalReceivable > 0 && (
-            <div><p className="text-xs text-white/60">Owed by customers</p><p className="font-display text-lg text-accent-red">{formatCurrency(totalReceivable)}</p></div>
+            <div className="min-w-0"><p className="text-xs text-white/60">Owed by customers</p><p className="font-display text-lg text-accent-red truncate">{formatCurrency(totalReceivable)}</p></div>
           )}
         </div>
       </header>

@@ -407,7 +407,7 @@ export default function Debts() {
         <div className="flex mt-3 border-b-2 border-ink">
           <button
             onClick={() => setActiveDebtTab('owed')}
-            className={`flex-1 py-2.5 font-display text-sm uppercase tracking-wider transition-colors ${
+            className={`flex-1 py-2.5 px-1 font-display text-xs uppercase tracking-wide leading-tight transition-colors ${
               activeDebtTab === 'owed' ? 'text-ink border-b-2 border-accent-red -mb-0.5' : 'text-muted-text'
             }`}
           >
@@ -415,7 +415,7 @@ export default function Debts() {
           </button>
           <button
             onClick={() => setActiveDebtTab('owing')}
-            className={`flex-1 py-2.5 font-display text-sm uppercase tracking-wider transition-colors ${
+            className={`flex-1 py-2.5 px-1 font-display text-xs uppercase tracking-wide leading-tight transition-colors ${
               activeDebtTab === 'owing' ? 'text-ink border-b-2 border-accent-red -mb-0.5' : 'text-muted-text'
             }`}
           >
@@ -423,7 +423,7 @@ export default function Debts() {
           </button>
           <button
             onClick={() => navigate('/capital')}
-            className="flex-1 py-2.5 font-display text-sm uppercase tracking-wider text-muted-text transition-colors"
+            className="flex-1 py-2.5 px-1 font-display text-xs uppercase tracking-wide leading-tight text-muted-text transition-colors"
           >
             Capital →
           </button>

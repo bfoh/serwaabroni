@@ -440,12 +440,12 @@ export default function AddSaleSheet() {
                       {/* Payment Method */}
                       <div className="mb-4">
                         <p className="text-micro text-muted-text mb-2">PAYMENT METHOD</p>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-4 gap-1.5">
                           {paymentOptions.map((opt) => (
                             <button
                               key={opt.key}
                               onClick={() => setPaymentMethod(opt.key)}
-                              className={`btn-tactile flex-1 py-3 font-display text-sm uppercase tracking-wider rounded-sm border-2 transition-colors ${
+                              className={`btn-tactile py-3 font-display text-xs uppercase tracking-wide rounded-sm border-2 transition-colors ${
                                 paymentMethod === opt.key
                                   ? 'bg-ink text-white border-ink'
                                   : 'bg-light text-ink border-ink'

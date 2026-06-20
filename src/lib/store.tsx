@@ -307,7 +307,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const remoteSales = results[1].status === 'fulfilled' ? results[1].value : []
       const remoteDebts = results[2].status === 'fulfilled' ? results[2].value : []
       const remoteExpenses = results[3].status === 'fulfilled' ? results[3].value : []
-      const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0 }
+      const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0 }
       const profile = results[5].status === 'fulfilled' ? results[5].value : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
 
@@ -333,7 +333,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         expenses,
         customers,
         alerts: generatedAlerts,
-        balance: (summary.totalSales || 0) - (summary.totalExpenses || 0),
+        balance: summary.cashInHand || 0,
         todaySales: summary.todaySales || 0,
         todayProfit: summary.todayProfit || 0,
         pendingDebts: summary.pendingDebts || 0,
@@ -372,6 +372,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const pendingDebts = local.debts.filter((d) => d.type === 'owed' && !d.is_paid).reduce((sum, d) => sum + d.amount, 0)
       const totalSales = local.sales.reduce((s, sale) => s + sale.total, 0)
       const totalExpenses = local.expenses.reduce((s, e) => s + e.amount, 0)
+      // Credit-sale debts inflate totalSales by their unpaid portion (only the
+      // deposit is cash); subtract it. Manual owed debts never hit sales.
+      const creditSalesOutstanding = local.debts
+        .filter((d) => d.type === 'owed' && !d.is_paid && d.sale_group_id)
+        .reduce((sum, d) => sum + Math.max(0, d.amount - (d.amount_paid || 0)), 0)
 
       const localAlerts = generateAlerts(local.products, local.sales, local.debts, local.expenses)
 
@@ -383,7 +388,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         expenses: local.expenses,
         customers: local.customers || [],
         alerts: localAlerts,
-        balance: totalSales - totalExpenses,
+        balance: totalSales - totalExpenses - creditSalesOutstanding,
         todaySales,
         todayProfit: todaySales * 0.2,
         pendingDebts,
@@ -480,7 +485,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const products = await fetchProducts()
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary()
-      dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
+      dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       showToast('Sale recorded!', 'success')
@@ -505,7 +510,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const products = await fetchProducts()
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary()
-      dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
+      dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       showToast('Sale recorded!', 'success')
@@ -537,7 +542,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchCustomers(),
       ])
       dispatch({ type: 'SET_PRODUCTS', products })
-      dispatch({ type: 'SET_BALANCE', value: summary.totalSales - summary.totalExpenses })
+      dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
       dispatch({ type: 'SET_TODAY_PROFIT', value: summary.todayProfit })
       dispatch({ type: 'SET_CUSTOMERS', customers })

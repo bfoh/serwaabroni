@@ -430,12 +430,14 @@ export async function getDashboardSummary(): Promise<{
   todayProfit: number
   pendingDebts: number
   owingDebts: number
+  creditSalesOutstanding: number
+  cashInHand: number
   stockValue: number
   projectedProfit: number
 }> {
   const uid = await getCurrentUserId()
   if (!uid) {
-    return { totalSales: 0, totalProfit: 0, totalExpenses: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, owingDebts: 0, stockValue: 0, projectedProfit: 0 }
+    return { totalSales: 0, totalProfit: 0, totalExpenses: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, owingDebts: 0, creditSalesOutstanding: 0, cashInHand: 0, stockValue: 0, projectedProfit: 0 }
   }
 
   const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00'
@@ -443,7 +445,7 @@ export async function getDashboardSummary(): Promise<{
   const [salesRes, expensesRes, debtsRes, productsRes] = await Promise.all([
     supabase.from('sales').select('total, profit, created_at').eq('user_id', uid),
     supabase.from('expenses').select('amount').eq('user_id', uid),
-    supabase.from('debts').select('amount, amount_paid, type, is_paid').eq('user_id', uid),
+    supabase.from('debts').select('amount, amount_paid, type, is_paid, sale_group_id').eq('user_id', uid),
     supabase.from('products').select('cost_price, selling_price, quantity').eq('user_id', uid),
   ])
 
@@ -460,10 +462,18 @@ export async function getDashboardSummary(): Promise<{
   const debtRemaining = (d: Record<string, number>) => Math.max(0, (d.amount || 0) - (d.amount_paid || 0))
   const pendingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
   const owingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owing' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
+  // Unpaid portion of CREDIT SALES only (debts linked to a sale via sale_group_id).
+  // These inflate totalSales by the full cart value though only the deposit is cash
+  // in hand, so the remainder is subtracted from cash. Manual owed debts never hit
+  // the sales table, so they must NOT be subtracted here.
+  const creditSalesOutstanding = debts
+    .filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid && d.sale_group_id)
+    .reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
+  const cashInHand = totalSales - totalExpenses - creditSalesOutstanding
   const stockValue = products.reduce((sum: number, p: Record<string, number>) => sum + (p.cost_price || 0) * (p.quantity || 0), 0)
   const projectedProfit = products.reduce((sum: number, p: Record<string, number>) => sum + ((p.selling_price || 0) - (p.cost_price || 0)) * (p.quantity || 0), 0)
 
-  return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, stockValue, projectedProfit }
+  return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, creditSalesOutstanding, cashInHand, stockValue, projectedProfit }
 }
 
 // ============================================

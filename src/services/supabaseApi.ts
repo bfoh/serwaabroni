@@ -318,13 +318,19 @@ export async function deleteDebtDb(id: string): Promise<void> {
   const uid = await getCurrentUserId()
   if (!uid) throw new Error('Not authenticated')
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('debts')
     .delete()
     .eq('id', id)
     .eq('user_id', uid)
+    .select('id')
 
   if (error) throw error
+  // A delete blocked by RLS returns 0 rows and NO error. Treat that as failure so
+  // callers don't fake success (the bug that made debt deletes "not persist").
+  if (!data || data.length === 0) {
+    throw new Error('Debt not deleted — no rows affected (check RLS delete policy).')
+  }
 }
 
 

@@ -605,12 +605,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const removeDebt = useCallback(async (id: string) => {
-    try { await deleteDebtDb(id) } catch { /* may not exist in db */ }
+    // Optimistic remove so the UI feels instant.
     dispatch({ type: 'DELETE_DEBT', id })
-    // We should also recalculate pending debts or balance if necessary, but we can just let
-    // the UI rely on derived state or manually update the state since they do that.
-    showToast('Debt deleted', 'success')
-  }, [showToast])
+    try {
+      await deleteDebtDb(id)
+      showToast('Debt deleted', 'success')
+    } catch {
+      if (!state.isOnline) {
+        // Truly offline — keep the optimistic removal; it will reconcile on sync.
+        showToast('Debt deleted (offline)', 'success')
+        return
+      }
+      // Online but the server rejected the delete (e.g. missing RLS delete policy).
+      // Restore the real server state instead of faking a delete that never happened.
+      try {
+        const debts = await fetchDebts()
+        dispatch({ type: 'SET_DEBTS', debts })
+      } catch { /* leave optimistic state if even the re-fetch fails */ }
+      showToast('Could not delete debt', 'error')
+    }
+  }, [state, showToast])
 
   const addExpense = useCallback(async (expense: Omit<Expense, 'user_id'>) => {
     try {

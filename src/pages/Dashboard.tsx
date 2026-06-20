@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User } from 'lucide-react'
+import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User, Wallet } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import Odometer from '@/components/Odometer'
@@ -125,6 +125,13 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
           <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Customers</span>
         </button>
         <CapitalSummaryCard />
+        <button
+          onClick={() => navigate('/cash')}
+          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
+        >
+          <Wallet size={24} className="text-ink" />
+          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Cash<br/>Flow</span>
+        </button>
       </section>
 
       {/* Voice Search */}

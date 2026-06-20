@@ -596,7 +596,7 @@ export default function Inventory() {
                     {activeInjections.length > 0 && (
                       <select
                         value={restockInjectionId}
-                        onChange={(e) => setRestockInjectionId(e.target.value)}
+                        onChange={(e) => { setRestockInjectionId(e.target.value); if (e.target.value) setRestockUnpaid(false) }}
                         className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-2"
                       >
                         <option value="">Not funded by tracked capital</option>
@@ -615,11 +615,13 @@ export default function Inventory() {
                         </button>
                       ))}
                     </div>
-                    <button type="button" onClick={() => setRestockUnpaid((v) => !v)}
-                      className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${restockUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
-                      {restockUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
-                    </button>
-                    {restockUnpaid && (
+                    {!restockInjectionId && (
+                      <button type="button" onClick={() => setRestockUnpaid((v) => !v)}
+                        className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${restockUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                        {restockUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
+                      </button>
+                    )}
+                    {restockUnpaid && !restockInjectionId && (
                       <div className="mt-2 space-y-2">
                         <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)}
                           placeholder="Supplier name (required)"
@@ -834,7 +836,7 @@ export default function Inventory() {
                       <label className="text-micro text-muted-text mb-1.5 block">BOUGHT WITH CAPITAL</label>
                       <select
                         value={addProductInjectionId}
-                        onChange={(e) => setAddProductInjectionId(e.target.value)}
+                        onChange={(e) => { setAddProductInjectionId(e.target.value); if (e.target.value) setAddUnpaid(false) }}
                         className="w-full harsh-border rounded-sm px-3 py-2 text-sm"
                       >
                         <option value="">Not funded by tracked capital</option>
@@ -858,11 +860,13 @@ export default function Inventory() {
                         </button>
                       ))}
                     </div>
-                    <button type="button" onClick={() => setAddUnpaid((v) => !v)}
-                      className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${addUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
-                      {addUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
-                    </button>
-                    {addUnpaid && (
+                    {!addProductInjectionId && (
+                      <button type="button" onClick={() => setAddUnpaid((v) => !v)}
+                        className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 ${addUnpaid ? 'bg-ink text-white border-ink' : 'bg-light text-ink border-ink'}`}>
+                        {addUnpaid ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
+                      </button>
+                    )}
+                    {addUnpaid && !addProductInjectionId && (
                       <div className="mt-2 space-y-2">
                         <input type="text" value={addSupplierName} onChange={(e) => setAddSupplierName(e.target.value)}
                           placeholder="Supplier name (required)"

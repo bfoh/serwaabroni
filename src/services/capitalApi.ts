@@ -4,6 +4,7 @@ import { generateInstallments, generateInterestOnlyInstallments, computeRisk } f
 import { summarizeInjectionStock } from '@/lib/capitalStock'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import { computeRecovered, type RecoverySale, type RecoveryTab } from '@/lib/capitalRecovery'
+import { splitCreditReceivables, type ReceivableConsumption, type ReceivableTab } from '@/lib/capitalReceivables'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -303,63 +304,122 @@ export async function recordInstallmentPayment(injectionId: string, amount: numb
   }
 }
 
-// ── Receivables: "who owes me" debts tagged to an injection ──────────────────
-// Goods funded by a loan that customers took on credit. Outstanding = unpaid
-// balance still in customers' hands against this capital.
+// ── Receivables: customers who owe against a loan ────────────────────────────
+// Two sources are unioned per loan:
+//  • manual debts tagged injection_id = X (shown at full outstanding)
+//  • credit-sale debts whose cart consumed stock from X (shown at the loan's
+//    share of the tab — its lines' selling value / tab total)
 export interface InjectionReceivable {
   id: string
   person_name: string
   phone: string | null
-  amount: number
-  amount_paid: number
   outstanding: number
+  fullOutstanding: number
+  fullAmount: number
+  isCredit: boolean
   is_paid: boolean
   due_date: string | null
-  created_at: string
 }
 
-export async function fetchInjectionReceivables(injectionId: string): Promise<InjectionReceivable[]> {
+// Builds attributable receivable rows per injection for the given ids.
+async function fetchReceivablesDetail(injectionIds: string[]): Promise<Record<string, InjectionReceivable[]>> {
   const uid = await uidOrThrow()
-  const { data, error } = await supabase
-    .from('debts')
-    .select('id, person_name, phone, amount, amount_paid, is_paid, due_date, created_at')
-    .eq('injection_id', injectionId)
-    .eq('user_id', uid)
-    .eq('type', 'owed')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return ((data as Array<{
-    id: string; person_name: string; phone: string | null; amount: number
-    amount_paid: number; is_paid: boolean; due_date: string | null; created_at: string
-  }>) || []).map((d) => ({
-    ...d,
-    amount_paid: d.amount_paid || 0,
-    outstanding: Math.max(0, d.amount - (d.amount_paid || 0)),
-  }))
-}
+  const result: Record<string, InjectionReceivable[]> = {}
+  if (injectionIds.length === 0) return result
 
-// Outstanding receivable totals for several injections at once (list view).
-// Returns map injectionId -> { outstanding, count } counting only unpaid debts.
-export async function fetchReceivablesMap(
-  injectionIds: string[],
-): Promise<Record<string, { outstanding: number; count: number }>> {
-  const uid = await uidOrThrow()
-  if (injectionIds.length === 0) return {}
-  const { data, error } = await supabase
+  // — Manual debts: directly tagged to a loan, not from a sale —
+  const { data: manualData, error: manualErr } = await supabase
     .from('debts')
-    .select('injection_id, amount, amount_paid, is_paid')
+    .select('id, person_name, phone, amount, amount_paid, is_paid, due_date, injection_id')
     .in('injection_id', injectionIds)
     .eq('user_id', uid)
     .eq('type', 'owed')
+    .is('sale_group_id', null)
     .eq('is_paid', false)
-  if (error) throw error
+  if (manualErr) throw manualErr
+  for (const d of (manualData as { id: string; person_name: string; phone: string | null; amount: number; amount_paid: number | null; is_paid: boolean; due_date: string | null; injection_id: string }[] | null) || []) {
+    const outstanding = Math.max(0, d.amount - (d.amount_paid || 0))
+    ;(result[d.injection_id] ||= []).push({
+      id: d.id, person_name: d.person_name, phone: d.phone,
+      outstanding, fullOutstanding: outstanding, fullAmount: d.amount,
+      isCredit: false, is_paid: d.is_paid, due_date: d.due_date,
+    })
+  }
+
+  // — Credit-sale debts: reached via the loan's consumed stock —
+  const { data: consData } = await supabase
+    .from('batch_consumptions')
+    .select('injection_id, sale_id, qty, unit_price')
+    .in('injection_id', injectionIds)
+    .eq('user_id', uid)
+  const cons = (consData as { injection_id: string; sale_id: string; qty: number; unit_price: number }[] | null) || []
+  if (cons.length) {
+    const saleIds = Array.from(new Set(cons.map((c) => c.sale_id).filter(Boolean)))
+    const groupBySale: Record<string, string | null> = {}
+    const methodBySale: Record<string, string> = {}
+    if (saleIds.length) {
+      const { data: salesData } = await supabase
+        .from('sales')
+        .select('id, sale_group_id, payment_method')
+        .in('id', saleIds)
+        .eq('user_id', uid)
+      for (const s of (salesData as { id: string; sale_group_id: string | null; payment_method: string }[] | null) || []) {
+        groupBySale[s.id] = s.sale_group_id
+        methodBySale[s.id] = s.payment_method
+      }
+    }
+    // Keep only consumptions belonging to a credit sale with a group id.
+    const recvCons: ReceivableConsumption[] = cons
+      .filter((c) => methodBySale[c.sale_id] === 'credit' && groupBySale[c.sale_id])
+      .map((c) => ({ injection_id: c.injection_id, sale_group_id: groupBySale[c.sale_id] as string, lineValue: c.qty * c.unit_price }))
+
+    const creditGroups = Array.from(new Set(recvCons.map((c) => c.sale_group_id)))
+    const tabsByGroup: Record<string, ReceivableTab> = {}
+    const tabMeta: Record<string, { id: string; person_name: string; phone: string | null; due_date: string | null }> = {}
+    if (creditGroups.length) {
+      const { data: tabsData } = await supabase
+        .from('debts')
+        .select('id, sale_group_id, person_name, phone, amount, amount_paid, is_paid, due_date')
+        .in('sale_group_id', creditGroups)
+        .eq('user_id', uid)
+      for (const t of (tabsData as { id: string; sale_group_id: string; person_name: string; phone: string | null; amount: number; amount_paid: number | null; is_paid: boolean; due_date: string | null }[] | null) || []) {
+        tabsByGroup[t.sale_group_id] = { sale_group_id: t.sale_group_id, amount: t.amount, amount_paid: t.amount_paid || 0, is_paid: t.is_paid }
+        tabMeta[t.sale_group_id] = { id: t.id, person_name: t.person_name, phone: t.phone, due_date: t.due_date }
+      }
+    }
+
+    const split = splitCreditReceivables(recvCons, tabsByGroup)
+    for (const [injectionId, rows] of Object.entries(split)) {
+      for (const r of rows) {
+        const meta = tabMeta[r.sale_group_id]
+        if (!meta) continue
+        ;(result[injectionId] ||= []).push({
+          id: meta.id, person_name: meta.person_name, phone: meta.phone,
+          outstanding: r.shareOutstanding, fullOutstanding: r.fullOutstanding, fullAmount: r.fullAmount,
+          isCredit: true, is_paid: false, due_date: meta.due_date,
+        })
+      }
+    }
+  }
+
+  return result
+}
+
+export async function fetchInjectionReceivables(injectionId: string): Promise<InjectionReceivable[]> {
+  const detail = await fetchReceivablesDetail([injectionId])
+  return detail[injectionId] || []
+}
+
+export async function fetchReceivablesMap(
+  injectionIds: string[],
+): Promise<Record<string, { outstanding: number; count: number }>> {
+  const detail = await fetchReceivablesDetail(injectionIds)
   const map: Record<string, { outstanding: number; count: number }> = {}
-  for (const r of (data as Array<{ injection_id: string; amount: number; amount_paid: number }>) || []) {
-    const outstanding = Math.max(0, r.amount - (r.amount_paid || 0))
-    const cur = map[r.injection_id] || { outstanding: 0, count: 0 }
-    cur.outstanding += outstanding
-    cur.count += 1
-    map[r.injection_id] = cur
+  for (const [injectionId, rows] of Object.entries(detail)) {
+    map[injectionId] = {
+      outstanding: rows.reduce((s, r) => s + r.outstanding, 0),
+      count: rows.length,
+    }
   }
   return map
 }

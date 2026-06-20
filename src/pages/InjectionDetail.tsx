@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { ArrowLeft, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Users } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/data'
 import {
   fetchInjection, fetchInstallments, fetchRecoveredProfit, fetchFundedStock, fetchConsumptions,
-  recordInstallmentPayment, updateInjectionRisk, type FundedStockRow,
+  fetchInjectionReceivables, recordInstallmentPayment, updateInjectionRisk,
+  type FundedStockRow, type InjectionReceivable,
 } from '@/services/capitalApi'
 import { computeRisk } from '@/lib/capitalRisk'
 import { buildWeeklyReport, type WeeklyReportRow } from '@/lib/capitalReport'
@@ -24,16 +25,18 @@ export default function InjectionDetail() {
   const [recovered, setRecovered] = useState(0)
   const [stock, setStock] = useState<FundedStockRow[]>([])
   const [report, setReport] = useState<WeeklyReportRow[]>([])
+  const [receivables, setReceivables] = useState<InjectionReceivable[]>([])
   const [payInput, setPayInput] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
     if (!id) return
-    const [injection, insts, prof, funded, cons] = await Promise.all([
+    const [injection, insts, prof, funded, cons, recv] = await Promise.all([
       fetchInjection(id), fetchInstallments(id), fetchRecoveredProfit(id), fetchFundedStock(id), fetchConsumptions(id),
+      fetchInjectionReceivables(id),
     ])
     setInj(injection); setInstallments(insts); setRecovered(prof); setStock(funded)
-    setReport(buildWeeklyReport(cons))
+    setReport(buildWeeklyReport(cons)); setReceivables(recv)
   }
   useEffect(() => { load() }, [id])
 
@@ -159,6 +162,45 @@ export default function InjectionDetail() {
             </div>
           )}
         </div>
+
+        {/* 4b. Credit given — customers who owe against this capital */}
+        {(() => {
+          const open = receivables.filter((r) => !r.is_paid)
+          const owedTotal = open.reduce((s, r) => s + r.outstanding, 0)
+          if (receivables.length === 0) return null
+          return (
+            <div className="bg-white harsh-border rounded-sm p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium flex items-center gap-1.5"><Users size={14} /> Credit given from this stock</p>
+                <span className="font-display text-base text-accent-red">{formatCurrency(owedTotal)}</span>
+              </div>
+              <p className="text-[11px] text-muted-text mb-3">
+                {open.length} {open.length === 1 ? 'person owes' : 'people owe'} you for goods taken on credit against this loan
+              </p>
+              <div className="space-y-1.5 text-sm">
+                {receivables.map((r, i) => {
+                  const overdue = !r.is_paid && r.due_date && new Date(r.due_date).getTime() <= Date.now()
+                  const partial = r.isCredit && r.outstanding < r.fullOutstanding - 0.01
+                  return (
+                    <div key={`${r.id}-${i}`} className="flex justify-between">
+                      <span className={r.is_paid ? 'text-muted-text line-through' : ''}>
+                        {r.is_paid ? '✅' : overdue ? '🔴' : '🔔'} {r.person_name}
+                        {partial && <span className="text-muted-text"> · part of {formatCurrency(r.fullAmount)} tab</span>}
+                        {r.due_date && !r.is_paid && <span className="text-muted-text"> · due {formatDate(r.due_date)}</span>}
+                      </span>
+                      <span className={r.is_paid ? 'text-accent-green' : overdue ? 'text-accent-red' : 'text-muted-text'}>
+                        {r.is_paid ? 'paid' : formatCurrency(r.outstanding)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-muted-text mt-3 pt-2 border-t border-gray-200">
+                Credit sales tag here automatically. Record payments from the <strong>Debts</strong> page and recovery updates live.
+              </p>
+            </div>
+          )
+        })()}
 
         {/* 5. Weekly report */}
         <div className="bg-white harsh-border rounded-sm p-4">

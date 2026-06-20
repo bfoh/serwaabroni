@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, uid } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
 import ProductIcon from './ProductIcon'
 import SaleScanner from './SaleScanner'
+import type { Debt } from '@/lib/supabase'
 
 type CartItem = {
   product_id: string
@@ -18,12 +19,14 @@ type CartItem = {
 }
 
 export default function AddSaleSheet() {
-  const { state, dispatch, showToast, addSaleBatch, updateCustomer, addCustomer } = useStore()
+  const { state, dispatch, showToast, addSaleBatch, updateCustomer, addCustomer, addDebt } = useStore()
   const [cart, setCart] = useState<CartItem[]>([])
   const [view, setView] = useState<'grid' | 'cart'>('grid')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo' | 'bank'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'momo' | 'bank' | 'credit'>('cash')
+  const [depositInput, setDepositInput] = useState('')
+  const [creditDueDate, setCreditDueDate] = useState('')
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -62,6 +65,8 @@ export default function AddSaleSheet() {
     setConfirmed(false)
     setSearchQuery('')
     setPaymentMethod('cash')
+    setDepositInput('')
+    setCreditDueDate('')
   }
 
   // Add a product to the cart (or increment if already present), capped at stock.
@@ -117,6 +122,10 @@ export default function AddSaleSheet() {
 
   const handleConfirm = async () => {
     if (cart.length === 0) return
+    if (paymentMethod === 'credit' && !customerName.trim()) {
+      showToast('Customer name is required for credit', 'error')
+      return
+    }
     setSaving(true)
     try {
       const createdAt = new Date().toISOString()
@@ -138,6 +147,28 @@ export default function AddSaleSheet() {
       const items = cart.map((i) => ({ productId: i.product_id, qty: i.quantity }))
 
       await addSaleBatch(sales, items)
+
+      // Credit sale → create the customer's tab linked to this sale group.
+      if (paymentMethod === 'credit') {
+        const deposit = Math.min(Math.max(0, parseFloat(depositInput) || 0), total)
+        const nowIso = createdAt
+        await addDebt({
+          id: uid(),
+          person_name: customerName.trim(),
+          phone: customerPhone || null,
+          amount: total,
+          amount_paid: deposit,
+          payments: deposit > 0 ? [{ amount: deposit, date: nowIso }] : [],
+          description: `${itemCount} ${itemCount === 1 ? 'item' : 'items'} on credit`,
+          type: 'owed',
+          due_date: creditDueDate || null,
+          injection_id: null,
+          sale_group_id: groupId,
+          is_paid: deposit >= total - 0.001,
+          paid_at: deposit >= total - 0.001 ? nowIso : null,
+          created_at: nowIso,
+        } as Omit<Debt, 'user_id'>)
+      }
 
       if (customerName) {
         const existingCustomer = state.customers.find(
@@ -193,10 +224,11 @@ export default function AddSaleSheet() {
     }
   }
 
-  const paymentOptions: { key: 'cash' | 'momo' | 'bank'; label: string }[] = [
+  const paymentOptions: { key: 'cash' | 'momo' | 'bank' | 'credit'; label: string }[] = [
     { key: 'cash', label: 'CASH' },
     { key: 'momo', label: 'MOMO' },
     { key: 'bank', label: 'BANK' },
+    { key: 'credit', label: 'CREDIT' },
   ]
 
   return (
@@ -425,6 +457,33 @@ export default function AddSaleSheet() {
                         </div>
                       </div>
 
+                      {/* Credit terms — only when CREDIT is the method */}
+                      {paymentMethod === 'credit' && (
+                        <div className="mb-4 bg-light harsh-border rounded-sm p-3 space-y-3">
+                          <p className="text-micro text-muted-text">CREDIT (PAY LATER) — customer name required below</p>
+                          <div>
+                            <label className="text-micro text-muted-text mb-1.5 block">Paid now (deposit, optional)</label>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={depositInput}
+                              onChange={(e) => setDepositInput(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full h-12 px-4 bg-sand harsh-border rounded-sm text-base font-body"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-micro text-muted-text mb-1.5 block">Due date (optional)</label>
+                            <input
+                              type="date"
+                              value={creditDueDate}
+                              onChange={(e) => setCreditDueDate(e.target.value)}
+                              className="w-full h-12 px-4 bg-sand harsh-border rounded-sm text-base font-body"
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       {/* Customer (optional) */}
                       <div className="mb-4">
                         <button
@@ -434,7 +493,7 @@ export default function AddSaleSheet() {
                           <User size={14} />
                           {showCustomerForm ? 'HIDE CUSTOMER INFO' : 'ADD CUSTOMER (OPTIONAL)'}
                         </button>
-                        {showCustomerForm && (
+                        {(showCustomerForm || paymentMethod === 'credit') && (
                           <motion.div
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}

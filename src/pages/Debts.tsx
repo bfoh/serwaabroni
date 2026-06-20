@@ -1,13 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2 } from 'lucide-react'
+import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2, Landmark } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
-import type { Debt, DebtPayment } from '@/lib/supabase'
+import { fetchInjections } from '@/services/capitalApi'
+import type { Debt, DebtPayment, CapitalInjection } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
+
+const CAPITAL_SOURCE_LABEL: Record<string, string> = {
+  microfinance: 'Microfinance loan',
+  personal: 'Personal money',
+  family_friends: 'Family / friends',
+  investment: 'Investment',
+  other: 'Other',
+}
+
+// Short label for a capital injection, used on chips and in the selector.
+const injectionLabel = (inj: CapitalInjection) =>
+  inj.lender_name || CAPITAL_SOURCE_LABEL[inj.source] || 'Capital'
 
 const colorFor = (tab: DebtTab) =>
   tab === 'owed'
@@ -26,6 +39,8 @@ export default function Debts() {
   const [editingDebtId, setEditingDebtId] = useState<string | null>(null)
   const [editingPayment, setEditingPayment] = useState<{ debtId: string, index: number, amount: number } | null>(null)
 
+  const [injections, setInjections] = useState<CapitalInjection[]>([])
+
   const [newDebt, setNewDebt] = useState({
     person_name: '',
     phone: '',
@@ -33,7 +48,16 @@ export default function Debts() {
     description: '',
     type: 'owed' as DebtTab,
     due_date: '',
+    injection_id: '',
   })
+
+  // Load capital injections so credit given against a loan can be tagged to it.
+  useEffect(() => {
+    fetchInjections().then(setInjections).catch(() => setInjections([]))
+  }, [])
+
+  const injectionById = (id: string | null | undefined) =>
+    id ? injections.find((i) => i.id === id) : undefined
 
   const owedDebts = state.debts.filter((d) => d.type === 'owed' && !d.is_paid)
   const owingDebts = state.debts.filter((d) => d.type === 'owing' && !d.is_paid)
@@ -53,6 +77,9 @@ export default function Debts() {
     setSaving(true)
 
     try {
+      // Capital link only applies to money owed TO the user.
+      const linkedInjection = newDebt.type === 'owed' ? (newDebt.injection_id || null) : null
+
       if (editingDebtId) {
         await updateDebt(editingDebtId, {
           person_name: newDebt.person_name,
@@ -61,6 +88,7 @@ export default function Debts() {
           description: newDebt.description || null,
           type: newDebt.type,
           due_date: newDebt.due_date || null,
+          injection_id: linkedInjection,
         })
         showToast('Debt updated!', 'success')
       } else {
@@ -74,6 +102,7 @@ export default function Debts() {
         description: newDebt.description || null,
         type: newDebt.type,
         due_date: newDebt.due_date || null,
+        injection_id: linkedInjection,
         is_paid: false,
         paid_at: null,
         created_at: new Date().toISOString(),
@@ -82,7 +111,7 @@ export default function Debts() {
       }
       setShowAddDebt(false)
       setEditingDebtId(null)
-      setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '' })
+      setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '', injection_id: '' })
     } catch {
       showToast('Failed to save debt', 'error')
     } finally {
@@ -142,6 +171,7 @@ export default function Debts() {
       description: debt.description || '',
       type: debt.type,
       due_date: debt.due_date || '',
+      injection_id: debt.injection_id || '',
     })
     setShowAddDebt(true)
   }
@@ -301,6 +331,14 @@ export default function Debts() {
           </div>
           {debt.description && <p className="text-xs text-muted-text mt-2">{debt.description}</p>}
           {debt.due_date && <p className="text-xs text-muted-text mt-1 flex items-center gap-1"><CalendarDays size={10} />Due: {formatDate(debt.due_date)}</p>}
+          {tab === 'owed' && injectionById(debt.injection_id) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate(`/capital/${debt.injection_id}`) }}
+              className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full bg-ink/5 text-ink hover:bg-ink/10 transition-colors"
+            >
+              <Landmark size={10} /> {injectionLabel(injectionById(debt.injection_id)!)}
+            </button>
+          )}
           {paid > 0 && (
             <div className="mt-3 h-1.5 bg-warm-gray rounded-full overflow-hidden">
               <div className={`h-full ${c.bar} transition-all`} style={{ width: `${pct}%` }} />
@@ -344,7 +382,7 @@ export default function Debts() {
           <button
             onClick={() => {
               setEditingDebtId(null)
-              setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '' })
+              setNewDebt({ person_name: '', phone: '', amount: '', description: '', type: 'owed', due_date: '', injection_id: '' })
               setShowAddDebt(true)
             }}
             className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
@@ -578,6 +616,27 @@ export default function Debts() {
                         className="w-full h-12 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body" />
                     </div>
                   </div>
+
+                  {/* Link to capital — only for money owed TO you (goods taken on credit). */}
+                  {newDebt.type === 'owed' && injections.length > 0 && (
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">Bought with capital (optional)</label>
+                      <div className="relative">
+                        <Landmark size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" />
+                        <select
+                          value={newDebt.injection_id}
+                          onChange={(e) => setNewDebt({ ...newDebt, injection_id: e.target.value })}
+                          className="w-full h-12 pl-10 pr-4 bg-light harsh-border rounded-sm text-base font-body text-ink appearance-none"
+                        >
+                          <option value="">None — not tied to a loan</option>
+                          {injections.map((inj) => (
+                            <option key={inj.id} value={inj.id}>{injectionLabel(inj)} · {formatCurrency(inj.principal)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="text-[10px] text-muted-text mt-1">Tag this credit to the loan/capital that funded the goods, so you can track it on that loan.</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Save button - STICKY AT BOTTOM */}

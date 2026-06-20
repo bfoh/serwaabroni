@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ArrowLeft, Plus, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, AlertTriangle, Pencil, Trash2, Users } from 'lucide-react'
 import { formatCurrency } from '@/lib/data'
-import { fetchInjections, fetchRecoveredProfitMap, deleteInjection } from '@/services/capitalApi'
+import { fetchInjections, fetchRecoveredProfitMap, fetchReceivablesMap, deleteInjection } from '@/services/capitalApi'
 import { computeRisk } from '@/lib/capitalRisk'
 import type { CapitalInjection, RiskTier } from '@/lib/supabase'
 import CreateInjectionSheet from '@/components/CreateInjectionSheet'
@@ -25,6 +25,7 @@ export default function Capital() {
   const navigate = useNavigate()
   const [injections, setInjections] = useState<CapitalInjection[]>([])
   const [recovered, setRecovered] = useState<Record<string, number>>({})
+  const [receivables, setReceivables] = useState<Record<string, { outstanding: number; count: number }>>({})
   const [showCreate, setShowCreate] = useState(false)
   const [editingInjection, setEditingInjection] = useState<CapitalInjection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,7 +51,13 @@ export default function Capital() {
     try {
       const list = await fetchInjections()
       setInjections(list)
-      setRecovered(await fetchRecoveredProfitMap(list.map((i) => i.id)))
+      const ids = list.map((i) => i.id)
+      const [rec, recv] = await Promise.all([
+        fetchRecoveredProfitMap(ids),
+        fetchReceivablesMap(ids),
+      ])
+      setRecovered(rec)
+      setReceivables(recv)
     } finally {
       setLoading(false)
     }
@@ -61,6 +68,7 @@ export default function Capital() {
     .filter((i) => i.status !== 'repaid')
     .reduce((s, i) => s + (i.total_repayable - i.amount_repaid), 0)
   const totalRecovered = Object.values(recovered).reduce((s, v) => s + v, 0)
+  const totalReceivable = Object.values(receivables).reduce((s, v) => s + v.outstanding, 0)
 
   return (
     <div className="min-h-screen bg-light pb-40">
@@ -72,6 +80,9 @@ export default function Capital() {
         <div className="flex gap-6 mt-3">
           <div><p className="text-xs text-white/60">Outstanding</p><p className="font-display text-lg">{formatCurrency(totalOutstanding)}</p></div>
           <div><p className="text-xs text-white/60">Recovered (profit)</p><p className="font-display text-lg text-accent-green">{formatCurrency(totalRecovered)}</p></div>
+          {totalReceivable > 0 && (
+            <div><p className="text-xs text-white/60">Owed by customers</p><p className="font-display text-lg text-accent-red">{formatCurrency(totalReceivable)}</p></div>
+          )}
         </div>
       </header>
 
@@ -128,6 +139,11 @@ export default function Capital() {
                 <span>{formatCurrency(recoveredProfit)} recovered ({pct}%)</span>
                 <span>of {formatCurrency(inj.total_repayable)}</span>
               </div>
+              {receivables[inj.id] && receivables[inj.id].outstanding > 0 && (
+                <p className="flex items-center gap-1 text-[11px] text-accent-red mt-2">
+                  <Users size={12} /> {formatCurrency(receivables[inj.id].outstanding)} owed by {receivables[inj.id].count} {receivables[inj.id].count === 1 ? 'customer' : 'customers'} (credit)
+                </p>
+              )}
               {tier === 'at_risk' && inj.status !== 'repaid' && (
                 <p className="flex items-center gap-1 text-[11px] text-accent-red mt-2">
                   <AlertTriangle size={12} /> Behind — tap to see what to do

@@ -259,6 +259,12 @@ export async function deleteSaleGroup(sales: Sale[]): Promise<void> {
         .eq('user_id', uid)
     }
   }
+
+  // If any of these sales were on credit, remove the linked customer tab(s).
+  const groupIds = Array.from(new Set(sales.map((s) => s.sale_group_id).filter(Boolean))) as string[]
+  if (groupIds.length) {
+    await supabase.from('debts').delete().in('sale_group_id', groupIds).eq('user_id', uid)
+  }
 }
 
 // ============================================

@@ -12,6 +12,7 @@ import Login from '@/pages/Login'
 import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
+import ConnectionBar from '@/components/ConnectionBar'
 import Customers from '@/pages/Customers'
 import SuspendedScreen from '@/components/SuspendedScreen'
 import AdminConsole from '@/pages/AdminConsole'
@@ -156,6 +157,7 @@ export default function App() {
         </div>
       )}
       
+      <ConnectionBar />
       <Toast />
     </div>
   )

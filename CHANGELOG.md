@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Online/offline status bar.** A thin bar appears at the top when the device
+  is offline ("Offline — N changes will sync when reconnected") and confirms
+  "Back online — syncing…" / "All changes synced" on reconnect, then hides. The
+  pending count reads the same offline sync queue used by the payment fix, so
+  the owner can see her recorded changes are safely captured and will upload.
 - Regression tests for the offline debt merge/reconciliation path
   (`mergeDebts`), covering the payment-revert scenario, post-sync de-duplication,
   and ordering.

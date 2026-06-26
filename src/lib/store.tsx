@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
 import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
-import { cacheOfflineData, queueOperation, syncQueue, getQueue, mergeDebts, setupAutoSync } from '@/services/offline'
+import { cacheOfflineData, queueOperation, syncQueue, getQueue, getQueueLength, mergeDebts, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData, type SaleGroup } from './data'
@@ -56,6 +56,7 @@ export interface AppState {
   businessProfile: BusinessProfile | null
   dataLoading: boolean
   isOnline: boolean
+  pendingSync: number
   isSuperAdmin: boolean
   suspended: boolean
 }
@@ -93,6 +94,7 @@ type Action =
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
+  | { type: 'SET_PENDING_SYNC'; value: number }
   | { type: 'SET_SUPER_ADMIN'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
@@ -126,6 +128,7 @@ const initialState: AppState = {
   businessProfile: null,
   dataLoading: false,
   isOnline: navigator.onLine,
+  pendingSync: 0,
   isSuperAdmin: false,
   suspended: false,
 }
@@ -191,6 +194,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
+    case 'SET_PENDING_SYNC': return { ...state, pendingSync: action.value }
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
@@ -315,6 +319,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const t = useCallback((key: string) => translate(key, state.language), [state.language])
 
+  // Keep the offline-queue depth in store state so the connection bar can show
+  // how many changes are still waiting to sync. Recomputed wherever the queue
+  // changes (a write is queued, or the queue is flushed).
+  const syncPending = useCallback(() => {
+    dispatch({ type: 'SET_PENDING_SYNC', value: getQueueLength() })
+  }, [])
+
   // ==========================================================
   // LOAD DATA — Supabase first (scoped to user), localStorage fallback
   // ==========================================================
@@ -329,6 +340,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // recorded payment that didn't reach the server would "revert" on refresh.
       if (navigator.onLine) {
         try { await syncQueue() } catch { /* keep queued; overlay below covers UI */ }
+        syncPending()
       }
 
       const results = await Promise.allSettled([
@@ -437,7 +449,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } finally {
       dispatch({ type: 'SET_DATA_LOADING', loading: false })
     }
-  }, [])
+  }, [syncPending])
 
   // Load data after auth is confirmed
   useEffect(() => {
@@ -447,6 +459,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     if (state.isAuthenticated) {
       // User is logged in — fetch their data from Supabase
+      syncPending()
       refreshData()
     } else {
       // No user — load seed data for demo purposes
@@ -462,7 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
-  }, [state.authLoading, state.isAuthenticated, refreshData])
+  }, [state.authLoading, state.isAuthenticated, refreshData, syncPending])
 
   // Flush the offline write queue when the network returns or the tab regains
   // focus, then re-sync from the server. This is what makes a payment recorded
@@ -470,10 +483,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.isAuthenticated) return
     const teardown = setupAutoSync((result) => {
+      syncPending()
       if (result.success > 0) refreshData()
     })
     return teardown
-  }, [state.isAuthenticated, refreshData])
+  }, [state.isAuthenticated, refreshData, syncPending])
 
   // ==========================================================
   // SUPABASE-SYNCED CRUD — ALL MULTI-TENANT
@@ -648,8 +662,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'ADD_DEBT', debt: localDebt })
       // Queue for retry so the debt actually reaches the server once back online.
       queueOperation('debts', 'insert', { ...debt })
+      syncPending()
     }
-  }, [state])
+  }, [state, syncPending])
 
   const updateDebt = useCallback(async (id: string, updates: Partial<Debt>) => {
     try {
@@ -665,8 +680,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'UPDATE_DEBT', debt: updated })
       }
       queueOperation('debts', 'update', { id, ...updates })
+      syncPending()
     }
-  }, [state])
+  }, [state, syncPending])
 
   const removeDebt = useCallback(async (id: string) => {
     // Optimistic remove so the UI feels instant.
@@ -679,6 +695,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Truly offline — keep the optimistic removal and queue the delete so it
         // actually happens on the server once back online (otherwise it reappears).
         queueOperation('debts', 'delete', { id })
+        syncPending()
         showToast('Debt deleted (offline)', 'success')
         return
       }
@@ -690,7 +707,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch { /* leave optimistic state if even the re-fetch fails */ }
       showToast('Could not delete debt', 'error')
     }
-  }, [state, showToast])
+  }, [state, showToast, syncPending])
 
   const addExpense = useCallback(async (expense: Omit<Expense, 'user_id'>, account: CashAccount = 'cash') => {
     try {

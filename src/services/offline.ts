@@ -38,6 +38,11 @@ export function getQueue(): QueuedOperation[] {
   }
 }
 
+// Number of writes still waiting to reach the server. Drives the sync indicator.
+export function getQueueLength(): number {
+  return getQueue().length
+}
+
 function saveQueue(queue: QueuedOperation[]): void {
   try {
     localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue))

@@ -146,6 +146,20 @@ export function applyQueuedDebtUpdates(debts: Debt[], queue: QueuedOperation[]):
   return Array.from(byId.values())
 }
 
+// The full debt reconciliation used by refreshData: take the cached local rows
+// and the authoritative remote rows, keep only genuinely-unsynced locals (real
+// rows are dropped here — they'd otherwise duplicate or override remote), let
+// remote win on shared ids, then re-overlay anything still queued so a payment
+// recorded during a network blip survives the refresh instead of reverting.
+// Newest-first to match the UI ordering.
+export function mergeDebts(localDebts: Debt[], remoteDebts: Debt[], queue: QueuedOperation[]): Debt[] {
+  const merged = applyQueuedDebtUpdates(
+    dedupeDebtsById([...localDebts.filter((d) => d.user_id === 'local'), ...remoteDebts]),
+    queue,
+  )
+  return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+}
+
 // ============================================
 // OFFLINE DATA CACHE
 // ============================================

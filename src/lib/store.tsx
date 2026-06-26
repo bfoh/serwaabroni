@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
 import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
-import { cacheOfflineData, queueOperation, syncQueue, getQueue, dedupeDebtsById, applyQueuedDebtUpdates, setupAutoSync } from '@/services/offline'
+import { cacheOfflineData, queueOperation, syncQueue, getQueue, mergeDebts, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData, type SaleGroup } from './data'
@@ -357,10 +357,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Remote is authoritative, but keep optimistic edits alive: dedupe by id
       // (remote wins) then re-overlay any writes still waiting in the sync queue
       // so a just-recorded payment never disappears before it lands server-side.
-      const debts = applyQueuedDebtUpdates(
-        dedupeDebtsById([...local.debts.filter(d => d.user_id === 'local'), ...remoteDebts]),
-        getQueue(),
-      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const debts = mergeDebts(local.debts, remoteDebts, getQueue())
       const expenses = [...local.expenses.filter(e => e.user_id === 'local'), ...remoteExpenses]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]

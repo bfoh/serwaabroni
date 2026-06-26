@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dedupeDebtsById, applyQueuedDebtUpdates, type QueuedOperation } from './offline'
+import { dedupeDebtsById, applyQueuedDebtUpdates, mergeDebts, type QueuedOperation } from './offline'
 import type { Debt } from '@/lib/supabase'
 
 const baseDebt = (over: Partial<Debt>): Debt => ({
@@ -101,5 +101,51 @@ describe('applyQueuedDebtUpdates', () => {
     ]
     const out = applyQueuedDebtUpdates(remote, queue)
     expect(out.map((d) => d.id).sort()).toEqual(['d1', 'd2'])
+  })
+})
+
+// Regression for the reported bug: a payment recorded during a network blip
+// "reverted" on the next refresh. This drives the exact merge refreshData runs.
+describe('mergeDebts (refreshData reconciliation)', () => {
+  it('does NOT revert a payment whose write failed but is still queued', () => {
+    // Optimistic local copy of a SYNCED debt — carries the real user_id, so the
+    // user_id==='local' filter drops it (this was bug #3). The stale server row
+    // still shows the pre-payment balance because the write never landed (bug #1)
+    // and was queued for retry (bug #2 fix).
+    const localOptimistic = baseDebt({ id: 'd1', user_id: 'u1', amount_paid: 56, payments: [{ amount: 56, date: '2026-06-20T10:00:00.000Z' }] })
+    const staleRemote = baseDebt({ id: 'd1', user_id: 'u1', amount_paid: 0, payments: [] })
+    const queue: QueuedOperation[] = [
+      { id: 'op1', table: 'debts', operation: 'update', data: { id: 'd1', amount_paid: 56, payments: [{ amount: 56, date: '2026-06-20T10:00:00.000Z' }] }, timestamp: 1000 },
+    ]
+
+    const out = mergeDebts([localOptimistic], [staleRemote], queue)
+
+    expect(out).toHaveLength(1)
+    expect(out[0].amount_paid).toBe(56) // would be 0 before the fix
+    expect(out[0].payments).toHaveLength(1)
+  })
+
+  it('reverts cleanly once the write has synced (queue empty, remote is fresh)', () => {
+    const freshRemote = baseDebt({ id: 'd1', user_id: 'u1', amount_paid: 56, payments: [{ amount: 56, date: '2026-06-20T10:00:00.000Z' }] })
+    const out = mergeDebts([], [freshRemote], [])
+    expect(out[0].amount_paid).toBe(56)
+  })
+
+  it('keeps an unsynced brand-new debt (user_id local) and dedupes once it syncs', () => {
+    const localNew = baseDebt({ id: 'd2', user_id: 'local', person_name: 'Yaa' })
+    // before sync: remote has no d2 → local copy survives
+    expect(mergeDebts([localNew], [], []).map((d) => d.id)).toEqual(['d2'])
+    // after sync: remote now has d2 with the real user_id → no duplicate, remote wins
+    const remoteD2 = baseDebt({ id: 'd2', user_id: 'u1', person_name: 'Yaa' })
+    const merged = mergeDebts([localNew], [remoteD2], [])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].user_id).toBe('u1')
+  })
+
+  it('orders results newest-first', () => {
+    const older = baseDebt({ id: 'a', created_at: '2026-06-01T00:00:00.000Z' })
+    const newer = baseDebt({ id: 'b', created_at: '2026-06-20T00:00:00.000Z' })
+    const out = mergeDebts([], [older, newer], [])
+    expect(out.map((d) => d.id)).toEqual(['b', 'a'])
   })
 })

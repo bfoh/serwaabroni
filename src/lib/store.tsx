@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
 import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
-import { cacheOfflineData } from '@/services/offline'
+import { cacheOfflineData, queueOperation, syncQueue, getQueue, dedupeDebtsById, applyQueuedDebtUpdates, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
 import { loadData, saveData, type SaleGroup } from './data'
@@ -323,7 +323,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     try {
       const local = loadData()
-      
+
+      // Push any writes that failed earlier (flaky network) BEFORE reading, so the
+      // fetch below reflects them instead of returning stale rows. Without this a
+      // recorded payment that didn't reach the server would "revert" on refresh.
+      if (navigator.onLine) {
+        try { await syncQueue() } catch { /* keep queued; overlay below covers UI */ }
+      }
+
       const results = await Promise.allSettled([
         fetchProducts(),
         fetchSales(),
@@ -347,8 +354,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const sales = [...local.sales.filter(s => s.user_id === 'local'), ...remoteSales]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      const debts = [...local.debts.filter(d => d.user_id === 'local'), ...remoteDebts]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      // Remote is authoritative, but keep optimistic edits alive: dedupe by id
+      // (remote wins) then re-overlay any writes still waiting in the sync queue
+      // so a just-recorded payment never disappears before it lands server-side.
+      const debts = applyQueuedDebtUpdates(
+        dedupeDebtsById([...local.debts.filter(d => d.user_id === 'local'), ...remoteDebts]),
+        getQueue(),
+      ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const expenses = [...local.expenses.filter(e => e.user_id === 'local'), ...remoteExpenses]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
@@ -454,6 +466,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     }
   }, [state.authLoading, state.isAuthenticated, refreshData])
+
+  // Flush the offline write queue when the network returns or the tab regains
+  // focus, then re-sync from the server. This is what makes a payment recorded
+  // while offline (or during a blip) actually persist instead of reverting.
+  useEffect(() => {
+    if (!state.isAuthenticated) return
+    const teardown = setupAutoSync((result) => {
+      if (result.success > 0) refreshData()
+    })
+    return teardown
+  }, [state.isAuthenticated, refreshData])
 
   // ==========================================================
   // SUPABASE-SYNCED CRUD — ALL MULTI-TENANT
@@ -626,6 +649,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       const localDebt: Debt = { ...debt, user_id: 'local' } as Debt
       dispatch({ type: 'ADD_DEBT', debt: localDebt })
+      // Queue for retry so the debt actually reaches the server once back online.
+      queueOperation('debts', 'insert', { ...debt })
     }
   }, [state])
 
@@ -634,11 +659,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const updated = await updateDebtDb(id, updates)
       dispatch({ type: 'UPDATE_DEBT', debt: updated })
     } catch {
+      // The write didn't reach the server. Apply it optimistically AND queue it for
+      // retry — otherwise the edit (e.g. a recorded payment) is lost on next refresh
+      // because the merge replaces this row with the stale server copy.
       const existing = state.debts.find((d) => d.id === id)
       if (existing) {
         const updated = { ...existing, ...updates }
         dispatch({ type: 'UPDATE_DEBT', debt: updated })
       }
+      queueOperation('debts', 'update', { id, ...updates })
     }
   }, [state])
 
@@ -650,7 +679,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Debt deleted', 'success')
     } catch {
       if (!state.isOnline) {
-        // Truly offline — keep the optimistic removal; it will reconcile on sync.
+        // Truly offline — keep the optimistic removal and queue the delete so it
+        // actually happens on the server once back online (otherwise it reappears).
+        queueOperation('debts', 'delete', { id })
         showToast('Debt deleted (offline)', 'success')
         return
       }

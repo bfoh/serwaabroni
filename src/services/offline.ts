@@ -5,7 +5,7 @@ import type { Product, Sale, Debt, Expense } from '@/lib/supabase'
 // OFFLINE SYNC QUEUE
 // ============================================
 
-interface QueuedOperation {
+export interface QueuedOperation {
   id: string
   table: string
   operation: 'insert' | 'update' | 'delete'
@@ -29,7 +29,7 @@ export function queueOperation(table: string, operation: 'insert' | 'update' | '
   saveQueue(queue)
 }
 
-function getQueue(): QueuedOperation[] {
+export function getQueue(): QueuedOperation[] {
   try {
     const stored = localStorage.getItem(SYNC_QUEUE_KEY)
     return stored ? JSON.parse(stored) : []
@@ -95,6 +95,55 @@ export async function syncQueue(): Promise<{ success: number; failed: number }> 
 
   saveQueue(remaining)
   return { success, failed }
+}
+
+// ============================================
+// PENDING-WRITE RECONCILIATION (pure helpers)
+// ============================================
+// These keep optimistic edits alive across reloads. When a write fails (flaky
+// network), it's queued AND optimistically applied in memory. The optimistic
+// row carries the real user_id, so a naive "remote replaces local" merge would
+// drop it on the next refresh — making a recorded payment appear to "revert".
+// We dedupe by id (remote wins) then re-overlay any STILL-pending queued debt
+// updates so nothing the user saved silently disappears before it syncs.
+
+// Collapse rows sharing an id, keeping the LAST occurrence. Callers pass
+// [...localEdits, ...remote] so the authoritative remote row wins, while ids
+// that only exist locally (not yet synced) are preserved.
+export function dedupeDebtsById(debts: Debt[]): Debt[] {
+  const byId = new Map<string, Debt>()
+  for (const d of debts) byId.set(d.id, d)
+  return Array.from(byId.values())
+}
+
+// Re-apply queued 'debts' updates/inserts on top of a debt list. Updates are
+// merged in timestamp order (latest wins) onto the matching id; queued inserts
+// for ids not present are appended. Anything already synced is a no-op because
+// the queue only holds writes the server hasn't confirmed yet.
+export function applyQueuedDebtUpdates(debts: Debt[], queue: QueuedOperation[]): Debt[] {
+  const byId = new Map<string, Debt>()
+  for (const d of debts) byId.set(d.id, d)
+
+  const debtOps = queue
+    .filter((op) => op.table === 'debts')
+    .sort((a, b) => a.timestamp - b.timestamp)
+
+  for (const op of debtOps) {
+    const id = op.data.id as string | undefined
+    if (!id) continue
+    if (op.operation === 'delete') {
+      byId.delete(id)
+      continue
+    }
+    const existing = byId.get(id)
+    if (existing) {
+      byId.set(id, { ...existing, ...(op.data as Partial<Debt>), id } as Debt)
+    } else if (op.operation === 'insert') {
+      byId.set(id, op.data as unknown as Debt)
+    }
+  }
+
+  return Array.from(byId.values())
 }
 
 // ============================================

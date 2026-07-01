@@ -461,79 +461,106 @@ export default function Inventory() {
           >
             {inlineEditId === product.id ? (
               /* Inline Edit Form */
-              <div className="p-3 space-y-2">
-                <input
-                  type="text"
-                  value={inlineEditName}
-                  onChange={(e) => setInlineEditName(e.target.value)}
-                  className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                />
-                <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 space-y-3">
+                {isMultiUnit(product) && (
+                  <p className="text-[11px] text-muted-text leading-snug bg-warm-gray/40 rounded-sm px-2.5 py-1.5">
+                    Prices &amp; quantity are per <span className="font-medium">{product.pack_unit}</span> · 1 {product.pack_unit} = {product.units_per_pack} {product.unit}
+                    {inlineEditQty && parseInt(inlineEditQty) > 0 && ` · stock ${parseInt(inlineEditQty) * (product.units_per_pack ?? 1)} ${product.unit}`}
+                  </p>
+                )}
+                <div>
+                  <label className="text-micro text-muted-text mb-1 block">PRODUCT NAME</label>
                   <input
-                    type="number"
-                    value={inlineEditCost}
-                    onChange={(e) => setInlineEditCost(e.target.value)}
-                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                    placeholder="Cost"
-                  />
-                  <input
-                    type="number"
-                    value={inlineEditPrice}
-                    onChange={(e) => setInlineEditPrice(e.target.value)}
-                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                    placeholder="Price"
+                    type="text"
+                    value={inlineEditName}
+                    onChange={(e) => setInlineEditName(e.target.value)}
+                    className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={inlineEditQty}
-                    onChange={(e) => setInlineEditQty(e.target.value)}
-                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                    placeholder={isMultiUnit(product) ? `Qty (${product.pack_unit})` : 'Qty'}
-                  />
-                  <select
-                    value={inlineEditUnit}
-                    onChange={(e) => setInlineEditUnit(e.target.value)}
-                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                  >
-                    {isMultiUnit(product) ? (
-                      <>
-                        <option value="tin">Tin</option>
-                        <option value="bag">Bag</option>
-                        <option value="sachet">Sachet</option>
-                        <option value="piece">Piece</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="piece">Pc</option>
-                        <option value="tin">Tin</option>
-                        <option value="bag">Bag</option>
-                        <option value="bottle">Btl</option>
-                        <option value="pack">Pack</option>
-                        <option value="loaf">Loaf</option>
-                        <option value="kg">Kg</option>
-                      </>
-                    )}
-                  </select>
+                  <div>
+                    <label className="text-micro text-muted-text mb-1 block">
+                      COST{isMultiUnit(product) ? ` / ${product.pack_unit}` : ''} (GH₵)
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={inlineEditCost}
+                      onChange={(e) => setInlineEditCost(e.target.value)}
+                      className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-micro text-muted-text mb-1 block">
+                      SELLING{isMultiUnit(product) ? ` / ${product.pack_unit}` : ''} (GH₵)
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={inlineEditPrice}
+                      onChange={(e) => setInlineEditPrice(e.target.value)}
+                      className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-micro text-muted-text mb-1 block">
+                      QUANTITY{isMultiUnit(product) ? ` (${product.pack_unit})` : ''}
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={inlineEditQty}
+                      onChange={(e) => setInlineEditQty(e.target.value)}
+                      className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-micro text-muted-text mb-1 block">
+                      {isMultiUnit(product) ? 'SMALLER UNIT' : 'UNIT'}
+                    </label>
+                    <select
+                      value={inlineEditUnit}
+                      onChange={(e) => setInlineEditUnit(e.target.value)}
+                      className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
+                    >
+                      {isMultiUnit(product) ? (
+                        <>
+                          <option value="tin">Tin</option>
+                          <option value="bag">Bag</option>
+                          <option value="sachet">Sachet</option>
+                          <option value="piece">Piece</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="piece">Piece</option>
+                          <option value="tin">Tin</option>
+                          <option value="bag">Bag</option>
+                          <option value="bottle">Bottle</option>
+                          <option value="pack">Pack</option>
+                          <option value="loaf">Loaf</option>
+                          <option value="kg">Kg</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
                 </div>
                 <div>
+                  <label className="text-micro text-muted-text mb-1 block">CATEGORY</label>
                   <select
                     value={inlineEditCategory}
                     onChange={(e) => setInlineEditCategory(e.target.value)}
-                    className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
+                    className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                   >
                     {categories.map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
                 </div>
-                {isMultiUnit(product) && (
-                  <p className="text-[10px] text-muted-text leading-tight">
-                    Cost, price &amp; qty are per {product.pack_unit} (1 {product.pack_unit} = {product.units_per_pack} {product.unit}).
-                    {inlineEditQty && parseInt(inlineEditQty) > 0 && ` Stock = ${parseInt(inlineEditQty) * (product.units_per_pack ?? 1)} ${product.unit}.`}
-                  </p>
-                )}
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => setInlineEditId(null)}

@@ -6,7 +6,7 @@ import { formatCurrency, uid, loadData } from '@/lib/data'
 import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
-import { formatStock } from '@/lib/units'
+import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt } = useStore()
@@ -14,6 +14,7 @@ export default function Inventory() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
+  const [restockUnitKind, setRestockUnitKind] = useState<'pack' | 'base'>('base')
   const [restockUnitCost, setRestockUnitCost] = useState('')
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
   const [restockPayFrom, setRestockPayFrom] = useState<'cash' | 'bank'>('cash')
@@ -196,6 +197,7 @@ export default function Inventory() {
     if (!product) return
     setEditingProduct(productId)
     setEditQty(0)
+    setRestockUnitKind('base')
     setRestockUnitCost(String(product.cost_price))
   }
 
@@ -210,7 +212,8 @@ export default function Inventory() {
       return
     }
     const unitCost = parseFloat(restockUnitCost) || product.cost_price
-    const newQty = product.quantity + editQty
+    const baseAdd = restockUnitKind === 'pack' ? editQty * (product.units_per_pack ?? 1) : editQty
+    const newQty = product.quantity + baseAdd
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
     // Optimistic cache bump.
     dispatch({ type: 'UPDATE_PRODUCT', product: updated })
@@ -218,13 +221,13 @@ export default function Inventory() {
     // Create the costed batch (online; offline restock still bumps the cache above).
     try {
       const { receiveStock } = await import('@/services/batchApi')
-      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null, account: restockPayFrom, unpaid: restockUnpaid })
+      await receiveStock({ productId: product.id, qty: baseAdd, unitCost, injectionId: restockInjectionId || null, account: restockPayFrom, unpaid: restockUnpaid })
     } catch {
       /* offline or error — cache already bumped; batch can be reconciled later */
     }
     // Supplier credit → record what you owe the supplier as an "I owe them" debt.
     if (restockUnpaid) {
-      const cost = Math.round(unitCost * editQty * 100) / 100
+      const cost = Math.round(unitCost * baseAdd * 100) / 100
       await addDebt({
         id: uid(),
         person_name: supplierName.trim(),
@@ -232,7 +235,7 @@ export default function Inventory() {
         amount: cost,
         amount_paid: 0,
         payments: [],
-        description: `Stock: ${product.name} (${editQty} ${product.unit})`,
+        description: `Stock: ${product.name} (${baseAdd} ${product.unit})`,
         type: 'owing',
         due_date: null,
         injection_id: null,
@@ -242,9 +245,10 @@ export default function Inventory() {
         created_at: new Date().toISOString(),
       } as Omit<Debt, 'user_id'>)
     }
-    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${product.unit}(s)`, 'success')
+    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${restockUnitKind === 'pack' ? (product.pack_unit || 'pack') : product.unit}(s)`, 'success')
     setEditingProduct(null)
     setEditQty(0)
+    setRestockUnitKind('base')
     setRestockUnitCost('')
     setRestockInjectionId('')
     setRestockPayFrom('cash')
@@ -554,6 +558,20 @@ export default function Inventory() {
                 {/* Action buttons row: Re-stock | Edit | Delete */}
                 {editingProduct === product.id ? (
                   <div className="border-t-2 border-ink px-4 py-3 bg-warm-gray/30">
+                    {isMultiUnit(product) && (
+                      <div className="flex gap-1 mb-2">
+                        {(['pack', 'base'] as const).map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setRestockUnitKind(k)}
+                            className={`flex-1 py-1.5 text-micro uppercase rounded-sm border-2 border-ink ${restockUnitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
+                          >
+                            {k === 'pack' ? (product.pack_unit || 'pack') : product.unit}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium">Add:</span>
                       <div className="flex items-center gap-2 flex-1">

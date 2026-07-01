@@ -14,10 +14,14 @@ type CartItem = {
   product_id: string
   name: string
   category: string
-  unit_price: number
-  cost_price: number
-  quantity: number
-  stock: number
+  unit_price: number      // per base unit (canonical)
+  cost_price: number      // per base unit
+  quantity: number        // in the chosen unitKind
+  stock: number           // base units in stock
+  unitKind: 'pack' | 'base'
+  unit: string            // base unit name
+  pack_unit: string | null
+  units_per_pack: number
 }
 
 export default function AddSaleSheet() {
@@ -35,12 +39,19 @@ export default function AddSaleSheet() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showScan, setShowScan] = useState(false)
 
+  const linePrice = (i: CartItem) =>
+    i.unitKind === 'pack' ? i.unit_price * i.units_per_pack : i.unit_price
+  const lineCost = (i: CartItem) =>
+    i.unitKind === 'pack' ? i.cost_price * i.units_per_pack : i.cost_price
+  const maxInUnit = (i: CartItem) =>
+    i.unitKind === 'pack' ? Math.floor(i.stock / i.units_per_pack) : i.stock
+
   const total = useMemo(
-    () => cart.reduce((sum, i) => sum + i.unit_price * i.quantity, 0),
+    () => cart.reduce((sum, i) => sum + linePrice(i) * i.quantity, 0),
     [cart]
   )
   const profit = useMemo(
-    () => cart.reduce((sum, i) => sum + (i.unit_price - i.cost_price) * i.quantity, 0),
+    () => cart.reduce((sum, i) => sum + (linePrice(i) - lineCost(i)) * i.quantity, 0),
     [cart]
   )
   const itemCount = useMemo(
@@ -94,6 +105,10 @@ export default function AddSaleSheet() {
           cost_price: p.cost_price,
           quantity: Math.min(1, p.quantity),
           stock: p.quantity,
+          unitKind: 'base' as const,
+          unit: p.unit,
+          pack_unit: p.pack_unit ?? null,
+          units_per_pack: p.units_per_pack ?? 1,
         },
       ]
     })
@@ -103,12 +118,14 @@ export default function AddSaleSheet() {
   const changeQty = (productId: string, delta: number) => {
     setCart((prev) => {
       const item = prev.find((i) => i.product_id === productId)
-      if (item && delta > 0 && item.quantity + delta > item.stock) {
-        showToast(`Only ${item.stock} in stock`, 'error')
+      if (!item) return prev
+      const max = maxInUnit(item)
+      if (delta > 0 && item.quantity + delta > max) {
+        showToast(`Only ${max} ${item.unitKind === 'pack' ? (item.pack_unit || 'pack') : 'left'} in stock`, 'error')
       }
       return prev.map((i) =>
         i.product_id === productId
-          ? { ...i, quantity: Math.max(1, Math.min(i.stock, i.quantity + delta)) }
+          ? { ...i, quantity: Math.max(1, Math.min(max, i.quantity + delta)) }
           : i
       )
     })
@@ -132,21 +149,30 @@ export default function AddSaleSheet() {
     try {
       const createdAt = new Date().toISOString()
       const groupId = uid()
-      const sales = cart.map((i) => ({
-        id: uid(),
-        product_id: i.product_id,
-        product_name: i.name,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        total: i.unit_price * i.quantity,
-        profit: (i.unit_price - i.cost_price) * i.quantity,
-        customer_name: customerName || null,
-        customer_phone: customerPhone || null,
-        payment_method: paymentMethod,
-        sale_group_id: groupId,
-        created_at: createdAt,
+      const sales = cart.map((i) => {
+        const baseQty = i.unitKind === 'pack' ? i.quantity * i.units_per_pack : i.quantity
+        const lineTotal = linePrice(i) * i.quantity
+        return {
+          id: uid(),
+          product_id: i.product_id,
+          product_name: i.name,
+          quantity: baseQty,
+          unit_price: i.unit_price, // per base unit; unit_price * baseQty === lineTotal
+          total: lineTotal,
+          profit: (linePrice(i) - lineCost(i)) * i.quantity,
+          customer_name: customerName || null,
+          customer_phone: customerPhone || null,
+          payment_method: paymentMethod,
+          sale_group_id: groupId,
+          sale_unit: i.unitKind === 'pack' ? i.pack_unit : null,
+          sale_unit_qty: i.unitKind === 'pack' ? i.quantity : null,
+          created_at: createdAt,
+        }
+      })
+      const items = cart.map((i) => ({
+        productId: i.product_id,
+        qty: i.unitKind === 'pack' ? i.quantity * i.units_per_pack : i.quantity,
       }))
-      const items = cart.map((i) => ({ productId: i.product_id, qty: i.quantity }))
 
       await addSaleBatch(sales, items)
 
@@ -217,7 +243,7 @@ export default function AddSaleSheet() {
             businessName: state.businessProfile?.business_name || 'Your vendor',
             ownerName: state.businessProfile?.owner_name,
             customerName: customerName || null,
-            items: cart.map((i) => ({ name: i.name, qty: i.quantity, price: i.unit_price, total: i.unit_price * i.quantity })),
+            items: cart.map((i) => ({ name: i.name, qty: i.quantity, price: linePrice(i), total: linePrice(i) * i.quantity })),
             total,
             date: formatDate(createdAt),
           },
@@ -371,8 +397,34 @@ export default function AddSaleSheet() {
                             <ProductIcon category={i.category} size={32} />
                             <div className="flex-1 min-w-0">
                               <p className="font-display text-base uppercase truncate">{i.name}</p>
+                              {i.units_per_pack > 1 && i.pack_unit && (
+                                <div className="flex gap-1 mt-1">
+                                  {(['pack', 'base'] as const).map((k) => {
+                                    const disabled = k === 'pack' && i.stock < i.units_per_pack
+                                    return (
+                                      <button
+                                        key={k}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() =>
+                                          setCart((prev) =>
+                                            prev.map((it) =>
+                                              it.product_id === i.product_id
+                                                ? { ...it, unitKind: k, quantity: 1 }
+                                                : it
+                                            )
+                                          )
+                                        }
+                                        className={`px-2 py-0.5 text-micro uppercase rounded-sm border border-ink disabled:opacity-30 ${i.unitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
+                                      >
+                                        {k === 'pack' ? i.pack_unit : i.unit}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
                               <p className="text-xs text-muted-text">
-                                {formatCurrency(i.unit_price)} · {formatCurrency(i.unit_price * i.quantity)}
+                                {formatCurrency(linePrice(i))} · {formatCurrency(linePrice(i) * i.quantity)}
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -391,13 +443,14 @@ export default function AddSaleSheet() {
                                   const raw = e.target.value
                                   const val = raw === '' ? 0 : parseInt(raw)
                                   if (!isNaN(val)) {
-                                    if (val > i.stock) {
-                                      showToast(`Only ${i.stock} in stock`, 'error')
+                                    const max = maxInUnit(i)
+                                    if (val > max) {
+                                      showToast(`Only ${max} in stock`, 'error')
                                     }
                                     setCart((prev) =>
                                       prev.map((item) =>
                                         item.product_id === i.product_id
-                                          ? { ...item, quantity: Math.min(item.stock, Math.max(0, val)) }
+                                          ? { ...item, quantity: Math.min(maxInUnit(item), Math.max(0, val)) }
                                           : item
                                       )
                                     )

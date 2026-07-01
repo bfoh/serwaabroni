@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package, ChevronDown } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, getProfitForPeriod } from '@/lib/data'
+import { saleDisplay } from '@/lib/units'
 import { generateLoanDocument } from '@/lib/pdfGenerator'
 import MazeShader from '@/components/MazeShader'
 import ProductIcon from '@/components/ProductIcon'
@@ -209,7 +210,7 @@ export default function Reports() {
                     ) : (
                       salesList.map(sale => (
                         <div key={sale.id} className="flex justify-between items-center text-xs">
-                          <div className="truncate flex-1 mr-2 text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{sale.quantity}</span></div>
+                          <div className="truncate flex-1 mr-2 text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{saleDisplay(sale).qtyLabel}</span></div>
                           <span className="font-medium">{formatCurrency(sale.total)}</span>
                         </div>
                       ))

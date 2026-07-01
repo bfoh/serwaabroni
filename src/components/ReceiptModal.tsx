@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Share2, Check, Download, Printer } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime } from '@/lib/data'
+import { saleDisplay } from '@/lib/units'
 import type { Sale } from '@/lib/supabase'
 
 interface ReceiptModalProps {
@@ -27,7 +28,10 @@ export default function ReceiptModal({ sales, isOpen, onClose }: ReceiptModalPro
   const receiptNo = `SB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${receiptKey}`
 
   const itemLines = sales
-    .map((s) => `${s.product_name}  ${s.quantity} x ${formatCurrency(s.unit_price)} = ${formatCurrency(s.total)}`)
+    .map((s) => {
+      const d = saleDisplay(s)
+      return `${s.product_name}  ${d.qtyLabel} x ${formatCurrency(d.unitPrice)} = ${formatCurrency(s.total)}`
+    })
     .join('\n')
 
   const receiptText = `*${businessName}*
@@ -108,7 +112,7 @@ Thank you for your business!`
       const y = itemsTop + idx * lineH
       ctx.textAlign = 'left'
       ctx.fillText(s.product_name, 40, y)
-      ctx.fillText(String(s.quantity), 360, y)
+      ctx.fillText(saleDisplay(s).qtyLabel, 360, y)
       ctx.textAlign = 'right'
       ctx.fillText(formatCurrency(s.total), 560, y)
     })
@@ -221,7 +225,7 @@ Thank you for your business!`
                   <div key={s.id} className="flex justify-between items-start gap-2">
                     <span className="text-sm font-medium flex-1 min-w-0 truncate">{s.product_name}</span>
                     <span className="text-sm text-right whitespace-nowrap">
-                      {s.quantity} x {formatCurrency(s.unit_price)}
+                      {saleDisplay(s).qtyLabel} x {formatCurrency(saleDisplay(s).unitPrice)}
                     </span>
                   </div>
                 ))}

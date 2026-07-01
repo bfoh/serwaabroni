@@ -6,6 +6,7 @@ import { formatCurrency, uid, loadData } from '@/lib/data'
 import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
+import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt } = useStore()
@@ -13,6 +14,7 @@ export default function Inventory() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
+  const [restockUnitKind, setRestockUnitKind] = useState<'pack' | 'base'>('base')
   const [restockUnitCost, setRestockUnitCost] = useState('')
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
   const [restockPayFrom, setRestockPayFrom] = useState<'cash' | 'bank'>('cash')
@@ -51,6 +53,10 @@ export default function Inventory() {
     quantity: '',
     unit: 'piece',
     category: 'Groceries',
+    multiUnit: false,
+    packUnit: 'box',
+    unitsPerPack: '',
+    qtyUnitKind: 'base' as 'pack' | 'base',
   })
 
   // Seed data on first visit if store is empty
@@ -122,6 +128,12 @@ export default function Inventory() {
       showToast('Selling price must be higher than cost price', 'error')
       return
     }
+    const factor = newProduct.multiUnit ? parseInt(newProduct.unitsPerPack) : 1
+    if (newProduct.multiUnit && (!Number.isInteger(factor) || factor < 2 || !newProduct.packUnit.trim())) {
+      showToast('For pack products set a pack name and units-per-pack of 2 or more', 'error')
+      return
+    }
+    const baseQty = newProduct.qtyUnitKind === 'pack' ? qty * factor : qty
     if (addUnpaid && !addSupplierName.trim()) {
       showToast('Supplier name required for supplier credit', 'error')
       return
@@ -135,17 +147,19 @@ export default function Inventory() {
         name: newProduct.name,
         cost_price: costPrice,
         selling_price: sellingPrice,
-        quantity: qty,
+        quantity: baseQty,
         unit: newProduct.unit,
+        pack_unit: newProduct.multiUnit ? newProduct.packUnit.trim() : null,
+        units_per_pack: factor,
         category: newProduct.category,
-        low_stock_threshold: Math.max(3, Math.floor(qty * 0.2)),
+        low_stock_threshold: Math.max(3, Math.floor(baseQty * 0.2)),
         barcode: null,
         qr_code: null,
         created_at: new Date().toISOString(),
       }, addProductInjectionId || null, { account: addPayFrom, unpaid: addUnpaid })
       // Supplier credit → record what you owe the supplier as an "I owe them" debt.
       if (addUnpaid) {
-        const cost = Math.round(costPrice * qty * 100) / 100
+        const cost = Math.round(costPrice * baseQty * 100) / 100
         await addDebt({
           id: uid(),
           person_name: addSupplierName.trim(),
@@ -153,7 +167,7 @@ export default function Inventory() {
           amount: cost,
           amount_paid: 0,
           payments: [],
-          description: `Stock: ${newProduct.name} (${qty} ${newProduct.unit})`,
+          description: `Stock: ${newProduct.name} (${baseQty} ${newProduct.unit})`,
           type: 'owing',
           due_date: null,
           injection_id: null,
@@ -165,7 +179,7 @@ export default function Inventory() {
       }
       showToast(addUnpaid ? `Product added — owe ${addSupplierName.trim()}` : (t('product_added') || 'Product added!'), 'success')
       setShowAddProduct(false)
-      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries' })
+      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries', multiUnit: false, packUnit: 'box', unitsPerPack: '', qtyUnitKind: 'base' })
       setAddProductInjectionId('')
       setAddPayFrom('cash')
       setAddUnpaid(false)
@@ -183,6 +197,7 @@ export default function Inventory() {
     if (!product) return
     setEditingProduct(productId)
     setEditQty(0)
+    setRestockUnitKind('base')
     setRestockUnitCost(String(product.cost_price))
   }
 
@@ -197,7 +212,8 @@ export default function Inventory() {
       return
     }
     const unitCost = parseFloat(restockUnitCost) || product.cost_price
-    const newQty = product.quantity + editQty
+    const baseAdd = restockUnitKind === 'pack' ? editQty * (product.units_per_pack ?? 1) : editQty
+    const newQty = product.quantity + baseAdd
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
     // Optimistic cache bump.
     dispatch({ type: 'UPDATE_PRODUCT', product: updated })
@@ -205,13 +221,13 @@ export default function Inventory() {
     // Create the costed batch (online; offline restock still bumps the cache above).
     try {
       const { receiveStock } = await import('@/services/batchApi')
-      await receiveStock({ productId: product.id, qty: editQty, unitCost, injectionId: restockInjectionId || null, account: restockPayFrom, unpaid: restockUnpaid })
+      await receiveStock({ productId: product.id, qty: baseAdd, unitCost, injectionId: restockInjectionId || null, account: restockPayFrom, unpaid: restockUnpaid })
     } catch {
       /* offline or error — cache already bumped; batch can be reconciled later */
     }
     // Supplier credit → record what you owe the supplier as an "I owe them" debt.
     if (restockUnpaid) {
-      const cost = Math.round(unitCost * editQty * 100) / 100
+      const cost = Math.round(unitCost * baseAdd * 100) / 100
       await addDebt({
         id: uid(),
         person_name: supplierName.trim(),
@@ -219,7 +235,7 @@ export default function Inventory() {
         amount: cost,
         amount_paid: 0,
         payments: [],
-        description: `Stock: ${product.name} (${editQty} ${product.unit})`,
+        description: `Stock: ${product.name} (${baseAdd} ${product.unit})`,
         type: 'owing',
         due_date: null,
         injection_id: null,
@@ -229,9 +245,10 @@ export default function Inventory() {
         created_at: new Date().toISOString(),
       } as Omit<Debt, 'user_id'>)
     }
-    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${product.unit}(s)`, 'success')
+    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${restockUnitKind === 'pack' ? (product.pack_unit || 'pack') : product.unit}(s)`, 'success')
     setEditingProduct(null)
     setEditQty(0)
+    setRestockUnitKind('base')
     setRestockUnitCost('')
     setRestockInjectionId('')
     setRestockPayFrom('cash')
@@ -508,7 +525,7 @@ export default function Inventory() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-muted-text">{product.quantity} {product.unit}(s)</span>
+                      <span className="text-xs text-muted-text">{formatStock(product)}</span>
                       <span className="text-xs text-accent-green">{formatCurrency(product.selling_price)}</span>
                     </div>
                   </div>
@@ -541,6 +558,20 @@ export default function Inventory() {
                 {/* Action buttons row: Re-stock | Edit | Delete */}
                 {editingProduct === product.id ? (
                   <div className="border-t-2 border-ink px-4 py-3 bg-warm-gray/30">
+                    {isMultiUnit(product) && (
+                      <div className="flex gap-1 mb-2">
+                        {(['pack', 'base'] as const).map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setRestockUnitKind(k)}
+                            className={`flex-1 py-1.5 text-micro uppercase rounded-sm border-2 border-ink ${restockUnitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
+                          >
+                            {k === 'pack' ? (product.pack_unit || 'pack') : product.unit}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium">Add:</span>
                       <div className="flex items-center gap-2 flex-1">
@@ -780,7 +811,42 @@ export default function Inventory() {
                         placeholder="0.00"
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       />
+                      {newProduct.multiUnit && newProduct.selling_price && parseInt(newProduct.unitsPerPack) > 1 && (
+                        <p className="mt-1 text-micro text-muted-text">
+                          = {formatCurrency(parseFloat(newProduct.selling_price) * parseInt(newProduct.unitsPerPack))} / {newProduct.packUnit || 'pack'}
+                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  <div className="mb-1">
+                    <label className="flex items-center gap-2 text-micro text-muted-text">
+                      <input
+                        type="checkbox"
+                        checked={newProduct.multiUnit}
+                        onChange={(e) => setNewProduct({ ...newProduct, multiUnit: e.target.checked, qtyUnitKind: e.target.checked ? newProduct.qtyUnitKind : 'base' })}
+                      />
+                      SOLD IN PACKS (e.g. box of sachets)
+                    </label>
+                    {newProduct.multiUnit && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={newProduct.packUnit}
+                          onChange={(e) => setNewProduct({ ...newProduct, packUnit: e.target.value })}
+                          placeholder="Pack name (box)"
+                          className="h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
+                        />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={newProduct.unitsPerPack}
+                          onChange={(e) => setNewProduct({ ...newProduct, unitsPerPack: e.target.value })}
+                          placeholder={`${newProduct.unit}s per ${newProduct.packUnit || 'pack'}`}
+                          className="h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -793,9 +859,23 @@ export default function Inventory() {
                         placeholder="0"
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       />
+                      {newProduct.multiUnit && (
+                        <div className="mt-1.5 flex gap-1">
+                          {(['pack', 'base'] as const).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => setNewProduct({ ...newProduct, qtyUnitKind: k })}
+                              className={`flex-1 py-1.5 text-micro uppercase rounded-sm border-2 border-ink ${newProduct.qtyUnitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
+                            >
+                              {k === 'pack' ? (newProduct.packUnit || 'pack') : newProduct.unit}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="text-micro text-muted-text mb-1.5 block">UNIT</label>
+                      <label className="text-micro text-muted-text mb-1.5 block">{newProduct.multiUnit ? 'SMALLER UNIT' : 'UNIT'}</label>
                       <select
                         value={newProduct.unit}
                         onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}

@@ -133,7 +133,8 @@ export default function Inventory() {
       showToast('For pack products set a pack name and units-per-pack of 2 or more', 'error')
       return
     }
-    const baseQty = newProduct.qtyUnitKind === 'pack' ? qty * factor : qty
+    // Quantity is always entered in the bigger (pack) unit when sold in packs.
+    const baseQty = newProduct.multiUnit ? qty * factor : qty
     // When sold in packs, the entered prices are for the BIGGER unit (pack);
     // the base-unit price is derived and stored (DB stays base-canonical).
     const baseCost = newProduct.multiUnit ? Math.round((costPrice / factor) * 100) / 100 : costPrice
@@ -876,7 +877,7 @@ export default function Inventory() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-micro text-muted-text mb-1.5 block">{t('quantity')}</label>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('quantity')}{newProduct.multiUnit ? ` (${newProduct.packUnit})` : ''}</label>
                       <input
                         type="number"
                         value={newProduct.quantity}
@@ -884,19 +885,10 @@ export default function Inventory() {
                         placeholder="0"
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       />
-                      {newProduct.multiUnit && (
-                        <div className="mt-1.5 flex gap-1">
-                          {(['pack', 'base'] as const).map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              onClick={() => setNewProduct({ ...newProduct, qtyUnitKind: k })}
-                              className={`flex-1 py-1.5 text-micro uppercase rounded-sm border-2 border-ink ${newProduct.qtyUnitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
-                            >
-                              {k === 'pack' ? (newProduct.packUnit || 'pack') : newProduct.unit}
-                            </button>
-                          ))}
-                        </div>
+                      {newProduct.multiUnit && newProduct.quantity && parseInt(newProduct.unitsPerPack) > 1 && (
+                        <p className="mt-1 text-micro text-muted-text">
+                          = {parseInt(newProduct.quantity) * parseInt(newProduct.unitsPerPack)} {newProduct.unit}
+                        </p>
                       )}
                     </div>
                     <div>

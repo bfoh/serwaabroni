@@ -393,41 +393,49 @@ export default function AddSaleSheet() {
                       {/* Cart lines */}
                       <div className="space-y-3 mb-4">
                         {cart.map((i) => (
-                          <div key={i.product_id} className="bg-light harsh-border rounded-sm p-3 flex items-center gap-3">
-                            <ProductIcon category={i.category} size={32} />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-display text-base uppercase truncate">{i.name}</p>
-                              {i.units_per_pack > 1 && i.pack_unit && (
-                                <div className="flex gap-1 mt-1">
-                                  {(['pack', 'base'] as const).map((k) => {
-                                    const disabled = k === 'pack' && i.stock < i.units_per_pack
-                                    return (
-                                      <button
-                                        key={k}
-                                        type="button"
-                                        disabled={disabled}
-                                        onClick={() =>
-                                          setCart((prev) =>
-                                            prev.map((it) =>
-                                              it.product_id === i.product_id
-                                                ? { ...it, unitKind: k, quantity: 1 }
-                                                : it
+                          <div key={i.product_id} className="bg-light harsh-border rounded-sm p-3">
+                            <div className="flex items-start gap-3">
+                              <ProductIcon category={i.category} size={32} />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-display text-base uppercase truncate">{i.name}</p>
+                                {i.units_per_pack > 1 && i.pack_unit && (
+                                  <div className="flex gap-1 mt-1">
+                                    {(['pack', 'base'] as const).map((k) => {
+                                      const disabled = k === 'pack' && i.stock < i.units_per_pack
+                                      return (
+                                        <button
+                                          key={k}
+                                          type="button"
+                                          disabled={disabled}
+                                          onClick={() =>
+                                            setCart((prev) =>
+                                              prev.map((it) =>
+                                                it.product_id === i.product_id
+                                                  ? { ...it, unitKind: k, quantity: 1 }
+                                                  : it
+                                              )
                                             )
-                                          )
-                                        }
-                                        className={`px-2 py-0.5 text-micro uppercase rounded-sm border border-ink disabled:opacity-30 ${i.unitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
-                                      >
-                                        {k === 'pack' ? i.pack_unit : i.unit}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              )}
-                              <p className="text-xs text-muted-text">
-                                {formatCurrency(linePrice(i))} · {formatCurrency(linePrice(i) * i.quantity)}
-                              </p>
+                                          }
+                                          className={`px-2.5 py-1 text-micro uppercase rounded-sm border border-ink disabled:opacity-30 ${i.unitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
+                                        >
+                                          {k === 'pack' ? i.pack_unit : i.unit}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                                <p className="text-xs text-muted-text mt-1 truncate">
+                                  {formatCurrency(linePrice(i))} · {formatCurrency(linePrice(i) * i.quantity)}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => removeFromCart(i.product_id)}
+                                className="btn-tactile w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-sm"
+                              >
+                                <Trash2 size={16} className="text-accent-red" />
+                              </button>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2 mt-3">
                               <button
                                 onClick={() => changeQty(i.product_id, -1)}
                                 className="btn-tactile w-11 h-11 bg-warm-gray flex items-center justify-center rounded-sm"
@@ -467,19 +475,13 @@ export default function AddSaleSheet() {
                                     )
                                   }
                                 }}
-                                className="font-display text-xl text-ink w-12 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="font-display text-xl text-ink w-14 text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-ink rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               />
                               <button
                                 onClick={() => changeQty(i.product_id, 1)}
                                 className="btn-tactile w-11 h-11 bg-warm-gray flex items-center justify-center rounded-sm"
                               >
                                 <Plus size={16} strokeWidth={2.5} className="text-ink" />
-                              </button>
-                              <button
-                                onClick={() => removeFromCart(i.product_id)}
-                                className="btn-tactile w-11 h-11 flex items-center justify-center rounded-sm"
-                              >
-                                <Trash2 size={16} className="text-accent-red" />
                               </button>
                             </div>
                           </div>

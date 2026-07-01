@@ -484,13 +484,13 @@ export default function Inventory() {
                     placeholder="Price"
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
                     value={inlineEditQty}
                     onChange={(e) => setInlineEditQty(e.target.value)}
                     className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
-                    placeholder="Qty"
+                    placeholder={isMultiUnit(product) ? `Qty (${product.pack_unit})` : 'Qty'}
                   />
                   <select
                     value={inlineEditUnit}
@@ -516,6 +516,8 @@ export default function Inventory() {
                       </>
                     )}
                   </select>
+                </div>
+                <div>
                   <select
                     value={inlineEditCategory}
                     onChange={(e) => setInlineEditCategory(e.target.value)}

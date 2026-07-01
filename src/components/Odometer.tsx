@@ -44,18 +44,19 @@ export default function Odometer({ value, prefix = '', className = '' }: Odomete
         </span>
       )}
       {digits.map((digit, i) => {
-        if (digit === '.') {
+        const numDigit = parseInt(digit)
+        // Non-digit chars (minus sign, decimal point) render as literal glyphs.
+        if (isNaN(numDigit)) {
           return (
             <span
-              key={`dot-${i}`}
+              key={`sym-${i}`}
               className="font-display text-ink"
               style={{ fontSize: '2.5rem', lineHeight: '3.5rem', height: '3.5rem' }}
             >
-              .
+              {digit}
             </span>
           )
         }
-        const numDigit = parseInt(digit)
         return (
           <div
             key={`col-${i}`}

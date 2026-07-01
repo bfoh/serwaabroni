@@ -27,6 +27,8 @@ export interface Product {
   selling_price: number
   quantity: number
   unit: string
+  pack_unit?: string | null
+  units_per_pack: number
   category: string
   low_stock_threshold: number
   barcode?: string | null
@@ -42,6 +44,8 @@ export interface Sale {
   product_name: string
   quantity: number
   unit_price: number
+  sale_unit?: string | null
+  sale_unit_qty?: number | null
   total: number
   profit: number
   customer_name: string | null

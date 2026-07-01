@@ -134,6 +134,10 @@ export default function Inventory() {
       return
     }
     const baseQty = newProduct.qtyUnitKind === 'pack' ? qty * factor : qty
+    // When sold in packs, the entered prices are for the BIGGER unit (pack);
+    // the base-unit price is derived and stored (DB stays base-canonical).
+    const baseCost = newProduct.multiUnit ? Math.round((costPrice / factor) * 100) / 100 : costPrice
+    const baseSell = newProduct.multiUnit ? Math.round((sellingPrice / factor) * 100) / 100 : sellingPrice
     if (addUnpaid && !addSupplierName.trim()) {
       showToast('Supplier name required for supplier credit', 'error')
       return
@@ -145,8 +149,8 @@ export default function Inventory() {
       await addProduct({
         id: uid(),
         name: newProduct.name,
-        cost_price: costPrice,
-        selling_price: sellingPrice,
+        cost_price: baseCost,
+        selling_price: baseSell,
         quantity: baseQty,
         unit: newProduct.unit,
         pack_unit: newProduct.multiUnit ? newProduct.packUnit.trim() : null,
@@ -159,7 +163,7 @@ export default function Inventory() {
       }, addProductInjectionId || null, { account: addPayFrom, unpaid: addUnpaid })
       // Supplier credit → record what you owe the supplier as an "I owe them" debt.
       if (addUnpaid) {
-        const cost = Math.round(costPrice * baseQty * 100) / 100
+        const cost = Math.round(baseCost * baseQty * 100) / 100
         await addDebt({
           id: uid(),
           person_name: addSupplierName.trim(),
@@ -793,7 +797,7 @@ export default function Inventory() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-micro text-muted-text mb-1.5 block">{t('cost_price')} (GH₵)</label>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('cost_price')} (GH₵){newProduct.multiUnit ? ` / ${newProduct.packUnit}` : ''}</label>
                       <input
                         type="number"
                         value={newProduct.cost_price}
@@ -801,9 +805,14 @@ export default function Inventory() {
                         placeholder="0.00"
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       />
+                      {newProduct.multiUnit && newProduct.cost_price && parseInt(newProduct.unitsPerPack) > 1 && (
+                        <p className="mt-1 text-micro text-muted-text">
+                          = {formatCurrency(parseFloat(newProduct.cost_price) / parseInt(newProduct.unitsPerPack))} / {newProduct.unit}
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <label className="text-micro text-muted-text mb-1.5 block">{t('selling_price')} (GH₵)</label>
+                      <label className="text-micro text-muted-text mb-1.5 block">{t('selling_price')} (GH₵){newProduct.multiUnit ? ` / ${newProduct.packUnit}` : ''}</label>
                       <input
                         type="number"
                         value={newProduct.selling_price}
@@ -813,7 +822,7 @@ export default function Inventory() {
                       />
                       {newProduct.multiUnit && newProduct.selling_price && parseInt(newProduct.unitsPerPack) > 1 && (
                         <p className="mt-1 text-micro text-muted-text">
-                          = {formatCurrency(parseFloat(newProduct.selling_price) * parseInt(newProduct.unitsPerPack))} / {newProduct.packUnit || 'pack'}
+                          = {formatCurrency(parseFloat(newProduct.selling_price) / parseInt(newProduct.unitsPerPack))} / {newProduct.unit}
                         </p>
                       )}
                     </div>
@@ -824,27 +833,43 @@ export default function Inventory() {
                       <input
                         type="checkbox"
                         checked={newProduct.multiUnit}
-                        onChange={(e) => setNewProduct({ ...newProduct, multiUnit: e.target.checked, qtyUnitKind: e.target.checked ? newProduct.qtyUnitKind : 'base' })}
+                        onChange={(e) => {
+                          const on = e.target.checked
+                          const packUnits = ['tin', 'bag', 'sachet', 'piece']
+                          setNewProduct({
+                            ...newProduct,
+                            multiUnit: on,
+                            qtyUnitKind: on ? newProduct.qtyUnitKind : 'base',
+                            unit: on && !packUnits.includes(newProduct.unit) ? 'sachet' : newProduct.unit,
+                          })
+                        }}
                       />
                       SOLD IN PACKS (e.g. box of sachets)
                     </label>
                     {newProduct.multiUnit && (
                       <div className="mt-2 grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={newProduct.packUnit}
-                          onChange={(e) => setNewProduct({ ...newProduct, packUnit: e.target.value })}
-                          placeholder="Pack name (box)"
-                          className="h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
-                        />
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={newProduct.unitsPerPack}
-                          onChange={(e) => setNewProduct({ ...newProduct, unitsPerPack: e.target.value })}
-                          placeholder={`${newProduct.unit}s per ${newProduct.packUnit || 'pack'}`}
-                          className="h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
-                        />
+                        <div>
+                          <label className="text-micro text-muted-text mb-1 block">BIGGER UNIT</label>
+                          <select
+                            value={newProduct.packUnit}
+                            onChange={(e) => setNewProduct({ ...newProduct, packUnit: e.target.value })}
+                            className="w-full h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
+                          >
+                            <option value="box">Box</option>
+                            <option value="bag">Bag</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-micro text-muted-text mb-1 block">{newProduct.unit}s per {newProduct.packUnit}</label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={newProduct.unitsPerPack}
+                            onChange={(e) => setNewProduct({ ...newProduct, unitsPerPack: e.target.value })}
+                            placeholder="e.g. 10"
+                            className="w-full h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -881,13 +906,24 @@ export default function Inventory() {
                         onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       >
-                        <option value="piece">Piece</option>
-                        <option value="tin">Tin</option>
-                        <option value="bag">Bag</option>
-                        <option value="bottle">Bottle</option>
-                        <option value="pack">Pack</option>
-                        <option value="loaf">Loaf</option>
-                        <option value="kg">Kg</option>
+                        {newProduct.multiUnit ? (
+                          <>
+                            <option value="tin">Tin</option>
+                            <option value="bag">Bag</option>
+                            <option value="sachet">Sachet</option>
+                            <option value="piece">Piece</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="piece">Piece</option>
+                            <option value="tin">Tin</option>
+                            <option value="bag">Bag</option>
+                            <option value="bottle">Bottle</option>
+                            <option value="pack">Pack</option>
+                            <option value="loaf">Loaf</option>
+                            <option value="kg">Kg</option>
+                          </>
+                        )}
                       </select>
                     </div>
                   </div>

@@ -14,7 +14,6 @@ export default function Inventory() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
-  const [restockUnitKind, setRestockUnitKind] = useState<'pack' | 'base'>('base')
   const [restockUnitCost, setRestockUnitCost] = useState('')
   const [restockInjectionId, setRestockInjectionId] = useState<string>('')
   const [restockPayFrom, setRestockPayFrom] = useState<'cash' | 'bank'>('cash')
@@ -200,10 +199,12 @@ export default function Inventory() {
   const handleRestock = (productId: string) => {
     const product = state.products.find((p) => p.id === productId)
     if (!product) return
+    // Pack goods restock in the BIGGER unit: default the cost to the pack cost.
+    const factor = product.units_per_pack ?? 1
+    const packCost = isMultiUnit(product) ? Math.round(product.cost_price * factor * 100) / 100 : product.cost_price
     setEditingProduct(productId)
     setEditQty(0)
-    setRestockUnitKind('base')
-    setRestockUnitCost(String(product.cost_price))
+    setRestockUnitCost(String(packCost))
   }
 
   const handleSaveRestock = async () => {
@@ -216,8 +217,12 @@ export default function Inventory() {
       showToast('Supplier name required for supplier credit', 'error')
       return
     }
-    const unitCost = parseFloat(restockUnitCost) || product.cost_price
-    const baseAdd = restockUnitKind === 'pack' ? editQty * (product.units_per_pack ?? 1) : editQty
+    // Pack goods: quantity added is in the bigger unit, cost entered per bigger unit.
+    const factor = product.units_per_pack ?? 1
+    const mult = isMultiUnit(product)
+    const enteredCost = parseFloat(restockUnitCost) || (mult ? Math.round(product.cost_price * factor * 100) / 100 : product.cost_price)
+    const unitCost = mult ? Math.round((enteredCost / factor) * 100) / 100 : enteredCost
+    const baseAdd = mult ? editQty * factor : editQty
     const newQty = product.quantity + baseAdd
     const updated = { ...product, quantity: newQty, updated_at: new Date().toISOString() }
     // Optimistic cache bump.
@@ -250,10 +255,9 @@ export default function Inventory() {
         created_at: new Date().toISOString(),
       } as Omit<Debt, 'user_id'>)
     }
-    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${restockUnitKind === 'pack' ? (product.pack_unit || 'pack') : product.unit}(s)`, 'success')
+    showToast(restockUnpaid ? `Restocked — owe ${supplierName.trim()}` : `Restocked ${editQty} ${mult ? (product.pack_unit || 'pack') : product.unit}(s)`, 'success')
     setEditingProduct(null)
     setEditQty(0)
-    setRestockUnitKind('base')
     setRestockUnitCost('')
     setRestockInjectionId('')
     setRestockPayFrom('cash')
@@ -265,11 +269,14 @@ export default function Inventory() {
   const handleOpenEdit = (productId: string) => {
     const product = state.products.find((p) => p.id === productId)
     if (!product) return
+    // For pack goods, edit prices + quantity in the BIGGER unit; base is derived on save.
+    const factor = product.units_per_pack ?? 1
+    const mult = isMultiUnit(product)
     setInlineEditId(product.id)
     setInlineEditName(product.name)
-    setInlineEditCost(String(product.cost_price))
-    setInlineEditPrice(String(product.selling_price))
-    setInlineEditQty(String(product.quantity))
+    setInlineEditCost(String(mult ? Math.round(product.cost_price * factor * 100) / 100 : product.cost_price))
+    setInlineEditPrice(String(mult ? Math.round(product.selling_price * factor * 100) / 100 : product.selling_price))
+    setInlineEditQty(String(mult ? Math.round(product.quantity / factor) : product.quantity))
     setInlineEditUnit(product.unit || 'piece')
     setInlineEditCategory(product.category || 'Groceries')
   }
@@ -300,12 +307,20 @@ export default function Inventory() {
         return
       }
 
+      // Pack goods: entered prices are per bigger unit, quantity in bigger unit.
+      // Convert back to the base-canonical values stored in the DB.
+      const factor = original.units_per_pack ?? 1
+      const mult = isMultiUnit(original)
+      const baseCost = mult ? Math.round((costPrice / factor) * 100) / 100 : costPrice
+      const baseSell = mult ? Math.round((sellingPrice / factor) * 100) / 100 : sellingPrice
+      const baseQty = mult ? qty * factor : qty
+
       const updated: Product = {
         ...original,
         name: inlineEditName,
-        cost_price: costPrice,
-        selling_price: sellingPrice,
-        quantity: qty,
+        cost_price: baseCost,
+        selling_price: baseSell,
+        quantity: baseQty,
         unit: inlineEditUnit,
         category: inlineEditCategory,
         updated_at: new Date().toISOString(),
@@ -314,9 +329,9 @@ export default function Inventory() {
       dispatch({ type: 'UPDATE_PRODUCT', product: updated })
       updateProduct(inlineEditId, {
         name: inlineEditName,
-        cost_price: costPrice,
-        selling_price: sellingPrice,
-        quantity: qty,
+        cost_price: baseCost,
+        selling_price: baseSell,
+        quantity: baseQty,
         unit: inlineEditUnit,
         category: inlineEditCategory,
       }).catch(() => {})
@@ -482,13 +497,24 @@ export default function Inventory() {
                     onChange={(e) => setInlineEditUnit(e.target.value)}
                     className="w-full h-8 px-2.5 bg-white harsh-border rounded-sm text-sm font-body"
                   >
-                    <option value="piece">Pc</option>
-                    <option value="tin">Tin</option>
-                    <option value="bag">Bag</option>
-                    <option value="bottle">Btl</option>
-                    <option value="pack">Pack</option>
-                    <option value="loaf">Loaf</option>
-                    <option value="kg">Kg</option>
+                    {isMultiUnit(product) ? (
+                      <>
+                        <option value="tin">Tin</option>
+                        <option value="bag">Bag</option>
+                        <option value="sachet">Sachet</option>
+                        <option value="piece">Piece</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="piece">Pc</option>
+                        <option value="tin">Tin</option>
+                        <option value="bag">Bag</option>
+                        <option value="bottle">Btl</option>
+                        <option value="pack">Pack</option>
+                        <option value="loaf">Loaf</option>
+                        <option value="kg">Kg</option>
+                      </>
+                    )}
                   </select>
                   <select
                     value={inlineEditCategory}
@@ -500,6 +526,12 @@ export default function Inventory() {
                     ))}
                   </select>
                 </div>
+                {isMultiUnit(product) && (
+                  <p className="text-[10px] text-muted-text leading-tight">
+                    Cost, price &amp; qty are per {product.pack_unit} (1 {product.pack_unit} = {product.units_per_pack} {product.unit}).
+                    {inlineEditQty && parseInt(inlineEditQty) > 0 && ` Stock = ${parseInt(inlineEditQty) * (product.units_per_pack ?? 1)} ${product.unit}.`}
+                  </p>
+                )}
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => setInlineEditId(null)}
@@ -564,21 +596,13 @@ export default function Inventory() {
                 {editingProduct === product.id ? (
                   <div className="border-t-2 border-ink px-4 py-3 bg-warm-gray/30">
                     {isMultiUnit(product) && (
-                      <div className="flex gap-1 mb-2">
-                        {(['pack', 'base'] as const).map((k) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => setRestockUnitKind(k)}
-                            className={`flex-1 py-1.5 text-micro uppercase rounded-sm border-2 border-ink ${restockUnitKind === k ? 'bg-ink text-white' : 'bg-light text-ink'}`}
-                          >
-                            {k === 'pack' ? (product.pack_unit || 'pack') : product.unit}
-                          </button>
-                        ))}
-                      </div>
+                      <p className="text-[11px] text-muted-text mb-2">
+                        Adding in {product.pack_unit}
+                        {editQty > 0 && ` · +${editQty * (product.units_per_pack ?? 1)} ${product.unit}`}
+                      </p>
                     )}
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium">Add:</span>
+                      <span className="text-sm font-medium">Add{isMultiUnit(product) ? ` (${product.pack_unit})` : ''}:</span>
                       <div className="flex items-center gap-2 flex-1">
                         <button
                           onClick={() => setEditQty(Math.max(0, editQty - 1))}
@@ -626,7 +650,7 @@ export default function Inventory() {
                       inputMode="decimal"
                       value={restockUnitCost}
                       onChange={(e) => setRestockUnitCost(e.target.value)}
-                      placeholder="Unit cost (GHS)"
+                      placeholder={isMultiUnit(product) ? `Cost per ${product.pack_unit} (GHS)` : 'Unit cost (GHS)'}
                       className="w-full harsh-border rounded-sm px-3 py-2 text-sm mt-3"
                     />
                     {activeInjections.length > 0 && (

@@ -58,10 +58,14 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   const filteredGroups = useMemo(() => groupSales(filteredSales), [filteredSales])
 
   const summary = useMemo(() => {
-    const total = filteredSales.reduce((s, sale) => s + sale.total, 0)
-    const profit = filteredSales.reduce((s, sale) => s + (sale.profit || 0), 0)
-    const count = filteredGroups.length
-    return { total, profit, count }
+    let total = 0, profit = 0, cash = 0, credit = 0
+    for (const sale of filteredSales) {
+      total += sale.total
+      profit += sale.profit || 0
+      if (sale.payment_method === 'credit') credit += sale.total
+      else cash += sale.total
+    }
+    return { total, profit, count: filteredGroups.length, cash, credit }
   }, [filteredSales, filteredGroups])
 
   if (!isOpen) return null
@@ -89,6 +93,18 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
         <div className="flex-1 bg-warm-gray rounded-sm px-3 py-2.5">
           <p className="text-[9px] text-ink/50 uppercase">Profit</p>
           <p className="font-display text-lg text-ink">{formatCurrency(summary.profit)}</p>
+        </div>
+      </div>
+
+      {/* Cash vs Credit split */}
+      <div className="px-5 pb-1 flex gap-2 flex-shrink-0">
+        <div className="flex-1 flex items-center justify-between bg-light harsh-border rounded-sm px-3 py-1.5">
+          <span className="text-[9px] text-accent-green uppercase font-display tracking-wide">Cash</span>
+          <span className="text-xs font-display text-ink">{formatCurrency(summary.cash)}</span>
+        </div>
+        <div className="flex-1 flex items-center justify-between bg-light harsh-border rounded-sm px-3 py-1.5">
+          <span className="text-[9px] text-accent-red uppercase font-display tracking-wide">Credit</span>
+          <span className="text-xs font-display text-ink">{formatCurrency(summary.credit)}</span>
         </div>
       </div>
 
@@ -156,6 +172,9 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{title}</p>
                   <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded-sm font-display uppercase tracking-wide ${group.payment_method === 'credit' ? 'bg-accent-red/15 text-accent-red' : 'bg-accent-green/15 text-accent-green'}`}>
+                      {group.payment_method === 'credit' ? 'Credit' : 'Cash'}
+                    </span>
                     <span className="text-[10px] text-muted-text">{formatDate(group.created_at)} {formatTime(group.created_at)}</span>
                     {group.customer_name && (
                       <span className="text-[10px] text-accent-green flex items-center gap-0.5">

@@ -33,6 +33,17 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
   // Compute today's sales live from the sales list so it updates the moment a
   // sale is recorded — state.todaySales is only a snapshot from the last full refresh.
   const todaySales = useMemo(() => getTodaySales(state.sales), [state.sales])
+  // Split today's sales into cash (paid now) vs credit (pay later).
+  const todaySplit = useMemo(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0)
+    let cash = 0, credit = 0
+    for (const s of state.sales) {
+      if (new Date(s.created_at) < start) continue
+      if (s.payment_method === 'credit') credit += s.total
+      else cash += s.total
+    }
+    return { cash, credit }
+  }, [state.sales])
 
   return (
     <div className="min-h-screen bg-sand pb-20">
@@ -81,6 +92,9 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
             <div>
               <p className="text-[10px] text-white/70 uppercase tracking-wider">{t('todays_sales')}</p>
               <p className="font-display text-lg text-white">{formatCurrency(todaySales)}</p>
+              <p className="text-[9px] text-white/70 leading-tight mt-0.5">
+                Cash {formatCurrency(todaySplit.cash)} · Credit {formatCurrency(todaySplit.credit)}
+              </p>
             </div>
           </div>
           <div className="flex-1 bg-warm-gray rounded-sm px-4 py-3 flex items-center gap-3">

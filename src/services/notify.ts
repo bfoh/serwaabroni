@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase'
 
 // Thin client wrapper around the send-notification edge function. All provider keys
 // live server-side; the browser only describes WHAT to send, never holds credentials.
@@ -33,9 +33,24 @@ export interface NotifyPayload {
 // trigger notifications without blocking the primary action (sale, payment, etc.).
 export async function sendNotification(payload: NotifyPayload): Promise<boolean> {
   try {
-    const { data, error } = await supabase.functions.invoke('send-notification', { body: payload })
-    if (error) {
-      console.warn('sendNotification error:', error.message)
+    const { data: sess } = await supabase.auth.getSession()
+    const userJwt = sess.session?.access_token
+    if (!userJwt) return false
+    // This project uses asymmetric (ES256) JWT signing keys, which the edge
+    // gateway cannot parse in the Authorization header. Send the anon key
+    // (legacy HS256) as Authorization and pass the user token in the body.
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...payload, userJwt }),
+    })
+    const data = await res.json().catch(() => ({} as { ok?: boolean }))
+    if (!res.ok) {
+      console.warn('sendNotification error:', data)
       return false
     }
     return !!data?.ok

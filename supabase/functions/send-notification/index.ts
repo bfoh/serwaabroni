@@ -41,22 +41,21 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  // Identify the caller from their JWT.
-  const authHeader = req.headers.get('Authorization') ?? ''
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const { data: userData, error: userErr } = await userClient.auth.getUser()
-  if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401)
-  const userId = userData.user.id
-
-  let body: Body
+  let body: Body & { userJwt?: string }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON' }, 400)
   }
   if (!body?.type || !body?.data) return json({ error: 'Missing type or data' }, 400)
+
+  // The caller's token arrives in the body (the gateway can't parse ES256 Bearer
+  // tokens). Validate it via GoTrue to identify the caller.
+  if (!body.userJwt) return json({ error: 'Unauthorized' }, 401)
+  const userClient = createClient(SUPABASE_URL, ANON_KEY)
+  const { data: userData, error: userErr } = await userClient.auth.getUser(body.userJwt)
+  if (userErr || !userData?.user) return json({ error: 'Unauthorized', detail: userErr?.message ?? null }, 401)
+  const userId = userData.user.id
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 

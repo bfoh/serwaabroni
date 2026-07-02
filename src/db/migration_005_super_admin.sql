@@ -150,11 +150,11 @@ BEGIN
            COALESCE(bp.business_name, 'Unnamed shop'),
            COALESCE(bp.status, 'active'),
            u.created_at,
-           COALESCE((SELECT sum(total)  FROM sales    s WHERE s.user_id = u.id),0)::numeric,
-           COALESCE((SELECT sum(profit) FROM sales    s WHERE s.user_id = u.id),0)::numeric,
-           COALESCE((SELECT sum(amount) FROM expenses e WHERE e.user_id = u.id),0)::numeric,
+           COALESCE((SELECT sum(s.total)  FROM sales    s WHERE s.user_id = u.id),0)::numeric,
+           COALESCE((SELECT sum(s.profit) FROM sales    s WHERE s.user_id = u.id),0)::numeric,
+           COALESCE((SELECT sum(e.amount) FROM expenses e WHERE e.user_id = u.id),0)::numeric,
            COALESCE((SELECT count(*)::int FROM sales s WHERE s.user_id = u.id),0),
-           (SELECT max(created_at) FROM sales s WHERE s.user_id = u.id)
+           (SELECT max(s.created_at) FROM sales s WHERE s.user_id = u.id)
     FROM auth.users u
     LEFT JOIN business_profiles bp ON bp.user_id = u.id
     ORDER BY u.created_at DESC;

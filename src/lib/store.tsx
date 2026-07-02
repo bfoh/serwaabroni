@@ -1,10 +1,14 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
 import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
-import { cacheOfflineData, queueOperation, syncQueue, getQueue, getQueueLength, mergeDebts, setupAutoSync } from '@/services/offline'
+import { cacheOfflineData, clearOfflineData, queueOperation, syncQueue, getQueue, getQueueLength, mergeDebts, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
-import { loadData, saveData, type SaleGroup } from './data'
+import { loadData, saveData, clearStoredData, type SaleGroup } from './data'
+
+// Tracks which user the cached localStorage data belongs to, so switching
+// accounts (or impersonating) never shows the previous tenant's data.
+const ACTIVE_UID_KEY = 'serwaabroni_active_uid'
 import { generateAlerts, type Alert } from './alerts'
 import { sendNotification } from '@/services/notify'
 
@@ -101,6 +105,7 @@ type Action =
   | { type: 'SET_ADMIN_CHECKED'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
+  | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
   | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
@@ -204,6 +209,11 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
     case 'SET_ADMIN_CHECKED': return { ...state, adminChecked: action.value }
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
+    case 'RESET_TENANT_DATA': return {
+      ...state,
+      products: [], sales: [], debts: [], expenses: [], customers: [], alerts: [],
+      balance: 0, bankBalance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
+    }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
     case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
@@ -248,17 +258,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState)
   const isFirstLoad = useRef(true)
 
+  // Wipe cached shop data when the active user changes (account switch, logout,
+  // or impersonation), so one tenant's data never leaks into another's session
+  // on a shared browser. Same-user reloads keep their cache (offline support).
+  const reconcileActiveUser = (uid: string | null) => {
+    const stored = localStorage.getItem(ACTIVE_UID_KEY)
+    if (uid) {
+      if (stored && stored !== uid) {
+        clearStoredData()
+        clearOfflineData()
+        dispatch({ type: 'RESET_TENANT_DATA' })
+      }
+      localStorage.setItem(ACTIVE_UID_KEY, uid)
+    } else {
+      clearStoredData()
+      clearOfflineData()
+      localStorage.removeItem(ACTIVE_UID_KEY)
+      dispatch({ type: 'RESET_TENANT_DATA' })
+    }
+  }
+
   // Check auth on mount — Supabase Auth is the single source of truth
   useEffect(() => {
     checkAuth().then((session) => {
+      reconcileActiveUser(session?.id ?? null)
       dispatch({ type: 'SET_USER', user: session })
     }).catch(() => {
+      reconcileActiveUser(null)
       dispatch({ type: 'SET_USER', user: null })
     })
 
     // Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        reconcileActiveUser(session.user.id)
         dispatch({
           type: 'SET_USER',
           user: {
@@ -275,6 +308,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           value: backup ? { tenantId: session.user.id, tenantName: backup.tenantName } : null,
         })
       } else {
+        reconcileActiveUser(null)
         dispatch({ type: 'SET_USER', user: null })
         dispatch({ type: 'SET_IMPERSONATING', value: null })
       }
@@ -468,9 +502,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [syncPending])
 
-  // Load data after auth is confirmed
+  // Load data after auth is confirmed, and RE-load whenever the user changes
+  // (account switch / impersonation) so the view always reflects the active user.
   useEffect(() => {
-    if (!isFirstLoad.current) return
     if (state.authLoading) return // wait for auth check
     isFirstLoad.current = false
 
@@ -492,7 +526,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
-  }, [state.authLoading, state.isAuthenticated, refreshData, syncPending])
+  }, [state.authLoading, state.isAuthenticated, state.user?.id, refreshData, syncPending])
 
   // Flush the offline write queue when the network returns or the tab regains
   // focus, then re-sync from the server. This is what makes a payment recorded

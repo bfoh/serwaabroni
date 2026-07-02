@@ -58,8 +58,11 @@ export default function Inventory() {
     qtyUnitKind: 'base' as 'pack' | 'base',
   })
 
-  // Seed data on first visit if store is empty
+  // Seed demo data from localStorage only when NOT logged in. For an authenticated
+  // user, products come from Supabase (scoped to their user_id) — seeding from the
+  // shared localStorage cache here would leak a previous tenant's stock.
   useEffect(() => {
+    if (state.isAuthenticated) return
     if (state.products.length === 0) {
       const data = loadData()
       if (data.products.length > 0) {
@@ -68,7 +71,7 @@ export default function Inventory() {
         })
       }
     }
-  }, [state.products.length, dispatch])
+  }, [state.isAuthenticated, state.products.length, dispatch])
 
   // Load active capital injections so restock can be tagged to its funding source.
   useEffect(() => {

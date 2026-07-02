@@ -83,6 +83,16 @@ export function saveData(data: StoredData & { version?: string }) {
   }
 }
 
+// Wipe the cached shop data. Called on user switch/logout so a previous tenant's
+// products/sales cannot be seeded into another account's session.
+export function clearStoredData() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 export function getTodaySales(sales: Sale[]): number {
   const today = new Date()
   today.setHours(0, 0, 0, 0)

@@ -194,6 +194,18 @@ export function getOfflineData(): CachedData | null {
   }
 }
 
+// Remove the offline data cache and any queued (unsynced) operations. Called
+// when the active user changes so one tenant's data never bleeds into another's
+// session on a shared browser or during impersonation.
+export function clearOfflineData(): void {
+  try {
+    localStorage.removeItem(OFFLINE_DATA_KEY)
+    localStorage.removeItem(SYNC_QUEUE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 // ============================================
 // NETWORK STATUS LISTENER
 // ============================================

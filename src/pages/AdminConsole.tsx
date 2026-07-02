@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { ArrowLeft, Search, Shield, Ban, Trash2, Eye, Loader2 } from 'lucide-react'
+import { ArrowLeft, Search, Shield, Ban, Trash2, Eye, Loader2, LogIn } from 'lucide-react'
 import { formatCurrency } from '@/lib/data'
 import { useStore } from '@/lib/store'
 import {
@@ -21,7 +21,7 @@ function adminErr(e: unknown, fallback: string): string {
 
 export default function AdminConsole() {
   const navigate = useNavigate()
-  const { showToast } = useStore()
+  const { showToast, state, enterImpersonation } = useStore()
   const [summary, setSummary] = useState<PlatformSummary | null>(null)
   const [tenants, setTenants] = useState<TenantRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,6 +58,19 @@ export default function AdminConsole() {
     try { await setTenantStatus(t.user_id, next, reason); await load(); showToast(`Tenant ${next === 'suspended' ? 'suspended' : 'reactivated'}`, 'success') }
     catch (e) { showToast(adminErr(e, 'Failed to update tenant'), 'error') }
     finally { setBusyId(null) }
+  }
+
+  async function impersonate(t: TenantRow) {
+    if (t.user_id === state.user?.id) return
+    if (!confirm(`Log in as "${t.business_name}"? All changes will save to their shop.`)) return
+    setBusyId(t.user_id)
+    try {
+      await enterImpersonation(t.user_id, t.business_name)
+      navigate('/')
+    } catch (e) {
+      showToast(adminErr(e, 'Could not impersonate'), 'error')
+      setBusyId(null)
+    }
   }
 
   async function doDelete() {
@@ -171,6 +184,13 @@ export default function AdminConsole() {
                     <Trash2 size={13} />
                   </button>
                 </div>
+                <button
+                  onClick={() => impersonate(t)}
+                  disabled={busyId === t.user_id || t.user_id === state.user?.id}
+                  className="btn-tactile w-full h-8 mt-2 bg-ink text-white rounded-sm text-xs flex items-center justify-center gap-1 disabled:opacity-40"
+                >
+                  <LogIn size={13} /> {t.user_id === state.user?.id ? 'This is you' : 'Impersonate'}
+                </button>
               </div>
             ))}
             {filtered.length === 0 && <p className="text-sm text-muted-text text-center py-8">No tenants.</p>}

@@ -18,7 +18,7 @@ import {
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
-import { amISuperAdmin } from '@/services/adminApi'
+import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
 import { contributeCatalog } from '@/services/catalogApi'
 import { postMovement as postCashMovement, deleteMovementsByRef as deleteCashByRef } from '@/services/cashApi'
 import type { CashAccount } from '@/lib/cashBalances'
@@ -59,6 +59,7 @@ export interface AppState {
   pendingSync: number
   isSuperAdmin: boolean
   suspended: boolean
+  impersonating: { tenantId: string; tenantName: string } | null
 }
 
 type Action =
@@ -97,6 +98,7 @@ type Action =
   | { type: 'SET_PENDING_SYNC'; value: number }
   | { type: 'SET_SUPER_ADMIN'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
+  | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
   | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
@@ -131,6 +133,7 @@ const initialState: AppState = {
   pendingSync: 0,
   isSuperAdmin: false,
   suspended: false,
+  impersonating: null,
 }
 
 // Helper: persist current data to localStorage (for offline access)
@@ -196,6 +199,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
     case 'SET_PENDING_SYNC': return { ...state, pendingSync: action.value }
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
+    case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
     case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
@@ -230,6 +234,8 @@ interface StoreContextType {
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   resetAllData: () => Promise<void>
   logout: () => Promise<void>
+  enterImpersonation: (tenantId: string, tenantName: string) => Promise<void>
+  exitImpersonation: () => Promise<void>
 }
 
 const StoreContext = createContext<StoreContextType | null>(null)
@@ -259,8 +265,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             logo: session.user.user_metadata?.logo || localStorage.getItem('serwaabroni_logo') || undefined,
           },
         })
+        const backup = readAdminBackup()
+        dispatch({
+          type: 'SET_IMPERSONATING',
+          value: backup ? { tenantId: session.user.id, tenantName: backup.tenantName } : null,
+        })
       } else {
         dispatch({ type: 'SET_USER', user: null })
+        dispatch({ type: 'SET_IMPERSONATING', value: null })
       }
     })
 
@@ -760,6 +772,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_USER', user: null })
   }, [])
 
+  const enterImpersonation = useCallback(async (tenantId: string, tenantName: string) => {
+    await impersonateTenant(tenantId, tenantName)
+    // onAuthStateChange (SIGNED_IN from verifyOtp) refreshes user + impersonating.
+  }, [])
+
+  const exitImpersonation = useCallback(async () => {
+    await stopImpersonation()
+    // onAuthStateChange (from setSession) restores admin + clears impersonating.
+  }, [])
+
   const updateBusinessProfile = useCallback(async (profile: BusinessProfile) => {
     // 1. Always save to Supabase Auth user metadata as a bulletproof fallback
     try {
@@ -811,6 +833,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateBusinessProfile,
       resetAllData,
       logout,
+      enterImpersonation, exitImpersonation,
     }}>
       {children}
     </StoreContext.Provider>

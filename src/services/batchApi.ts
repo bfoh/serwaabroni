@@ -52,6 +52,19 @@ export async function receiveStock(params: {
   return batch
 }
 
+// A product's full intake history (every batch, incl. depleted), newest first.
+export async function fetchBatchHistory(productId: string): Promise<StockBatch[]> {
+  const uid = await uidOrThrow()
+  const { data, error } = await supabase
+    .from('stock_batches')
+    .select('*')
+    .eq('user_id', uid)
+    .eq('product_id', productId)
+    .order('purchased_at', { ascending: false })
+  if (error) throw error
+  return (data as StockBatch[]) || []
+}
+
 // A product's open batches, oldest first — the FIFO input.
 export async function fetchOpenBatches(productId: string): Promise<FifoBatch[]> {
   const uid = await uidOrThrow()

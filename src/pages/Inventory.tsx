@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle, Clock } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, formatTime, uid, loadData } from '@/lib/data'
 import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
+import StockHistorySheet from '@/components/StockHistorySheet'
 import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
@@ -44,6 +45,9 @@ export default function Inventory() {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
+
+  // Stock intake history sheet
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
 
   const [newProduct, setNewProduct] = useState({
     name: '',
@@ -738,6 +742,14 @@ export default function Inventory() {
                     </button>
                     <div className="w-px bg-ink/10 my-2" />
                     <button
+                      onClick={() => setHistoryProduct(product)}
+                      aria-label="Stock history"
+                      className="px-4 py-2.5 text-muted-text hover:bg-warm-gray/30 transition-colors flex items-center justify-center"
+                    >
+                      <Clock size={14} strokeWidth={2} />
+                    </button>
+                    <div className="w-px bg-ink/10 my-2" />
+                    <button
                       onClick={() => handleOpenEdit(product.id)}
                       className="px-4 py-2.5 text-muted-text hover:bg-warm-gray/30 transition-colors flex items-center justify-center"
                     >
@@ -1085,6 +1097,8 @@ export default function Inventory() {
           </>
         )}
       </AnimatePresence>
+
+      <StockHistorySheet product={historyProduct} onClose={() => setHistoryProduct(null)} />
     </div>
   )
 }

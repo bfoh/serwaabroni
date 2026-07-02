@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, uid, loadData } from '@/lib/data'
+import { formatCurrency, formatDate, formatTime, uid, loadData } from '@/lib/data'
 import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
@@ -597,6 +597,9 @@ export default function Inventory() {
                       <span className="text-xs text-muted-text">{formatStock(product)}</span>
                       <span className="text-xs text-accent-green">{formatCurrency(product.selling_price)}</span>
                     </div>
+                    <p className="text-[10px] text-muted-text mt-0.5">
+                      Stocked: {formatDate(product.updated_at || product.created_at)} · {formatTime(product.updated_at || product.created_at)}
+                    </p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-muted-text">{t('cost')}</p>

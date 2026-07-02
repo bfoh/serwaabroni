@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Plus, Search, TrendingDown, Trash2, Receipt } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime, uid } from '@/lib/data'
+import { formatCurrency, formatDate, formatTime, uid } from '@/lib/data'
 
 interface ExpensesProps {
   isOpen: boolean
@@ -140,7 +140,7 @@ export default function Expenses({ isOpen, onClose }: ExpensesProps) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{exp.name}</p>
-              <p className="text-[10px] text-muted-text">{exp.category} | {formatTime(exp.created_at)}</p>
+              <p className="text-[10px] text-muted-text">{exp.category} | {formatDate(exp.created_at)} · {formatTime(exp.created_at)}</p>
             </div>
             <div className="text-right flex-shrink-0">
               <p className="font-display text-sm text-accent-red">{formatCurrency(exp.amount)}</p>

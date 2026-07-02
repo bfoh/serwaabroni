@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
 import { Bell, ScanLine, TrendingUp, TrendingDown, Mic, Receipt, TrendingDown as ExpenseIcon, User, Wallet } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
+import { formatCurrency, formatTime, formatDate, groupSales, getTodaySales, type SaleGroup } from '@/lib/data'
 import Odometer from '@/components/Odometer'
 import ProductIcon from '@/components/ProductIcon'
 import BarcodeScanner from '@/components/BarcodeScanner'
@@ -30,6 +30,9 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 
   const recentGroups = useMemo(() => groupSales(state.sales).slice(0, 6), [state.sales])
+  // Compute today's sales live from the sales list so it updates the moment a
+  // sale is recorded — state.todaySales is only a snapshot from the last full refresh.
+  const todaySales = useMemo(() => getTodaySales(state.sales), [state.sales])
 
   return (
     <div className="min-h-screen bg-sand pb-20">
@@ -77,7 +80,7 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
             <TrendingUp size={18} strokeWidth={2.5} className="text-white/80" />
             <div>
               <p className="text-[10px] text-white/70 uppercase tracking-wider">{t('todays_sales')}</p>
-              <p className="font-display text-lg text-white">{formatCurrency(state.todaySales)}</p>
+              <p className="font-display text-lg text-white">{formatCurrency(todaySales)}</p>
             </div>
           </div>
           <div className="flex-1 bg-warm-gray rounded-sm px-4 py-3 flex items-center gap-3">

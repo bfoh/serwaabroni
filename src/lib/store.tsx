@@ -411,18 +411,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const profile = results[5].status === 'fulfilled' ? results[5].value : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
 
+      // Defensive tenant guard: only keep rows owned by the active session user
+      // (or not-yet-synced local rows). Server queries already scope by user_id;
+      // this stops any stale/mismatched row from ever reaching the UI.
+      const { data: sessData } = await supabase.auth.getSession()
+      const uid = sessData.session?.user?.id ?? null
+      const ownsRow = <T extends { user_id: string }>(x: T) =>
+        !uid || x.user_id === uid || x.user_id === 'local'
+
       // Merge offline-created data that hasn't synced and sort newest first
       const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
+        .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const sales = [...local.sales.filter(s => s.user_id === 'local'), ...remoteSales]
+        .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       // Remote is authoritative, but keep optimistic edits alive: dedupe by id
       // (remote wins) then re-overlay any writes still waiting in the sync queue
       // so a just-recorded payment never disappears before it lands server-side.
-      const debts = mergeDebts(local.debts, remoteDebts, getQueue())
+      const debts = mergeDebts(local.debts, remoteDebts, getQueue()).filter(ownsRow)
       const expenses = [...local.expenses.filter(e => e.user_id === 'local'), ...remoteExpenses]
+        .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
+        .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
       const generatedAlerts = generateAlerts(products, sales, debts, expenses)

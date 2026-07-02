@@ -58,6 +58,7 @@ export interface AppState {
   isOnline: boolean
   pendingSync: number
   isSuperAdmin: boolean
+  adminChecked: boolean
   suspended: boolean
   impersonating: { tenantId: string; tenantName: string } | null
 }
@@ -97,6 +98,7 @@ type Action =
   | { type: 'SET_ONLINE'; online: boolean }
   | { type: 'SET_PENDING_SYNC'; value: number }
   | { type: 'SET_SUPER_ADMIN'; value: boolean }
+  | { type: 'SET_ADMIN_CHECKED'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
@@ -132,6 +134,7 @@ const initialState: AppState = {
   isOnline: navigator.onLine,
   pendingSync: 0,
   isSuperAdmin: false,
+  adminChecked: false,
   suspended: false,
   impersonating: null,
 }
@@ -179,7 +182,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SHOW_TOAST': return { ...state, toast: { message: action.message, type: action.toastType } }
     case 'HIDE_TOAST': return { ...state, toast: null }
     case 'SET_USER': {
-      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false }
+      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false, isSuperAdmin: false, adminChecked: false }
       return {
         ...state,
         user: {
@@ -199,6 +202,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
     case 'SET_PENDING_SYNC': return { ...state, pendingSync: action.value }
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
+    case 'SET_ADMIN_CHECKED': return { ...state, adminChecked: action.value }
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
@@ -460,6 +464,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     } finally {
       dispatch({ type: 'SET_DATA_LOADING', loading: false })
+      dispatch({ type: 'SET_ADMIN_CHECKED', value: true })
     }
   }, [syncPending])
 

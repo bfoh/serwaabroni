@@ -128,9 +128,17 @@ export default function App() {
           <Route
             path="/admin"
             element={
-              state.isAuthenticated && state.isSuperAdmin
-                ? <div className="h-full w-full overflow-hidden bg-sand relative"><AdminConsole /></div>
-                : <Navigate to="/" replace />
+              !state.isAuthenticated
+                ? <Navigate to="/login" replace />
+                : !state.adminChecked
+                  ? (
+                    <div className="h-full w-full flex items-center justify-center bg-sand">
+                      <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )
+                  : state.isSuperAdmin
+                    ? <div className="h-full w-full overflow-hidden bg-sand relative"><AdminConsole /></div>
+                    : <Navigate to="/" replace />
             }
           />
           <Route

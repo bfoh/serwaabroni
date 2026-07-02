@@ -16,6 +16,7 @@ import ConnectionBar from '@/components/ConnectionBar'
 import Customers from '@/pages/Customers'
 import SuspendedScreen from '@/components/SuspendedScreen'
 import AdminConsole from '@/pages/AdminConsole'
+import ImpersonationBanner from '@/components/ImpersonationBanner'
 import Capital from '@/pages/Capital'
 import InjectionDetail from '@/pages/InjectionDetail'
 import CashFlow from '@/pages/CashFlow'
@@ -99,11 +100,17 @@ export default function App() {
   }
 
   if (state.isAuthenticated && state.suspended && !state.isSuperAdmin) {
-    return <SuspendedScreen />
+    return (
+      <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
+        <ImpersonationBanner />
+        <div className="flex-1 overflow-hidden"><SuspendedScreen /></div>
+      </div>
+    )
   }
 
   return (
     <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden relative">
+      <ImpersonationBanner />
       <div className="flex-1 overflow-hidden relative">
         <Routes>
           <Route

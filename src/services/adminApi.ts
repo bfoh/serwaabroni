@@ -90,3 +90,67 @@ export async function getTenantDetail(userId: string): Promise<TenantDetail> {
     totalExpenses: expenses.reduce((s, x) => s + (x.amount || 0), 0),
   }
 }
+
+// ============================================
+// IMPERSONATION — act as a tenant (full read+write) via a minted session.
+// ============================================
+export const ADMIN_BACKUP_KEY = 'sb-admin-backup'
+
+export interface AdminBackup {
+  access_token: string
+  refresh_token: string
+  tenantName: string
+}
+
+// Pure parser so it is unit-testable without a DOM/localStorage.
+export function parseAdminBackup(raw: string | null): AdminBackup | null {
+  if (!raw) return null
+  try {
+    const b = JSON.parse(raw)
+    if (
+      b && typeof b.access_token === 'string' &&
+      typeof b.refresh_token === 'string' &&
+      typeof b.tenantName === 'string'
+    ) return b as AdminBackup
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function readAdminBackup(): AdminBackup | null {
+  try { return parseAdminBackup(localStorage.getItem(ADMIN_BACKUP_KEY)) } catch { return null }
+}
+
+// Save the current (admin) session, mint a tenant session, and swap to it.
+export async function impersonateTenant(tenantId: string, tenantName: string): Promise<void> {
+  const { data: sess } = await supabase.auth.getSession()
+  const s = sess.session
+  if (!s) throw new Error('No admin session')
+  localStorage.setItem(ADMIN_BACKUP_KEY, JSON.stringify({
+    access_token: s.access_token, refresh_token: s.refresh_token, tenantName,
+  }))
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-impersonate', { body: { tenantId } })
+    if (error) throw error
+    const token_hash = (data as { token_hash?: string })?.token_hash
+    if (!token_hash) throw new Error('No token returned')
+    const { error: vErr } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash })
+    if (vErr) throw vErr
+  } catch (e) {
+    localStorage.removeItem(ADMIN_BACKUP_KEY)  // admin session still active
+    throw e
+  }
+}
+
+// Restore the saved admin session and log the stop event.
+export async function stopImpersonation(): Promise<void> {
+  const backup = readAdminBackup()
+  if (!backup) return
+  try { await supabase.rpc('admin_log_impersonation_stop') } catch { /* best effort */ }
+  const { error } = await supabase.auth.setSession({
+    access_token: backup.access_token, refresh_token: backup.refresh_token,
+  })
+  if (error) throw error
+  localStorage.removeItem(ADMIN_BACKUP_KEY)
+}

@@ -1,8 +1,16 @@
 project_id = "qumttowvyujqaubyshjq"
 
-# Client-invoked: require a valid Supabase JWT (the function also re-checks the user).
+# Client-invoked: the gateway JWT check is disabled because this project uses the
+# newer asymmetric JWT signing keys, which the edge gateway's verify_jwt cannot
+# validate for user tokens (it rejects them before the function runs). The
+# function authenticates the caller itself via getUser(), so this stays secure.
 [functions.send-notification]
-verify_jwt = true
+verify_jwt = false
+
+# Client-invoked: super-admin only. Re-verifies the caller (getUser + super_admins)
+# inside the function, so the gateway JWT check is not needed.
+[functions.admin-impersonate]
+verify_jwt = false
 
 # Cron-invoked from pg_cron: no user JWT. Guarded by the X-Cron-Secret header instead.
 [functions.daily-tasks]

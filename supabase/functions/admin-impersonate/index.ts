@@ -15,22 +15,23 @@ Deno.serve(async (req) => {
 
   try {
     console.log('impersonate: hit')
-    // Identify the caller from their JWT.
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const { data: userData, error: userErr } = await userClient.auth.getUser()
+    let body: { tenantId?: string; userJwt?: string }
+    try { body = await req.json() } catch { return json({ error: 'Bad request' }, 400) }
+    const tenantId = body.tenantId
+    const userJwt = body.userJwt
+
+    // The caller's token arrives in the body (the gateway can't parse ES256
+    // Bearer tokens). Validate it via GoTrue to identify the caller.
+    if (!userJwt) return json({ error: 'Unauthorized' }, 401)
+    const userClient = createClient(SUPABASE_URL, ANON_KEY)
+    const { data: userData, error: userErr } = await userClient.auth.getUser(userJwt)
     if (userErr || !userData?.user) {
       console.log('impersonate: no caller', userErr?.message)
-      return json({ error: 'Unauthorized' }, 401)
+      return json({ error: 'Unauthorized', detail: userErr?.message ?? null }, 401)
     }
     const callerId = userData.user.id
     console.log('impersonate: caller', callerId)
 
-    let body: { tenantId?: string }
-    try { body = await req.json() } catch { return json({ error: 'Bad request' }, 400) }
-    const tenantId = body.tenantId
     console.log('impersonate: tenantId', tenantId)
     if (!tenantId) return json({ error: 'tenantId required' }, 400)
     if (tenantId === callerId) return json({ error: 'cannot impersonate yourself' }, 400)

@@ -2,7 +2,7 @@
 // ADMIN API — platform-owner operations.
 // All authority is enforced in Postgres; these are thin RPC wrappers.
 // ============================================
-import { supabase } from '@/lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase'
 import type { Sale, Expense } from '@/lib/supabase'
 
 export interface PlatformSummary {
@@ -131,11 +131,24 @@ export async function impersonateTenant(tenantId: string, tenantName: string): P
     access_token: s.access_token, refresh_token: s.refresh_token, tenantName,
   }))
   try {
-    const { data, error } = await supabase.functions.invoke('admin-impersonate', { body: { tenantId } })
-    if (error) throw error
-    const token_hash = (data as { token_hash?: string })?.token_hash
-    if (!token_hash) throw new Error('No token returned')
-    const { error: vErr } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash })
+    // This project uses asymmetric (ES256) JWT signing keys, which the edge
+    // gateway cannot parse in the Authorization header. Send the anon key (legacy
+    // HS256) as Authorization and pass the user token in the body; the function
+    // validates it via GoTrue.
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-impersonate`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tenantId, userJwt: s.access_token }),
+    })
+    const data = await res.json().catch(() => ({} as { token_hash?: string; error?: string; detail?: string }))
+    if (!res.ok || !data.token_hash) {
+      throw new Error(data.error || data.detail || `Impersonation failed (${res.status})`)
+    }
+    const { error: vErr } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: data.token_hash })
     if (vErr) throw vErr
   } catch (e) {
     localStorage.removeItem(ADMIN_BACKUP_KEY)  // admin session still active

@@ -1,4 +1,5 @@
 import { uid } from '@/lib/data'
+import { saleMovement } from '@/lib/cashPosting'
 import type { ConfirmPreview, SaleItemResolved } from './types'
 
 export interface StoreExecApi {
@@ -14,6 +15,10 @@ export interface StoreExecApi {
   ) => Promise<void>
   updateProduct: (id: string, updates: Record<string, unknown>) => Promise<void>
   findProductQty: (id: string) => number
+  postMovement: (mv: {
+    account: 'cash' | 'bank'; direction: 'in' | 'out'; amount: number;
+    category: string; ref_table: string; ref_id: string; note: string | null; created_at: string
+  }) => Promise<void>
 }
 
 function buildSaleRows(
@@ -30,7 +35,7 @@ function buildSaleRows(
     unit_price: i.unitPrice,
     total: i.unitPrice * i.qty,
     profit: (i.unitPrice - i.unitCost) * i.qty,
-    customer_name: null,
+    customer_name: null as string | null,
     customer_phone: null,
     payment_method: paymentMethod,
     sale_group_id: groupId,
@@ -50,6 +55,14 @@ export async function executePreview(preview: ConfirmPreview, api: StoreExecApi)
     const method = preview.sale.payment === 'bank' ? 'bank' : 'cash'
     const { sales, rowItems } = buildSaleRows(preview.sale.items, method, groupId, createdAt)
     await api.addSaleBatch(sales, rowItems)
+    const total = preview.sale.items.reduce((s, i) => s + i.unitPrice * i.qty, 0)
+    const mv = saleMovement(method, total, 0)
+    if (mv) {
+      await api.postMovement({
+        account: mv.account, direction: 'in', amount: mv.amount,
+        category: 'sale', ref_table: 'sales', ref_id: groupId, note: null, created_at: createdAt,
+      })
+    }
     return
   }
 
@@ -76,6 +89,13 @@ export async function executePreview(preview: ConfirmPreview, api: StoreExecApi)
       paid_at: null,
       created_at: createdAt,
     })
+    const mv = saleMovement('credit', total, 0)
+    if (mv) {
+      await api.postMovement({
+        account: mv.account, direction: 'in', amount: mv.amount,
+        category: 'sale', ref_table: 'sales', ref_id: groupId, note: preview.credit.customerName, created_at: createdAt,
+      })
+    }
     return
   }
 

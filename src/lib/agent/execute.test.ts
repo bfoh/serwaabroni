@@ -9,6 +9,7 @@ function fakeApi() {
     addProduct: vi.fn().mockResolvedValue(undefined),
     updateProduct: vi.fn().mockResolvedValue(undefined),
     findProductQty: vi.fn().mockReturnValue(20),
+    postMovement: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -26,6 +27,26 @@ describe('executePreview', () => {
     expect(sales[0]).toMatchObject({ product_id: 'p1', quantity: 5, total: 15, profit: 5, payment_method: 'cash' })
     expect(sales[0].sale_group_id).toBeTruthy()
     expect(api.addDebt).not.toHaveBeenCalled()
+    expect(api.postMovement).toHaveBeenCalledTimes(1)
+    expect(api.postMovement).toHaveBeenCalledWith({
+      account: 'cash', direction: 'in', amount: 15, category: 'sale',
+      ref_table: 'sales', ref_id: sales[0].sale_group_id, note: null, created_at: sales[0].created_at,
+    })
+  })
+
+  it('writes a bank sale and posts a bank movement', async () => {
+    const api = fakeApi()
+    const preview: ConfirmPreview = {
+      kind: 'sale', title: '', lines: [], warnings: [],
+      sale: { payment: 'bank', items: [{ productId: 'p1', productName: 'Indomie', unitPrice: 3, unitCost: 2, qty: 5 }] },
+    }
+    await executePreview(preview, api)
+    const [sales] = api.addSaleBatch.mock.calls[0]
+    expect(api.postMovement).toHaveBeenCalledTimes(1)
+    expect(api.postMovement).toHaveBeenCalledWith({
+      account: 'bank', direction: 'in', amount: 15, category: 'sale',
+      ref_table: 'sales', ref_id: sales[0].sale_group_id, note: null, created_at: sales[0].created_at,
+    })
   })
 
   it('writes a credit sale plus a linked debt', async () => {
@@ -42,6 +63,7 @@ describe('executePreview', () => {
     const debt = api.addDebt.mock.calls[0][0]
     expect(debt).toMatchObject({ person_name: 'Ama', amount: 16, type: 'owed' })
     expect(debt.sale_group_id).toBe(sales[0].sale_group_id)
+    expect(api.postMovement).not.toHaveBeenCalled()
   })
 
   it('creates a new product with the chosen payment account', async () => {

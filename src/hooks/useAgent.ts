@@ -135,6 +135,7 @@ export function useAgent() {
     } catch {
       const msg = 'I could not save it. Please try again.'
       setMessages((m) => [...m, { role: 'assistant', content: msg }])
+      speak(msg)
     } finally {
       setPending(null)
       setBusy(false)

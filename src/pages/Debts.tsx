@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2, Landmark } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, formatDate, uid, remainingAmount } from '@/lib/data'
+import { formatCurrency, formatDate, formatTime, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
 import { fetchInjections } from '@/services/capitalApi'
 import { postMovement } from '@/services/cashApi'
@@ -34,6 +34,10 @@ export default function Debts() {
   const [activeDebtTab, setActiveDebtTab] = useState<DebtTab>('owed')
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [paymentDebtId, setPaymentDebtId] = useState<string | null>(null)
+  // When paying a whole supplier (grouped "I owe them" card), these hold the
+  // debts to allocate the payment across (oldest first) and the supplier name.
+  const [payingGroup, setPayingGroup] = useState<Debt[] | null>(null)
+  const [payingGroupName, setPayingGroupName] = useState('')
   const [paymentInput, setPaymentInput] = useState('')
   const [payAccount, setPayAccount] = useState<'cash' | 'bank'>('cash')
   const [saving, setSaving] = useState(false)
@@ -67,6 +71,23 @@ export default function Debts() {
 
   const totalOwed = owedDebts.reduce((s, d) => s + remainingAmount(d), 0)
   const totalOwing = owingDebts.reduce((s, d) => s + remainingAmount(d), 0)
+
+  // Group unpaid "I owe them" debts by supplier (name + phone) so repeated
+  // credit supplies from the same supplier live on one card, each entry keeping
+  // its own timestamp. Entries are oldest-first for FIFO repayment allocation.
+  const owingGroups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; phone: string | null; debts: Debt[] }>()
+    for (const d of state.debts) {
+      if (d.type !== 'owing' || d.is_paid) continue
+      const key = `${d.person_name.trim().toLowerCase()}|${d.phone || ''}`
+      let g = map.get(key)
+      if (!g) { g = { key, name: d.person_name, phone: d.phone, debts: [] }; map.set(key, g) }
+      g.debts.push(d)
+    }
+    const groups = Array.from(map.values())
+    groups.forEach((g) => g.debts.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()))
+    return groups
+  }, [state.debts])
 
   const paymentDebt = paymentDebtId ? state.debts.find((d) => d.id === paymentDebtId) : null
 
@@ -270,6 +291,57 @@ export default function Debts() {
     recordPayment(debtId, remainingAmount(debt))
   }
 
+  // Allocate a supplier repayment across that supplier's owing debts, oldest
+  // first. Updates each affected debt and posts a single cash-out ledger entry.
+  const recordGroupPayment = async (debts: Debt[], payAmount: number, account: 'cash' | 'bank') => {
+    const sorted = [...debts].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    const name = sorted[0]?.person_name || ''
+    let left = payAmount
+    let applied = 0
+    for (const debt of sorted) {
+      if (left <= 0.001) break
+      const remaining = remainingAmount(debt)
+      if (remaining <= 0) continue
+      const pay = Math.min(left, remaining)
+      const newPaid = (debt.amount_paid || 0) + pay
+      const fullyPaid = newPaid >= debt.amount - 0.001
+      const now = new Date().toISOString()
+      const newPayments: DebtPayment[] = [...(debt.payments || []), { amount: pay, date: now }]
+      try {
+        await updateDebt(debt.id, {
+          amount_paid: fullyPaid ? debt.amount : newPaid,
+          payments: newPayments,
+          is_paid: fullyPaid,
+          paid_at: fullyPaid ? now : null,
+        })
+        left -= pay
+        applied += pay
+      } catch { /* skip this entry; continue allocating */ }
+    }
+    if (applied > 0) {
+      try {
+        await postMovement({
+          account, direction: 'out', amount: applied, category: 'debt_repayment',
+          ref_table: 'debts', ref_id: sorted[0].id, note: name,
+        })
+      } catch { /* best-effort */ }
+      showToast(left > 0.001 ? `Recorded ${formatCurrency(applied)} to ${name}` : `${name} settled`, 'success')
+    }
+  }
+
+  const openGroupPayment = (debts: Debt[], name: string) => {
+    setPaymentInput('')
+    setPayAccount('cash')
+    setPaymentDebtId(null)
+    setPayingGroupName(name)
+    setPayingGroup(debts)
+  }
+
+  const markGroupPaid = (debts: Debt[]) => {
+    const total = debts.reduce((s, d) => s + remainingAmount(d), 0)
+    recordGroupPayment(debts, total, 'cash')
+  }
+
   const handleRemind = async (debt: Debt) => {
     if (!debt.phone) {
       showToast('No phone number for this debtor', 'error')
@@ -293,16 +365,30 @@ export default function Debts() {
   const openPayment = (debtId: string) => {
     setPaymentInput('')
     setPayAccount('cash')
+    setPayingGroup(null)
     setPaymentDebtId(debtId)
   }
 
   const submitPayment = () => {
-    if (!paymentDebt) return
     const amt = parseFloat(paymentInput)
     if (!amt || amt <= 0) {
       showToast(t('enter_valid_amount'), 'error')
       return
     }
+    // Grouped supplier payment (allocated across entries oldest-first).
+    if (payingGroup) {
+      const totalRem = payingGroup.reduce((s, d) => s + remainingAmount(d), 0)
+      if (amt > totalRem + 0.001) {
+        showToast(t('payment_exceeds'), 'error')
+        return
+      }
+      recordGroupPayment(payingGroup, amt, payAccount)
+      setPayingGroup(null)
+      setPaymentInput('')
+      return
+    }
+    // Single debt (unchanged "who owes me" path).
+    if (!paymentDebt) return
     if (amt > remainingAmount(paymentDebt) + 0.001) {
       showToast(t('payment_exceeds'), 'error')
       return
@@ -397,6 +483,79 @@ export default function Debts() {
     )
   }
 
+  // One card per supplier for "I owe them": combined balance + each supply entry
+  // with its own timestamp; a payment settles the supplier's oldest entries first.
+  const renderOwingGroup = (group: { key: string; name: string; phone: string | null; debts: Debt[] }, index: number) => {
+    const c = colorFor('owing')
+    const totalAmount = group.debts.reduce((s, d) => s + d.amount, 0)
+    const totalRemaining = group.debts.reduce((s, d) => s + remainingAmount(d), 0)
+    const totalPaid = totalAmount - totalRemaining
+    const pct = totalAmount > 0 ? Math.min(100, (totalPaid / totalAmount) * 100) : 0
+    return (
+      <motion.div key={group.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+        className="bg-light harsh-border rounded-sm overflow-hidden">
+        <div className="p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full ${c.avatar} flex items-center justify-center flex-shrink-0`}>
+                <span className="font-display text-sm text-white">{group.name.charAt(0).toUpperCase()}</span>
+              </div>
+              <div>
+                <p className="font-medium text-sm">{group.name}</p>
+                {group.phone && <p className="text-xs text-muted-text flex items-center gap-1"><Phone size={10} />{group.phone}</p>}
+                <p className="text-[10px] text-muted-text">{group.debts.length} {group.debts.length === 1 ? 'supply' : 'supplies'}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={`font-display text-lg ${c.amount}`}>{formatCurrency(totalRemaining)}</p>
+              {totalPaid > 0 && (
+                <p className="text-[10px] text-muted-text">{t('paid_label')} {formatCurrency(totalPaid)} {t('of_total')} {formatCurrency(totalAmount)}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Each supply entry, oldest first, with its timestamp */}
+          <div className="mt-3 pt-3 border-t border-ink/5 space-y-2">
+            {group.debts.map((d) => (
+              <div key={d.id} className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs truncate">{d.description || 'Stock on credit'}</p>
+                  <p className="text-[10px] text-muted-text flex items-center gap-1">
+                    <CalendarDays size={9} />{formatDate(d.created_at)} · {formatTime(d.created_at)}
+                    {(d.amount_paid || 0) > 0 && <span className="text-accent-green"> · {t('paid_label')} {formatCurrency(d.amount_paid || 0)}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className={`font-display text-sm ${c.amount}`}>{formatCurrency(remainingAmount(d))}</span>
+                  <button onClick={(e) => handleEditDebtClick(d, e)} className="p-1 opacity-60 hover:opacity-100 hover:bg-ink/10 rounded-sm" aria-label="Edit entry"><Pencil size={11} /></button>
+                  <button onClick={(e) => handleDeleteDebt(d.id, e)} className="p-1 opacity-60 hover:opacity-100 text-accent-red hover:bg-accent-red/10 rounded-sm" aria-label="Delete entry"><Trash2 size={11} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {totalPaid > 0 && (
+            <div className="mt-3 h-1.5 bg-warm-gray rounded-full overflow-hidden">
+              <div className={`h-full ${c.bar} transition-all`} style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
+        <div className="flex border-t border-ink/10">
+          <button onClick={() => openGroupPayment(group.debts, group.name)} className="flex-1 py-2.5 text-micro text-ink hover:bg-warm-gray/30 transition-colors">{t('record_payment')}</button>
+          <button onClick={() => markGroupPaid(group.debts)} className={`flex-1 py-2.5 text-micro ${c.mark} border-l border-ink/10 hover:bg-warm-gray/30 transition-colors`}>{t('mark_paid')}</button>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Payment sheet works for a single debt (owed side) or a supplier group (owing).
+  const paymentOpen = !!(paymentDebt || payingGroup)
+  const payName = payingGroup ? payingGroupName : (paymentDebt?.person_name || '')
+  const payRemaining = payingGroup
+    ? payingGroup.reduce((s, d) => s + remainingAmount(d), 0)
+    : (paymentDebt ? remainingAmount(paymentDebt) : 0)
+  const closePayment = () => { setPaymentDebtId(null); setPayingGroup(null) }
+
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}
@@ -477,7 +636,7 @@ export default function Debts() {
                   <p className="text-muted-text text-sm">{t('no_outstanding')}</p>
                 </div>
               )}
-              {owingDebts.map((debt, index) => renderDebtCard(debt, index, 'owing'))}
+              {owingGroups.map((group, index) => renderOwingGroup(group, index))}
             </motion.div>
           )}
         </AnimatePresence>
@@ -503,17 +662,17 @@ export default function Debts() {
 
       {/* Record Payment Sheet */}
       <AnimatePresence>
-        {paymentDebt && (
+        {paymentOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={() => setPaymentDebtId(null)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-50" onClick={closePayment} />
             <motion.div initial={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }} animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }} exit={{ opacity: 0, scale: 0.9, x: "-50%", y: "-50%" }}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm p-6 z-50 w-[85vw] max-w-sm">
               <p className="font-display text-lg text-ink uppercase text-center mb-1">{t('record_payment_title')}</p>
-              <p className="text-sm text-muted-text text-center mb-4">{paymentDebt.person_name}</p>
+              <p className="text-sm text-muted-text text-center mb-4">{payName}</p>
 
               <div className="flex justify-between text-xs text-muted-text mb-2">
                 <span>{t('remaining_label')}</span>
-                <span className="font-display text-ink">{formatCurrency(remainingAmount(paymentDebt))}</span>
+                <span className="font-display text-ink">{formatCurrency(payRemaining)}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-2 mb-3">
@@ -537,14 +696,14 @@ export default function Debts() {
                 className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body mb-2"
               />
               <button
-                onClick={() => setPaymentInput(String(remainingAmount(paymentDebt)))}
+                onClick={() => setPaymentInput(String(payRemaining))}
                 className="text-micro text-accent-green mb-5"
               >
-                {t('pay_full')} ({formatCurrency(remainingAmount(paymentDebt))})
+                {t('pay_full')} ({formatCurrency(payRemaining)})
               </button>
 
               <div className="flex gap-3">
-                <button onClick={() => setPaymentDebtId(null)} className="btn-tactile flex-1 h-12 bg-warm-gray font-display text-sm uppercase tracking-wider rounded-sm">{t('cancel')}</button>
+                <button onClick={closePayment} className="btn-tactile flex-1 h-12 bg-warm-gray font-display text-sm uppercase tracking-wider rounded-sm">{t('cancel')}</button>
                 <button onClick={submitPayment} className="btn-tactile flex-1 h-12 bg-accent-green font-display text-sm uppercase tracking-wider text-white rounded-sm">{t('confirm')}</button>
               </div>
             </motion.div>

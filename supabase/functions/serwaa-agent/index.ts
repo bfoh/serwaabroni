@@ -1,0 +1,82 @@
+// SerwaaBroni agent: validates the caller, calls Claude Haiku with an allow-listed
+// tool schema and a compact business snapshot, and returns the model's spoken reply
+// plus any tool calls for the client to preview/execute. No DB writes happen here.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders, json } from '../_shared/cors.ts'
+import { TOOLS } from './tools.ts'
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
+const MODEL = 'claude-haiku-4-5-20251001'
+
+interface Body {
+  userJwt?: string
+  messages?: { role: 'user' | 'assistant'; content: string }[]
+  snapshot?: unknown
+}
+
+function systemPrompt(snapshot: unknown): string {
+  return [
+    'You are SerwaaBroni, a warm, concise assistant for a Ghanaian market trader.',
+    'You help record stock, record sales (cash or credit), and answer questions about the business.',
+    'Amounts are in Ghana Cedis (GHS). Keep replies short and friendly, one or two sentences.',
+    'To record a sale, restock, or add a product, CALL THE MATCHING TOOL — do not ask the user to open a form.',
+    'The app will show the user a confirmation card before saving, so you do not need to ask "are you sure".',
+    'If a product name is unclear or missing a number, ask one short question to clarify.',
+    'For questions about sales, stock, debts, or alerts, call the matching get_* tool.',
+    'Never invent products or numbers. Only use products from the snapshot below.',
+    `Business snapshot (JSON): ${JSON.stringify(snapshot ?? {})}`,
+  ].join(' ')
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+
+  let body: Body
+  try {
+    body = await req.json()
+  } catch {
+    return json({ error: 'Invalid JSON' }, 400)
+  }
+  if (!body.userJwt) return json({ error: 'Unauthorized' }, 401)
+  if (!Array.isArray(body.messages) || body.messages.length === 0) return json({ error: 'No messages' }, 400)
+
+  const userClient = createClient(SUPABASE_URL, ANON_KEY)
+  const { data: userData, error: userErr } = await userClient.auth.getUser(body.userJwt)
+  if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401)
+
+  // Keep context small: last 4 turns only.
+  const recent = body.messages.slice(-4)
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 400,
+      system: systemPrompt(body.snapshot),
+      tools: TOOLS,
+      messages: recent.map((m) => ({ role: m.role, content: m.content })),
+    }),
+  })
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    return json({ error: 'Agent upstream error', detail: detail.slice(0, 300) }, 502)
+  }
+
+  const data = await res.json()
+  const blocks: Array<Record<string, unknown>> = data.content ?? []
+  const say = blocks.filter((b) => b.type === 'text').map((b) => String(b.text)).join(' ').trim()
+  const toolCalls = blocks
+    .filter((b) => b.type === 'tool_use')
+    .map((b) => ({ name: String(b.name), input: (b.input as Record<string, unknown>) ?? {} }))
+
+  return json({ say, toolCalls })
+})

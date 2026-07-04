@@ -90,7 +90,7 @@ export function buildPreview(call: ToolCall, ctx: PreviewContext): ConfirmPrevie
     if (!name) return { error: 'What is the product name?' }
     if (!costPrice || costPrice <= 0) return { error: `What did you buy ${name} for (cost price)?` }
     if (!sellPrice || sellPrice <= 0) return { error: `What price will you sell ${name}?` }
-    if (!qty || qty < 0) return { error: `How many ${name} did you buy?` }
+    if (qty === undefined || Number.isNaN(qty) || qty < 0) return { error: `How many ${name} did you buy?` }
     const payment =
       input.payment === 'bank' ? 'bank' : input.payment === 'supplier_credit' ? 'supplier_credit' : 'cash'
     const category = String(input.category ?? 'default')
@@ -115,7 +115,7 @@ export function buildPreview(call: ToolCall, ctx: PreviewContext): ConfirmPrevie
     if (!m.product) return { error: `I couldn't find "${input.product}" in your stock.` }
     const qty = Number(input.qty)
     if (!qty || qty <= 0) return { error: `How many ${m.product.name} did you add?` }
-    const unitCost = input.cost_price ? Number(input.cost_price) : m.product.cost_price
+    const unitCost = input.cost_price !== undefined ? Number(input.cost_price) : m.product.cost_price
     return {
       kind: 'add_stock',
       title: 'Confirm restock',

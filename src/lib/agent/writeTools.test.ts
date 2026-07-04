@@ -53,4 +53,14 @@ describe('buildPreview', () => {
     expect(r.kind).toBe('add_stock')
     expect(r.addStock).toMatchObject({ productName: 'Indomie', qty: 24, unitCost: 2 })
   })
+
+  it('builds a new_product preview with qty 0', () => {
+    const r = buildPreview(
+      { name: 'new_product', input: { name: 'Rice 5kg', cost_price: 40, sell_price: 55, qty: 0 } },
+      ctx,
+    )
+    if ('error' in r) throw new Error(r.error)
+    expect(r.kind).toBe('new_product')
+    expect(r.newProduct?.qty).toBe(0)
+  })
 })

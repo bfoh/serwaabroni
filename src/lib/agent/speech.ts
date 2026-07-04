@@ -49,10 +49,23 @@ export function primeSpeech(): void {
   }
 }
 
+// Turn written amounts into words the voice reads naturally. The Ghana Cedi is
+// written before the number (GH₵ 30) but spoken AFTER it ("thirty Ghana Cedis").
+// Chat text keeps the symbol; only the spoken copy is rewritten.
+export function toSpeakable(text: string): string {
+  return text.replace(
+    /(?:GH₵|GHS|GHC|₵)\s?([\d,]+(?:\.\d+)?)/gi,
+    (_match, num: string) => {
+      const clean = num.replace(/,/g, '').replace(/\.00$/, '')
+      return `${clean} Ghana Cedis`
+    },
+  )
+}
+
 export function speak(text: string, opts?: { lang?: string }): void {
   if (!('speechSynthesis' in window) || !text) return
   const synth = window.speechSynthesis
-  const u = new SpeechSynthesisUtterance(text)
+  const u = new SpeechSynthesisUtterance(toSpeakable(text))
   // Don't force a locale that has no installed voice (e.g. 'en-GH' is usually
   // absent → silent). Prefer the requested locale, then any English voice, then
   // the device default.

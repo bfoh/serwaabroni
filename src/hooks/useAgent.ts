@@ -165,10 +165,14 @@ export function useAgent() {
     setMessages((m) => [...m, { role: 'assistant', content: 'Okay, cancelled.' }])
   }, [])
 
-  // Proactive spoken opener shown when the agent is first opened.
+  // Proactive spoken opener shown when the agent is first opened. English only,
+  // greeting by time of day.
   const greet = useCallback(() => {
+    const hour = new Date().getHours()
+    const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
     const msg =
-      "Maakye! I'm SerwaaBroni. Tell me a sale, a restock, or ask about your business — for example, how are sales today?"
+      `${part}! I'm SerwaaBroni. Tap the microphone to start talking to me. ` +
+      'You can tell me a sale, a restock, or ask about your business.'
     setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: msg }] : m))
     speak(msg)
   }, [])

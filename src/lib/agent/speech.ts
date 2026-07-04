@@ -34,11 +34,42 @@ export function listenOnce(opts?: { lang?: string }): Promise<string> {
   })
 }
 
+// Mobile browsers block speech synthesis until it is triggered inside a user
+// gesture. Call this from a click handler (opening the sheet, tapping the mic)
+// to "unlock" the engine so later async replies can actually be heard.
+export function primeSpeech(): void {
+  if (!('speechSynthesis' in window)) return
+  try {
+    const u = new SpeechSynthesisUtterance(' ')
+    u.volume = 0
+    window.speechSynthesis.resume()
+    window.speechSynthesis.speak(u)
+  } catch {
+    /* ignore — best-effort unlock */
+  }
+}
+
 export function speak(text: string, opts?: { lang?: string }): void {
   if (!('speechSynthesis' in window) || !text) return
+  const synth = window.speechSynthesis
   const u = new SpeechSynthesisUtterance(text)
-  u.lang = opts?.lang ?? 'en-GH'
+  // Don't force a locale that has no installed voice (e.g. 'en-GH' is usually
+  // absent → silent). Prefer the requested locale, then any English voice, then
+  // the device default.
+  const want = opts?.lang ?? 'en-GH'
+  const voices = synth.getVoices()
+  const voice =
+    voices.find((v) => v.lang === want) ??
+    voices.find((v) => v.lang?.toLowerCase().startsWith('en')) ??
+    voices[0]
+  if (voice) u.voice = voice
+  u.lang = voice?.lang ?? 'en-US'
   u.rate = 1
-  window.speechSynthesis.cancel()
-  window.speechSynthesis.speak(u)
+  try {
+    synth.cancel()
+    synth.resume()
+    synth.speak(u)
+  } catch {
+    /* ignore — TTS unavailable */
+  }
 }

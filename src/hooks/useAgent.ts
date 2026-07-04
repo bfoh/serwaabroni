@@ -165,5 +165,13 @@ export function useAgent() {
     setMessages((m) => [...m, { role: 'assistant', content: 'Okay, cancelled.' }])
   }, [])
 
-  return { messages, pending, busy, sendText, listen, confirm, cancel }
+  // Proactive spoken opener shown when the agent is first opened.
+  const greet = useCallback(() => {
+    const msg =
+      "Maakye! I'm SerwaaBroni. Tell me a sale, a restock, or ask about your business — for example, how are sales today?"
+    setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: msg }] : m))
+    speak(msg)
+  }, [])
+
+  return { messages, pending, busy, sendText, listen, confirm, cancel, greet }
 }

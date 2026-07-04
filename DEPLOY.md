@@ -72,3 +72,21 @@ The `vercel.json` file in this project handles React Router. All routes redirect
 | Supabase connection fails | Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set in Vercel |
 | Camera not working | Must use HTTPS (Vercel provides this). Also check phone permissions |
 | Data not persisting | Check migrations are run. Run `migration_002.sql` and `migration_003_customers.sql` in Supabase SQL Editor |
+
+## SerwaaBroni agent (Phase 1)
+
+The agent brain runs in the `serwaa-agent` edge function and calls Claude Haiku.
+
+1. Set the Anthropic key as a Supabase secret (never in the SPA):
+   ```bash
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref <ref>
+   ```
+2. Deploy the function:
+   ```bash
+   supabase functions deploy serwaa-agent --project-ref <ref>
+   ```
+3. No client env vars are required — the app authenticates with the user's
+   Supabase session, exactly like `admin-impersonate`.
+
+Cost: model is `claude-haiku-4-5-20251001`, context capped to the last 4 turns
+plus a compact snapshot (~1–2K tokens/turn).

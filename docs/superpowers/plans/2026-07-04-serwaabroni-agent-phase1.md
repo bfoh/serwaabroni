@@ -883,6 +883,18 @@ export interface StoreExecApi {
   ) => Promise<void>
   updateProduct: (id: string, updates: Record<string, unknown>) => Promise<void>
   findProductQty: (id: string) => number
+  // Posts the cash actually received for a sale to the ledger (source of truth for
+  // cash-in-hand / bank). Mirrors AddSaleSheet's saleMovement + postMovement.
+  postMovement: (mv: {
+    account: 'cash' | 'bank'
+    direction: 'in' | 'out'
+    amount: number
+    category: string
+    ref_table: string
+    ref_id: string
+    note: string | null
+    created_at: string
+  }) => Promise<void>
 }
 
 function buildSaleRows(
@@ -1488,6 +1500,7 @@ import { callAgent as defaultCallAgent } from '@/lib/agent/client'
 import { runReadTool, type ReadContext } from '@/lib/agent/readTools'
 import { buildPreview, type PreviewContext } from '@/lib/agent/writeTools'
 import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
+import { postMovement, type NewMovement } from '@/services/cashApi'
 import { listenOnce, speak, speechSupported } from '@/lib/agent/speech'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse } from '@/lib/agent/types'
 
@@ -1550,6 +1563,9 @@ export function useAgent() {
       addProduct: store.addProduct as StoreExecApi['addProduct'],
       updateProduct: store.updateProduct as StoreExecApi['updateProduct'],
       findProductQty: (id: string) => store.state.products.find((p) => p.id === id)?.quantity ?? 0,
+      // Cast at the boundary: the executor types category as a plain string to
+      // stay decoupled from cashApi; here it is always a valid CashCategory ('sale').
+      postMovement: (mv) => postMovement(mv as NewMovement),
     }),
     [store],
   )

@@ -52,6 +52,16 @@ export default function Reports() {
   const totalOwing = owingList.reduce((s, d) => s + d.amount, 0)
   const debtNet = totalOwed - totalOwing
 
+  // Aggregate debts by person so each debtor/creditor shows once with summed amount
+  const aggregateByPerson = (list: typeof allDebts) => {
+    const map = new Map<string, number>()
+    list.forEach((d) => map.set(d.person_name, (map.get(d.person_name) || 0) + d.amount))
+    return Array.from(map, ([person_name, amount]) => ({ person_name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+  }
+  const owedByPerson = aggregateByPerson(owedList)
+  const owingByPerson = aggregateByPerson(owingList)
+
   // Top products (uses same period as main selector)
   const topProducts = useMemo(() => {
     const productSales: Record<string, { name: string; total: number; profit: number; qty: number; category: string }> = {}
@@ -309,11 +319,11 @@ export default function Reports() {
                   className="overflow-hidden"
                 >
                   <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
-                    {owedList.length === 0 ? (
+                    {owedByPerson.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">Nobody owes you.</p>
                     ) : (
-                      owedList.map(debt => (
-                        <div key={debt.id} className="flex justify-between items-center text-xs">
+                      owedByPerson.map(debt => (
+                        <div key={debt.person_name} className="flex justify-between items-center text-xs">
                           <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
                           <span className="font-medium">{formatCurrency(debt.amount)}</span>
                         </div>
@@ -341,11 +351,11 @@ export default function Reports() {
                   className="overflow-hidden"
                 >
                   <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
-                    {owingList.length === 0 ? (
+                    {owingByPerson.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">You don't owe anyone.</p>
                     ) : (
-                      owingList.map(debt => (
-                        <div key={debt.id} className="flex justify-between items-center text-xs">
+                      owingByPerson.map(debt => (
+                        <div key={debt.person_name} className="flex justify-between items-center text-xs">
                           <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
                           <span className="font-medium">{formatCurrency(debt.amount)}</span>
                         </div>

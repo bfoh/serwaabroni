@@ -34,49 +34,53 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  let body: Body
   try {
-    body = await req.json()
-  } catch {
-    return json({ error: 'Invalid JSON' }, 400)
+    let body: Body
+    try {
+      body = await req.json()
+    } catch {
+      return json({ error: 'Invalid JSON' }, 400)
+    }
+    if (!body.userJwt) return json({ error: 'Unauthorized' }, 401)
+    if (!Array.isArray(body.messages) || body.messages.length === 0) return json({ error: 'No messages' }, 400)
+
+    const userClient = createClient(SUPABASE_URL, ANON_KEY)
+    const { data: userData, error: userErr } = await userClient.auth.getUser(body.userJwt)
+    if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401)
+
+    // Keep context small: last 4 turns only.
+    const recent = body.messages.slice(-4)
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 400,
+        system: systemPrompt(body.snapshot),
+        tools: TOOLS,
+        messages: recent.map((m) => ({ role: m.role, content: m.content })),
+      }),
+    })
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      return json({ error: 'Agent upstream error', detail: detail.slice(0, 300) }, 502)
+    }
+
+    const data = await res.json()
+    const blocks: Array<Record<string, unknown>> = data.content ?? []
+    const say = blocks.filter((b) => b.type === 'text').map((b) => String(b.text)).join(' ').trim()
+    const toolCalls = blocks
+      .filter((b) => b.type === 'tool_use')
+      .map((b) => ({ name: String(b.name), input: (b.input as Record<string, unknown>) ?? {} }))
+
+    return json({ say, toolCalls })
+  } catch (e) {
+    return json({ error: 'Agent error', detail: e instanceof Error ? e.message : String(e) }, 500)
   }
-  if (!body.userJwt) return json({ error: 'Unauthorized' }, 401)
-  if (!Array.isArray(body.messages) || body.messages.length === 0) return json({ error: 'No messages' }, 400)
-
-  const userClient = createClient(SUPABASE_URL, ANON_KEY)
-  const { data: userData, error: userErr } = await userClient.auth.getUser(body.userJwt)
-  if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401)
-
-  // Keep context small: last 4 turns only.
-  const recent = body.messages.slice(-4)
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 400,
-      system: systemPrompt(body.snapshot),
-      tools: TOOLS,
-      messages: recent.map((m) => ({ role: m.role, content: m.content })),
-    }),
-  })
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    return json({ error: 'Agent upstream error', detail: detail.slice(0, 300) }, 502)
-  }
-
-  const data = await res.json()
-  const blocks: Array<Record<string, unknown>> = data.content ?? []
-  const say = blocks.filter((b) => b.type === 'text').map((b) => String(b.text)).join(' ').trim()
-  const toolCalls = blocks
-    .filter((b) => b.type === 'tool_use')
-    .map((b) => ({ name: String(b.name), input: (b.input as Record<string, unknown>) ?? {} }))
-
-  return json({ say, toolCalls })
 })

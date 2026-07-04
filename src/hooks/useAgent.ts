@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/lib/store'
 import { buildSnapshot } from '@/lib/agent/snapshot'
 import { callAgent as defaultCallAgent } from '@/lib/agent/client'
@@ -7,7 +7,7 @@ import { buildPreview, type PreviewContext } from '@/lib/agent/writeTools'
 import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
 import { postMovement, type NewMovement } from '@/services/cashApi'
 import { receiveStock } from '@/services/batchApi'
-import { listenOnce, speak, speechSupported } from '@/lib/agent/speech'
+import { listenOnce, speak, speechSupported, stopListening, stopSpeaking } from '@/lib/agent/speech'
 import { formatCurrency } from '@/lib/data'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse } from '@/lib/agent/types'
 
@@ -63,19 +63,21 @@ export function useAgent() {
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [pending, setPending] = useState<ConfirmPreview | null>(null)
   const [busy, setBusy] = useState(false)
+  const [conversing, setConversing] = useState(false)
 
-  const snapshot = useMemo(
-    () =>
-      buildSnapshot({
-        products: store.state.products,
-        debts: store.state.debts,
-        todaySales: store.state.todaySales ?? 0,
-        todayProfit: store.state.todayProfit ?? 0,
-        cashInHand: store.state.balance ?? 0,
-        cashInBank: store.state.bankBalance ?? 0,
-      }),
-    [store.state.products, store.state.debts, store.state.todaySales, store.state.todayProfit, store.state.balance, store.state.bankBalance],
-  )
+  // Refs mirror state so the async conversation loop and the stable sendText
+  // callback always read the latest values (no stale closures across turns).
+  const messagesRef = useRef<AgentMessage[]>([])
+  const pendingRef = useRef<ConfirmPreview | null>(null)
+  const busyRef = useRef(false)
+  const convRef = useRef(false)
+  const storeRef = useRef(store)
+  storeRef.current = store
+
+  const pushMessage = useCallback((msg: AgentMessage) => {
+    messagesRef.current = [...messagesRef.current, msg]
+    setMessages(messagesRef.current)
+  }, [])
 
   const execApi: StoreExecApi = useMemo(
     () => ({
@@ -95,75 +97,128 @@ export function useAgent() {
   const sendText = useCallback(
     async (text: string) => {
       const clean = text.trim()
-      if (!clean || busy) return
+      if (!clean || busyRef.current) return
+      busyRef.current = true
       setBusy(true)
-      setMessages((m) => [...m, { role: 'user', content: clean }])
+      const history = messagesRef.current
+      pushMessage({ role: 'user', content: clean })
+      const s = storeRef.current.state
+      const snapshot = buildSnapshot({
+        products: s.products,
+        debts: s.debts,
+        todaySales: s.todaySales ?? 0,
+        todayProfit: s.todayProfit ?? 0,
+        cashInHand: s.balance ?? 0,
+        cashInBank: s.bankBalance ?? 0,
+      })
       try {
         const readCtx: ReadContext = {
-          products: store.state.products,
-          sales: store.state.sales,
-          debts: store.state.debts,
-          expenses: store.state.expenses,
+          products: s.products,
+          sales: s.sales,
+          debts: s.debts,
+          expenses: s.expenses,
           snapshot,
         }
         const out = await runTurn(clean, {
-          history: messages,
+          history,
           snapshot,
           readCtx,
-          previewCtx: { products: store.state.products },
+          previewCtx: { products: s.products },
           callAgent: defaultCallAgent,
         })
-        setMessages((m) => [...m, { role: 'assistant', content: out.reply }])
+        pushMessage({ role: 'assistant', content: out.reply })
         setPending(out.pending)
-        speak(out.reply)
+        pendingRef.current = out.pending
+        await speak(out.reply)
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Something went wrong.'
-        setMessages((m) => [...m, { role: 'assistant', content: msg }])
-        speak(msg)
+        pushMessage({ role: 'assistant', content: msg })
+        await speak(msg)
       } finally {
+        busyRef.current = false
         setBusy(false)
       }
     },
-    [busy, messages, snapshot, store.state],
+    [pushMessage],
   )
 
-  const listen = useCallback(async () => {
-    if (!speechSupported()) {
-      setMessages((m) => [...m, { role: 'assistant', content: 'Voice is not available on this device. Please type.' }])
-      return
-    }
-    try {
-      const heard = await listenOnce({ lang: 'en-GH' })
-      if (heard) await sendText(heard)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not hear you.'
-      setMessages((m) => [...m, { role: 'assistant', content: msg }])
+  // Continuous voice conversation: listen → respond → listen again, until the
+  // user stops it (taps the mic again / closes) or a money action needs an
+  // explicit tap on the confirm card.
+  const runConversation = useCallback(async () => {
+    while (convRef.current) {
+      let heard = ''
+      try {
+        heard = await listenOnce({ lang: 'en-GH' })
+      } catch {
+        heard = '' // silence / no-speech — keep listening
+      }
+      if (!convRef.current) break
+      if (heard) {
+        await sendText(heard)
+        if (pendingRef.current) {
+          // Pause the loop so the user confirms the sale/restock explicitly.
+          convRef.current = false
+          setConversing(false)
+          break
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 400))
+      }
     }
   }, [sendText])
 
+  const startConversation = useCallback(() => {
+    if (convRef.current) return
+    if (!speechSupported()) {
+      pushMessage({ role: 'assistant', content: 'Voice is not available on this device. Please type instead.' })
+      return
+    }
+    convRef.current = true
+    setConversing(true)
+    void runConversation()
+  }, [runConversation, pushMessage])
+
+  const stopConversation = useCallback(() => {
+    convRef.current = false
+    setConversing(false)
+    stopListening()
+    stopSpeaking()
+  }, [])
+
+  // Mic button: start a continuous conversation, or stop the running one.
+  const toggleMic = useCallback(() => {
+    if (convRef.current) stopConversation()
+    else startConversation()
+  }, [startConversation, stopConversation])
+
   const confirm = useCallback(async () => {
-    if (!pending) return
-    const previewToSave = pending
+    if (!pendingRef.current) return
+    const previewToSave = pendingRef.current
+    busyRef.current = true
     setBusy(true)
     try {
       await executePreview(previewToSave, execApi)
       const done = describeSaved(previewToSave)
-      setMessages((m) => [...m, { role: 'assistant', content: done }])
-      speak(done)
+      pushMessage({ role: 'assistant', content: done })
+      await speak(done)
     } catch {
       const msg = 'I could not save it. Please try again.'
-      setMessages((m) => [...m, { role: 'assistant', content: msg }])
-      speak(msg)
+      pushMessage({ role: 'assistant', content: msg })
+      await speak(msg)
     } finally {
       setPending(null)
+      pendingRef.current = null
+      busyRef.current = false
       setBusy(false)
     }
-  }, [pending, execApi])
+  }, [execApi, pushMessage])
 
   const cancel = useCallback(() => {
     setPending(null)
-    setMessages((m) => [...m, { role: 'assistant', content: 'Okay, cancelled.' }])
-  }, [])
+    pendingRef.current = null
+    pushMessage({ role: 'assistant', content: 'Okay, cancelled.' })
+  }, [pushMessage])
 
   // Proactive spoken opener shown when the agent is first opened. English only,
   // greeting by time of day.
@@ -173,9 +228,12 @@ export function useAgent() {
     const msg =
       `${part}! I'm SerwaaBroni. Tap the microphone to start talking to me. ` +
       'You can tell me a sale, a restock, or ask about your business.'
-    setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: msg }] : m))
-    speak(msg)
+    if (messagesRef.current.length === 0) {
+      messagesRef.current = [{ role: 'assistant', content: msg }]
+      setMessages(messagesRef.current)
+    }
+    void speak(msg)
   }, [])
 
-  return { messages, pending, busy, sendText, listen, confirm, cancel, greet }
+  return { messages, pending, busy, conversing, sendText, toggleMic, stopConversation, confirm, cancel, greet }
 }

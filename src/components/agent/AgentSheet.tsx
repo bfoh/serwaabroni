@@ -1,26 +1,30 @@
 // src/components/agent/AgentSheet.tsx
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Send } from 'lucide-react'
+import { Mic, Send, Square } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAgent } from '@/hooks/useAgent'
 import { primeSpeech } from '@/lib/agent/speech'
 import ConfirmCard from './ConfirmCard'
 
 export default function AgentSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { messages, pending, busy, sendText, listen, confirm, cancel, greet } = useAgent()
+  const { messages, pending, busy, conversing, sendText, toggleMic, stopConversation, confirm, cancel, greet } = useAgent()
   const [text, setText] = useState('')
   const greetedRef = useRef(false)
 
   // When the sheet opens: unlock speech (inside the open gesture) and, if this is
-  // a fresh conversation, have SerwaaBroni greet the user out loud.
+  // a fresh conversation, have SerwaaBroni greet the user out loud. On close, stop
+  // any running voice conversation.
   useEffect(() => {
     if (open && !greetedRef.current) {
       greetedRef.current = true
       primeSpeech()
       if (messages.length === 0) greet()
     }
-    if (!open) greetedRef.current = false
-  }, [open, messages.length, greet])
+    if (!open) {
+      greetedRef.current = false
+      stopConversation()
+    }
+  }, [open, messages.length, greet, stopConversation])
 
   const submit = async () => {
     const t = text
@@ -57,14 +61,21 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
           )}
         </div>
 
+        {(conversing || busy) && (
+          <p className="text-center text-[11px] text-muted-text pb-1">
+            {busy ? 'SerwaaBroni is thinking…' : 'Listening… tap the red button to stop'}
+          </p>
+        )}
+
         <div className="flex items-center gap-2 pt-2 pb-[env(safe-area-inset-bottom)]">
           <button
-            onClick={() => { primeSpeech(); listen() }}
-            disabled={busy}
-            aria-label="Speak"
-            className="btn-tactile w-12 h-12 shrink-0 rounded-full bg-accent-green text-white flex items-center justify-center disabled:opacity-50"
+            onClick={() => { primeSpeech(); toggleMic() }}
+            aria-label={conversing ? 'Stop conversation' : 'Start conversation'}
+            className={`btn-tactile w-12 h-12 shrink-0 rounded-full text-white flex items-center justify-center ${
+              conversing ? 'bg-accent-red animate-pulse' : 'bg-accent-green'
+            }`}
           >
-            <Mic size={20} />
+            {conversing ? <Square size={18} /> : <Mic size={20} />}
           </button>
           <input
             value={text}

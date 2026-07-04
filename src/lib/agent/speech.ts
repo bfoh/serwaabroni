@@ -10,6 +10,10 @@ export function speechSupported(): boolean {
   return getRecognition() !== null
 }
 
+// The recognition currently running, so a continuous conversation can abort it
+// when the user stops the session.
+let activeRec: SpeechRecognition | null = null
+
 export function listenOnce(opts?: { lang?: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     const rec = getRecognition()
@@ -17,6 +21,7 @@ export function listenOnce(opts?: { lang?: string }): Promise<string> {
     rec.lang = opts?.lang ?? 'en-GH'
     rec.interimResults = false
     rec.maxAlternatives = 1
+    activeRec = rec
     let finished = false
     rec.onresult = (e: SpeechRecognitionEvent) => {
       finished = true
@@ -28,10 +33,32 @@ export function listenOnce(opts?: { lang?: string }): Promise<string> {
       reject(new Error(e.error || 'Could not hear you. Please try again.'))
     }
     rec.onend = () => {
+      if (activeRec === rec) activeRec = null
       if (!finished) reject(new Error('I did not catch that. Please try again.'))
     }
     rec.start()
   })
+}
+
+// Abort any in-flight recognition (used to stop a continuous conversation).
+export function stopListening(): void {
+  try {
+    activeRec?.abort()
+  } catch {
+    /* ignore */
+  }
+  activeRec = null
+}
+
+// Stop any in-progress speech immediately.
+export function stopSpeaking(): void {
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel()
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // Mobile browsers block speech synthesis until it is triggered inside a user
@@ -62,27 +89,42 @@ export function toSpeakable(text: string): string {
   )
 }
 
-export function speak(text: string, opts?: { lang?: string }): void {
-  if (!('speechSynthesis' in window) || !text) return
-  const synth = window.speechSynthesis
-  const u = new SpeechSynthesisUtterance(toSpeakable(text))
-  // Don't force a locale that has no installed voice (e.g. 'en-GH' is usually
-  // absent → silent). Prefer the requested locale, then any English voice, then
-  // the device default.
-  const want = opts?.lang ?? 'en-GH'
-  const voices = synth.getVoices()
-  const voice =
-    voices.find((v) => v.lang === want) ??
-    voices.find((v) => v.lang?.toLowerCase().startsWith('en')) ??
-    voices[0]
-  if (voice) u.voice = voice
-  u.lang = voice?.lang ?? 'en-US'
-  u.rate = 1
-  try {
-    synth.cancel()
-    synth.resume()
-    synth.speak(u)
-  } catch {
-    /* ignore — TTS unavailable */
-  }
+// Speaks the text and resolves when speech finishes (or immediately if TTS is
+// unavailable). Awaiting this lets a continuous conversation wait for the reply
+// to finish before it listens again, so the mic never captures the agent's voice.
+export function speak(text: string, opts?: { lang?: string }): Promise<void> {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window) || !text) return resolve()
+    const synth = window.speechSynthesis
+    const u = new SpeechSynthesisUtterance(toSpeakable(text))
+    // Don't force a locale that has no installed voice (e.g. 'en-GH' is usually
+    // absent → silent). Prefer the requested locale, then any English voice, then
+    // the device default.
+    const want = opts?.lang ?? 'en-GH'
+    const voices = synth.getVoices()
+    const voice =
+      voices.find((v) => v.lang === want) ??
+      voices.find((v) => v.lang?.toLowerCase().startsWith('en')) ??
+      voices[0]
+    if (voice) u.voice = voice
+    u.lang = voice?.lang ?? 'en-US'
+    u.rate = 1
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+    u.onend = finish
+    u.onerror = finish
+    try {
+      synth.cancel()
+      synth.resume()
+      synth.speak(u)
+    } catch {
+      finish()
+    }
+    // Safety net: never hang the conversation loop if onend never fires.
+    setTimeout(finish, Math.min(15000, 2000 + text.length * 90))
+  })
 }

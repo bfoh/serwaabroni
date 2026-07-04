@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router'
 import { useState, useEffect } from 'react'
+import { Mic } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
@@ -20,12 +21,14 @@ import ImpersonationBanner from '@/components/ImpersonationBanner'
 import Capital from '@/pages/Capital'
 import InjectionDetail from '@/pages/InjectionDetail'
 import CashFlow from '@/pages/CashFlow'
+import AgentSheet from '@/components/agent/AgentSheet'
 
 function MainApp() {
   const { state } = useStore()
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
   const [showCustomers, setShowCustomers] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(false)
 
   // Automatically close overlays when the active tab changes
   useEffect(() => {
@@ -64,7 +67,17 @@ function MainApp() {
       </main>
       
       <AddSaleSheet />
-      
+
+      {/* SerwaaBroni voice agent */}
+      <button
+        onClick={() => setAgentOpen(true)}
+        aria-label="Open SerwaaBroni"
+        className="fixed right-4 bottom-24 z-40 w-14 h-14 rounded-full bg-accent-green text-white shadow-lg flex items-center justify-center btn-tactile"
+      >
+        <Mic size={24} />
+      </button>
+      <AgentSheet open={agentOpen} onClose={() => setAgentOpen(false)} />
+
       {/* Overlay pages */}
       <SalesHistory isOpen={showSalesHistory} onClose={() => setShowSalesHistory(false)} />
       <Expenses isOpen={showExpenses} onClose={() => setShowExpenses(false)} />

@@ -15,3 +15,9 @@ verify_jwt = false
 # Cron-invoked from pg_cron: no user JWT. Guarded by the X-Cron-Secret header instead.
 [functions.daily-tasks]
 verify_jwt = false
+
+# Client-invoked: the SerwaaBroni agent proxy. Same asymmetric-JWT reason as above —
+# the function validates the caller's token via getUser() itself, so the gateway
+# JWT check is disabled.
+[functions.serwaa-agent]
+verify_jwt = false

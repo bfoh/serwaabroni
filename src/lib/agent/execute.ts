@@ -19,6 +19,10 @@ export interface StoreExecApi {
     account: 'cash' | 'bank'; direction: 'in' | 'out'; amount: number;
     category: string; ref_table: string; ref_id: string; note: string | null; created_at: string
   }) => Promise<void>
+  receiveStock: (params: {
+    productId: string; qty: number; unitCost: number
+    account?: 'cash' | 'bank'; unpaid?: boolean
+  }) => Promise<unknown>
 }
 
 function buildSaleRows(
@@ -89,13 +93,6 @@ export async function executePreview(preview: ConfirmPreview, api: StoreExecApi)
       paid_at: null,
       created_at: createdAt,
     })
-    const mv = saleMovement('credit', total, 0)
-    if (mv) {
-      await api.postMovement({
-        account: mv.account, direction: 'in', amount: mv.amount,
-        category: 'sale', ref_table: 'sales', ref_id: groupId, note: preview.credit.customerName, created_at: createdAt,
-      })
-    }
     return
   }
 
@@ -122,6 +119,17 @@ export async function executePreview(preview: ConfirmPreview, api: StoreExecApi)
   if (preview.kind === 'add_stock' && preview.addStock) {
     const current = api.findProductQty(preview.addStock.productId)
     await api.updateProduct(preview.addStock.productId, { quantity: current + preview.addStock.qty })
+    try {
+      await api.receiveStock({
+        productId: preview.addStock.productId,
+        qty: preview.addStock.qty,
+        unitCost: preview.addStock.unitCost,
+        account: 'cash',
+        unpaid: false,
+      })
+    } catch {
+      /* offline or error — quantity already bumped; batch can reconcile later */
+    }
     return
   }
 }

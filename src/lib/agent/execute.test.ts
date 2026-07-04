@@ -10,6 +10,7 @@ function fakeApi() {
     updateProduct: vi.fn().mockResolvedValue(undefined),
     findProductQty: vi.fn().mockReturnValue(20),
     postMovement: vi.fn().mockResolvedValue(undefined),
+    receiveStock: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -88,5 +89,6 @@ describe('executePreview', () => {
     }
     await executePreview(preview, api)
     expect(api.updateProduct).toHaveBeenCalledWith('p1', { quantity: 44 }) // 20 + 24
+    expect(api.receiveStock).toHaveBeenCalledWith({ productId: 'p1', qty: 24, unitCost: 2, account: 'cash', unpaid: false })
   })
 })

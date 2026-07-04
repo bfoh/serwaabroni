@@ -6,7 +6,9 @@ import { runReadTool, type ReadContext } from '@/lib/agent/readTools'
 import { buildPreview, type PreviewContext } from '@/lib/agent/writeTools'
 import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
 import { postMovement, type NewMovement } from '@/services/cashApi'
+import { receiveStock } from '@/services/batchApi'
 import { listenOnce, speak, speechSupported } from '@/lib/agent/speech'
+import { formatCurrency } from '@/lib/data'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse } from '@/lib/agent/types'
 
 interface TurnDeps {
@@ -42,6 +44,20 @@ export async function runTurn(userText: string, deps: TurnDeps): Promise<TurnOut
   return { reply: spoken, pending: preview }
 }
 
+function describeSaved(p: ConfirmPreview): string {
+  if (p.kind === 'sale' && p.sale) {
+    const total = p.sale.items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
+    return `Done — sale of ${formatCurrency(total)} saved.`
+  }
+  if (p.kind === 'credit_sale' && p.credit) {
+    const total = p.credit.items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
+    return `Done — ${p.credit.customerName} now owes ${formatCurrency(total)}.`
+  }
+  if (p.kind === 'new_product' && p.newProduct) return `Done — added ${p.newProduct.name}.`
+  if (p.kind === 'add_stock' && p.addStock) return `Done — restocked ${p.addStock.qty} ${p.addStock.productName}.`
+  return 'Done. Saved.'
+}
+
 export function useAgent() {
   const store = useStore()
   const [messages, setMessages] = useState<AgentMessage[]>([])
@@ -71,6 +87,7 @@ export function useAgent() {
       // Cast at the boundary: the executor types category as a plain string to
       // stay decoupled from cashApi; here it is always a valid CashCategory ('sale').
       postMovement: (mv) => postMovement(mv as NewMovement),
+      receiveStock: (params) => receiveStock(params),
     }),
     [store],
   )
@@ -126,10 +143,11 @@ export function useAgent() {
 
   const confirm = useCallback(async () => {
     if (!pending) return
+    const previewToSave = pending
     setBusy(true)
     try {
-      await executePreview(pending, execApi)
-      const done = 'Done. I have saved it.'
+      await executePreview(previewToSave, execApi)
+      const done = describeSaved(previewToSave)
       setMessages((m) => [...m, { role: 'assistant', content: done }])
       speak(done)
     } catch {

@@ -15,9 +15,24 @@ export function runReadTool(call: ToolCall, ctx: ReadContext): ReadResult | null
   const s = ctx.snapshot
   switch (call.name) {
     case 'get_summary': {
+      const raw = String(call.input.period ?? 'daily')
+      const period = raw === 'weekly' || raw === 'monthly' || raw === 'yearly' ? raw : 'daily'
+      if (period === 'daily') {
+        return {
+          text: `Today's sales are ${formatCurrency(s.todaySales)} with profit ${formatCurrency(
+            s.todayProfit,
+          )}. Cash in hand ${formatCurrency(s.cashInHand)}, bank ${formatCurrency(s.cashInBank)}.`,
+        }
+      }
+      const days = period === 'weekly' ? 7 : period === 'monthly' ? 30 : 365
+      const label = period === 'weekly' ? 'This week' : period === 'monthly' ? 'This month' : 'This year'
+      const cutoff = Date.now() - days * 86400000
+      const inRange = ctx.sales.filter((x) => new Date(x.created_at).getTime() >= cutoff)
+      const sales = inRange.reduce((sum, x) => sum + x.total, 0)
+      const profit = inRange.reduce((sum, x) => sum + x.profit, 0)
       return {
-        text: `Today's sales are ${formatCurrency(s.todaySales)} with profit ${formatCurrency(
-          s.todayProfit,
+        text: `${label} sales are ${formatCurrency(sales)} with profit ${formatCurrency(
+          profit,
         )}. Cash in hand ${formatCurrency(s.cashInHand)}, bank ${formatCurrency(s.cashInBank)}.`,
       }
     }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/data'
+import { formatCurrency, formatDate, formatTime } from '@/lib/data'
 import { fetchMovements, fetchBalances, postTransfer, postMovement, type CashMovement } from '@/services/cashApi'
 import { useStore } from '@/lib/store'
 
@@ -70,7 +70,7 @@ export default function CashFlow() {
           <div key={m.id} className="bg-white harsh-border rounded-sm px-4 py-3 flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-sm text-ink truncate">{CAT_LABEL[m.category] || m.category}{m.note ? ` · ${m.note}` : ''}</p>
-              <p className="text-[11px] text-muted-text">{formatDate(m.created_at)} · {m.account === 'cash' ? 'Cash' : 'Bank'}</p>
+              <p className="text-[11px] text-muted-text">{formatDate(m.created_at)} · {formatTime(m.created_at)} · {m.account === 'cash' ? 'Cash' : 'Bank'}</p>
             </div>
             <span className={`font-display text-sm shrink-0 ${m.direction === 'in' ? 'text-accent-green' : 'text-accent-red'}`}>
               {m.direction === 'in' ? '+' : '−'}{formatCurrency(m.amount)}

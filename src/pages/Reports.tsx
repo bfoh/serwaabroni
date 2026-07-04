@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, DollarSign, CalendarDays, BarChart3, Package, ChevronDown } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { formatCurrency, getProfitForPeriod } from '@/lib/data'
+import { formatCurrency, formatDate, formatTime, getProfitForPeriod } from '@/lib/data'
 import { saleDisplay } from '@/lib/units'
 import { generateLoanDocument } from '@/lib/pdfGenerator'
 import MazeShader from '@/components/MazeShader'
@@ -209,8 +209,11 @@ export default function Reports() {
                       <p className="text-[10px] text-muted-text italic">No income in this period.</p>
                     ) : (
                       salesList.map(sale => (
-                        <div key={sale.id} className="flex justify-between items-center text-xs">
-                          <div className="truncate flex-1 mr-2 text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{saleDisplay(sale).qtyLabel}</span></div>
+                        <div key={sale.id} className="flex justify-between items-start text-xs">
+                          <div className="truncate flex-1 mr-2">
+                            <div className="truncate text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{saleDisplay(sale).qtyLabel}</span></div>
+                            <div className="text-[9px] text-muted-text mt-0.5">{formatDate(sale.created_at)} · {formatTime(sale.created_at)}</div>
+                          </div>
                           <span className="font-medium">{formatCurrency(sale.total)}</span>
                         </div>
                       ))
@@ -257,8 +260,11 @@ export default function Reports() {
                       <p className="text-[10px] text-muted-text italic">No expenses in this period.</p>
                     ) : (
                       expensesList.map(exp => (
-                        <div key={exp.id} className="flex justify-between items-center text-xs">
-                          <div className="truncate flex-1 mr-2 text-ink/80">{exp.description}</div>
+                        <div key={exp.id} className="flex justify-between items-start text-xs">
+                          <div className="truncate flex-1 mr-2">
+                            <div className="truncate text-ink/80">{exp.description}</div>
+                            <div className="text-[9px] text-muted-text mt-0.5">{formatDate(exp.created_at)} · {formatTime(exp.created_at)}</div>
+                          </div>
                           <span className="font-medium">{formatCurrency(exp.amount)}</span>
                         </div>
                       ))

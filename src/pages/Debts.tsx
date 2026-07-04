@@ -460,7 +460,7 @@ export default function Debts() {
               <div className="space-y-1">
                 {debt.payments.map((p, i) => (
                   <div key={i} className="flex items-center justify-between text-xs py-0.5">
-                    <span className="text-muted-text flex items-center gap-1"><CalendarDays size={10} />{formatDate(p.date)}</span>
+                    <span className="text-muted-text flex items-center gap-1"><CalendarDays size={10} />{formatDate(p.date)} · {formatTime(p.date)}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-display ${c.amount}`}>{formatCurrency(p.amount)}</span>
                       <button onClick={(e) => handleEditPaymentClick(debt, i, e)} className="text-gray-400 hover:text-ink"><Pencil size={10}/></button>

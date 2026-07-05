@@ -214,12 +214,12 @@ export default function Reports() {
                   animate={{ height: expandedIncome ? 'auto' : 0, opacity: expandedIncome ? 1 : 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                  <div className="pt-1 border-t border-ink/5 mt-2 divide-y divide-ink/10">
                     {salesList.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">No income in this period.</p>
                     ) : (
                       salesList.map(sale => (
-                        <div key={sale.id} className="flex justify-between items-start text-xs">
+                        <div key={sale.id} className="flex justify-between items-start text-xs py-1.5">
                           <div className="truncate flex-1 mr-2">
                             <div className="truncate text-ink/80">{sale.product_name} <span className="text-muted-text ml-1">x{saleDisplay(sale).qtyLabel}</span></div>
                             <div className="text-[9px] text-muted-text mt-0.5">{formatDate(sale.created_at)} · {formatTime(sale.created_at)}</div>
@@ -265,12 +265,12 @@ export default function Reports() {
                   animate={{ height: expandedExpenses ? 'auto' : 0, opacity: expandedExpenses ? 1 : 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                  <div className="pt-1 border-t border-ink/5 mt-2 divide-y divide-ink/10">
                     {expensesList.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">No expenses in this period.</p>
                     ) : (
                       expensesList.map(exp => (
-                        <div key={exp.id} className="flex justify-between items-start text-xs">
+                        <div key={exp.id} className="flex justify-between items-start text-xs py-1.5">
                           <div className="truncate flex-1 mr-2">
                             <div className="truncate text-ink/80">{exp.description}</div>
                             <div className="text-[9px] text-muted-text mt-0.5">{formatDate(exp.created_at)} · {formatTime(exp.created_at)}</div>
@@ -318,12 +318,12 @@ export default function Reports() {
                   animate={{ height: expandedOwed ? 'auto' : 0, opacity: expandedOwed ? 1 : 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                  <div className="pt-1 border-t border-ink/5 mt-2 divide-y divide-ink/10">
                     {owedByPerson.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">Nobody owes you.</p>
                     ) : (
                       owedByPerson.map(debt => (
-                        <div key={debt.person_name} className="flex justify-between items-center text-xs">
+                        <div key={debt.person_name} className="flex justify-between items-center text-xs py-1.5">
                           <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
                           <span className="font-medium">{formatCurrency(debt.amount)}</span>
                         </div>
@@ -350,12 +350,12 @@ export default function Reports() {
                   animate={{ height: expandedOwing ? 'auto' : 0, opacity: expandedOwing ? 1 : 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="pt-2 pb-1 space-y-2 border-t border-ink/5 mt-2">
+                  <div className="pt-1 border-t border-ink/5 mt-2 divide-y divide-ink/10">
                     {owingByPerson.length === 0 ? (
                       <p className="text-[10px] text-muted-text italic">You don't owe anyone.</p>
                     ) : (
                       owingByPerson.map(debt => (
-                        <div key={debt.person_name} className="flex justify-between items-center text-xs">
+                        <div key={debt.person_name} className="flex justify-between items-center text-xs py-1.5">
                           <div className="truncate flex-1 mr-2 text-ink/80">{debt.person_name}</div>
                           <span className="font-medium">{formatCurrency(debt.amount)}</span>
                         </div>

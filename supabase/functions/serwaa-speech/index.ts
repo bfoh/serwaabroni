@@ -8,7 +8,13 @@ const KHAYA_API_KEY = Deno.env.get('KHAYA_API_KEY') ?? ''
 const TRANSLATE_URL = Deno.env.get('KHAYA_TRANSLATE_URL') ?? 'https://translation-api.ghananlp.org/v1/translate'
 const ASR_URL = Deno.env.get('KHAYA_ASR_URL') ?? 'https://translation-api.ghananlp.org/asr/v3/transcribe'
 const TTS_URL = Deno.env.get('KHAYA_TTS_URL') ?? 'https://translation-api.ghananlp.org/tts/v2/tts'
-const TWI_SPEAKER = Deno.env.get('KHAYA_TWI_SPEAKER') ?? ''
+// TTS v2 speakers are multilingual: male_low | male_high | female.
+const TWI_SPEAKER = Deno.env.get('KHAYA_TWI_SPEAKER') ?? 'female'
+// Language codes: translate uses the 2-letter code ('tw'); ASR v3 / TTS v2 use
+// ISO 639-3 ('twi'). All overridable if a given product expects otherwise.
+const TW_CODE = Deno.env.get('KHAYA_TRANSLATE_TW') ?? 'tw'
+const ASR_LANG = Deno.env.get('KHAYA_ASR_LANG') ?? 'twi'
+const TTS_LANG = Deno.env.get('KHAYA_TTS_LANG') ?? 'twi'
 
 const KEY_HEADER = { 'Ocp-Apim-Subscription-Key': KHAYA_API_KEY }
 
@@ -66,7 +72,7 @@ Deno.serve(async (req) => {
 
     if (body.action === 'transcribe') {
       if (!body.audioBase64 || !body.mimeType) return json({ error: 'Missing audio' }, 400)
-      const asrRes = await fetch(`${ASR_URL}?language=tw`, {
+      const asrRes = await fetch(`${ASR_URL}?language=${ASR_LANG}`, {
         method: 'POST',
         headers: { 'Content-Type': body.mimeType, ...KEY_HEADER },
         body: b64ToBytes(body.audioBase64),
@@ -74,18 +80,18 @@ Deno.serve(async (req) => {
       if (!asrRes.ok) return json({ error: 'ASR error', detail: (await asrRes.text()).slice(0, 200) }, 502)
       const asrData = await asrRes.json().catch(() => null)
       const twi = typeof asrData === 'string' ? asrData : String(asrData?.text ?? asrData?.transcription ?? '')
-      const english = twi ? await translate(twi, 'tw-en') : ''
+      const english = twi ? await translate(twi, `${TW_CODE}-en`) : ''
       return json({ twi, english })
     }
 
     if (body.action === 'speak') {
       const text = String(body.text ?? '').trim()
       if (!text) return json({ error: 'Missing text' }, 400)
-      const twi = await translate(text, 'en-tw')
+      const twi = await translate(text, `en-${TW_CODE}`)
       const ttsRes = await fetch(TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...KEY_HEADER },
-        body: JSON.stringify({ text: twi, language: 'tw', speaker_id: TWI_SPEAKER }),
+        body: JSON.stringify({ text: twi, language: TTS_LANG, speaker_id: TWI_SPEAKER }),
       })
       if (!ttsRes.ok) return json({ error: 'TTS error', detail: (await ttsRes.text()).slice(0, 200) }, 502)
       const ctype = ttsRes.headers.get('content-type') ?? ''

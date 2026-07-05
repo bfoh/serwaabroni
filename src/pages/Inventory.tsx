@@ -7,12 +7,14 @@ import type { Product, Debt } from '@/lib/supabase'
 import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
 import StockHistorySheet from '@/components/StockHistorySheet'
+import BulkAddSheet from '@/components/inventory/BulkAddSheet'
 import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [showBulk, setShowBulk] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editQty, setEditQty] = useState(0)
   const [restockUnitCost, setRestockUnitCost] = useState('')
@@ -373,12 +375,20 @@ export default function Inventory() {
       <header className="sticky top-0 z-40 bg-sand border-b-2 border-ink px-5 py-3 pt-safe">
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-2xl text-ink uppercase tracking-tight">{t('my_stock')}</h1>
-          <button
-            onClick={() => setShowAddProduct(true)}
-            className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
-          >
-            <Plus size={20} strokeWidth={2.5} className="text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBulk(true)}
+              className="btn-tactile border-2 border-ink bg-white text-xs uppercase tracking-wide px-3 h-10 rounded-sm"
+            >
+              Bulk add
+            </button>
+            <button
+              onClick={() => setShowAddProduct(true)}
+              className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
+            >
+              <Plus size={20} strokeWidth={2.5} className="text-white" />
+            </button>
+          </div>
         </div>
 
         {/* Summary cards */}
@@ -1099,6 +1109,7 @@ export default function Inventory() {
       </AnimatePresence>
 
       <StockHistorySheet product={historyProduct} onClose={() => setHistoryProduct(null)} />
+      <BulkAddSheet open={showBulk} onClose={() => setShowBulk(false)} />
     </div>
   )
 }

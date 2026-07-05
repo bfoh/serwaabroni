@@ -42,6 +42,7 @@ export default function Inventory() {
   const [inlineEditPrice, setInlineEditPrice] = useState('')
   const [inlineEditQty, setInlineEditQty] = useState('')
   const [inlineEditUnit, setInlineEditUnit] = useState('')
+  const [inlineEditPerPack, setInlineEditPerPack] = useState('')
   const [inlineEditCategory, setInlineEditCategory] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -288,6 +289,7 @@ export default function Inventory() {
     setInlineEditPrice(String(mult ? Math.round(product.selling_price * factor * 100) / 100 : product.selling_price))
     setInlineEditQty(String(mult ? Math.round(product.quantity / factor) : product.quantity))
     setInlineEditUnit(product.unit || 'piece')
+    setInlineEditPerPack(String(product.units_per_pack ?? 1))
     setInlineEditCategory(product.category || 'Groceries')
   }
 
@@ -318,9 +320,10 @@ export default function Inventory() {
       }
 
       // Pack goods: entered prices are per bigger unit, quantity in bigger unit.
-      // Convert back to the base-canonical values stored in the DB.
-      const factor = original.units_per_pack ?? 1
+      // Convert back to the base-canonical values stored in the DB. The
+      // units-per-pack (how many small units per box) is editable here.
       const mult = isMultiUnit(original)
+      const factor = mult ? Math.max(1, parseInt(inlineEditPerPack) || 1) : 1
       const baseCost = mult ? Math.round((costPrice / factor) * 100) / 100 : costPrice
       const baseSell = mult ? Math.round((sellingPrice / factor) * 100) / 100 : sellingPrice
       const baseQty = mult ? qty * factor : qty
@@ -332,6 +335,7 @@ export default function Inventory() {
         selling_price: baseSell,
         quantity: baseQty,
         unit: inlineEditUnit,
+        units_per_pack: factor,
         category: inlineEditCategory,
         updated_at: new Date().toISOString(),
       }
@@ -343,6 +347,7 @@ export default function Inventory() {
         selling_price: baseSell,
         quantity: baseQty,
         unit: inlineEditUnit,
+        units_per_pack: factor,
         category: inlineEditCategory,
       }).catch(() => {})
 
@@ -483,8 +488,8 @@ export default function Inventory() {
               <div className="p-3 space-y-3">
                 {isMultiUnit(product) && (
                   <p className="text-[11px] text-muted-text leading-snug bg-warm-gray/40 rounded-sm px-2.5 py-1.5">
-                    Prices &amp; quantity are per <span className="font-medium">{product.pack_unit}</span> · 1 {product.pack_unit} = {product.units_per_pack} {product.unit}
-                    {inlineEditQty && parseInt(inlineEditQty) > 0 && ` · stock ${parseInt(inlineEditQty) * (product.units_per_pack ?? 1)} ${product.unit}`}
+                    Prices &amp; quantity are per <span className="font-medium">{product.pack_unit}</span> · 1 {product.pack_unit} = {Math.max(1, parseInt(inlineEditPerPack) || 1)} {inlineEditUnit || product.unit}
+                    {inlineEditQty && parseInt(inlineEditQty) > 0 && ` · stock ${parseInt(inlineEditQty) * Math.max(1, parseInt(inlineEditPerPack) || 1)} ${inlineEditUnit || product.unit}`}
                   </p>
                 )}
                 <div>
@@ -568,6 +573,21 @@ export default function Inventory() {
                     </select>
                   </div>
                 </div>
+                {isMultiUnit(product) && (
+                  <div>
+                    <label className="text-micro text-muted-text mb-1 block">
+                      {inlineEditUnit || 'small units'} PER {(product.pack_unit || 'pack').toUpperCase()}
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={inlineEditPerPack}
+                      onChange={(e) => setInlineEditPerPack(e.target.value.replace(/[^\d]/g, ''))}
+                      className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
+                      placeholder="e.g. 50"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="text-micro text-muted-text mb-1 block">CATEGORY</label>
                   <select

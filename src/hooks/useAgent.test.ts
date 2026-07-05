@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { runTurn } from './useAgent'
+import { runTurn, parseReceiptReply } from './useAgent'
 import type { BusinessSnapshot } from '@/lib/agent/types'
 import type { Product } from '@/lib/supabase'
 
@@ -53,6 +53,7 @@ describe('runTurn', () => {
   })
 
   it('returns a receipt request (no pending) for the send_receipt tool', async () => {
+    // (kept for the LLM fallback path)
     const callAgent = vi.fn().mockResolvedValue({
       say: '', toolCalls: [{ name: 'send_receipt', input: { customer_name: 'Ama', customer_phone: '0241234567' } }],
     })
@@ -61,5 +62,31 @@ describe('runTurn', () => {
     })
     expect(out.pending).toBeNull()
     expect(out.receipt).toEqual({ customerName: 'Ama', customerPhone: '0241234567' })
+  })
+})
+
+describe('parseReceiptReply', () => {
+  it('extracts name and phone from a spoken answer', () => {
+    expect(parseReceiptReply('Her name is Ama and the number is 0241234567')).toEqual({
+      negative: false,
+      name: 'Ama',
+      phone: '0241234567',
+    })
+  })
+
+  it('handles a phone with spaces/dashes', () => {
+    const r = parseReceiptReply('Kofi Mensah 024-123 4567')
+    expect(r.phone).toBe('0241234567')
+    expect(r.name).toBe('Kofi Mensah')
+  })
+
+  it('detects a decline', () => {
+    expect(parseReceiptReply('no').negative).toBe(true)
+    expect(parseReceiptReply("no, don't send").negative).toBe(true)
+  })
+
+  it('is not a decline when a number is present', () => {
+    expect(parseReceiptReply('yes 0201112222').negative).toBe(false)
+    expect(parseReceiptReply('yes 0201112222').phone).toBe('0201112222')
   })
 })

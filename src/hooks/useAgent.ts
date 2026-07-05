@@ -8,7 +8,6 @@ import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
 import { postMovement, type NewMovement } from '@/services/cashApi'
 import { receiveStock } from '@/services/batchApi'
 import { listenOnce, speak, speechSupported, stopListening, stopSpeaking } from '@/lib/agent/speech'
-import { sendNotification } from '@/services/notify'
 import { formatCurrency, formatDate, uid } from '@/lib/data'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse, Sale } from '@/lib/agent/types'
 
@@ -58,6 +57,28 @@ export async function runTurn(userText: string, deps: TurnDeps): Promise<TurnOut
   return { reply: spoken, pending: preview }
 }
 
+// Parse the user's answer to "does the buyer want a receipt?" without the LLM,
+// so the flow is reliable. Returns whether they declined, plus any name/phone.
+export function parseReceiptReply(text: string): { negative: boolean; name: string; phone: string } {
+  const t = text.trim()
+  const hasDigits = /\d/.test(t)
+  if (!hasDigits && /\b(no|nope|nah|skip|without|cancel|don'?t|do not)\b/i.test(t)) {
+    return { negative: true, name: '', phone: '' }
+  }
+  const phoneMatch = t.match(/\+?\d[\d\s-]{7,}\d/)
+  const phone = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : ''
+  let name = phoneMatch ? t.replace(phoneMatch[0], ' ') : t
+  name = name
+    .replace(
+      /\b(her|his|their|the|customer'?s?|name|is|are|number|phone|mobile|contact|and|call|it'?s|send|receipt|to|please|yes|buyer)\b/gi,
+      ' ',
+    )
+    .replace(/[^\p{L}\s'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { negative: false, name, phone }
+}
+
 function describeSaved(p: ConfirmPreview): string {
   if (p.kind === 'sale' && p.sale) {
     const total = p.sale.items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
@@ -100,15 +121,17 @@ export function useAgent() {
   // True when a money action paused a voice conversation, so we know to resume
   // listening after the user confirms it.
   const resumeAfterConfirmRef = useRef(false)
+  // True right after a cash sale while we wait for the buyer's receipt answer.
+  const awaitingReceiptRef = useRef(false)
 
   const pushMessage = useCallback((msg: AgentMessage) => {
     messagesRef.current = [...messagesRef.current, msg]
     setMessages(messagesRef.current)
   }, [])
 
-  // Handle a receipt request for the most recent cash sale.
-  // Existing customer → open the receipt box so the user picks how to send it.
-  // New customer → save them (with this purchase) and send the receipt by SMS.
+  // Handle the buyer's receipt details for the most recent cash sale. Saves a new
+  // customer (or updates an existing one), then opens the receipt box so the user
+  // picks how to send it (SMS / WhatsApp / print / download).
   const handleReceipt = useCallback(
     async (
       receipt: { customerName: string; customerPhone: string },
@@ -118,7 +141,7 @@ export function useAgent() {
       const name = receipt.customerName.trim()
       const phone = receipt.customerPhone.trim()
       if (!ctx) return 'There is no recent sale to send a receipt for.'
-      if (!phone) return "I need the buyer's phone number to send the receipt."
+      if (!phone) return "I need the buyer's phone number for the receipt. Please say the name and number."
 
       const digits = (p: string) => p.replace(/\D/g, '')
       const existing = s.customers.find(
@@ -127,47 +150,29 @@ export function useAgent() {
           (!!name && c.name.toLowerCase() === name.toLowerCase()),
       )
 
-      // Put the buyer's details on the receipt rows so the box shows them.
-      const rows = ctx.rows.map((r) => ({ ...r, customer_name: name || null, customer_phone: phone }))
-
       if (existing) {
-        if (existing.phone !== phone) void storeRef.current.updateCustomer(existing.id, { phone })
-        // Stop listening and open the receipt box for the user to choose a channel.
-        convRef.current = false
-        setConversing(false)
-        stopListening()
-        setReceiptSales(rows)
-        lastSaleRef.current = null
-        return `Opening the receipt for ${existing.name}. Choose how to send it.`
-      }
-
-      // New customer: save them with this purchase and send the receipt by SMS.
-      if (name) {
+        if (phone && existing.phone !== phone) void storeRef.current.updateCustomer(existing.id, { phone })
+      } else {
+        // New customer → save them with this purchase on record.
         void storeRef.current.addCustomer({
           id: uid(),
-          name,
+          name: name || 'Customer',
           phone,
           email: null,
           total_purchases: ctx.total,
           created_at: new Date().toISOString(),
         })
       }
-      void sendNotification({
-        type: 'receipt',
-        data: {
-          businessName: s.businessProfile?.business_name || 'Your vendor',
-          ownerName: s.businessProfile?.owner_name,
-          customerName: name || null,
-          items: ctx.rows.map((r) => ({ name: r.product_name, qty: r.quantity, price: r.unit_price, total: r.total })),
-          total: ctx.total,
-          date: ctx.date,
-        },
-        phoneTo: phone,
-        emailTo: null,
-        refId: ctx.refId,
-      })
+
+      // Put the buyer's details on the receipt rows and open the box.
+      const who = existing?.name || name
+      const rows = ctx.rows.map((r) => ({ ...r, customer_name: who || null, customer_phone: phone }))
+      convRef.current = false
+      setConversing(false)
+      stopListening()
+      setReceiptSales(rows)
       lastSaleRef.current = null
-      return `Added ${name || 'the customer'} as a new customer and sent the receipt by SMS to ${phone}.`
+      return `Here is the receipt for ${who || 'the customer'}. Choose how to send it.`
     },
     [],
   )
@@ -190,7 +195,38 @@ export function useAgent() {
   const sendText = useCallback(
     async (text: string) => {
       const clean = text.trim()
-      if (!clean || busyRef.current) return
+      if (!clean) return
+
+      // Receipt answer (captured client-side, no LLM, so it's reliable and the
+      // agent never claims it "can't access the customer database").
+      if (awaitingReceiptRef.current) {
+        pushMessage({ role: 'user', content: clean })
+        const parsed = parseReceiptReply(clean)
+        if (parsed.negative) {
+          awaitingReceiptRef.current = false
+          lastSaleRef.current = null
+          const reply = 'Okay, no receipt.'
+          pushMessage({ role: 'assistant', content: reply })
+          await speak(reply)
+          return
+        }
+        if (!parsed.phone) {
+          const reply = "Please tell me the buyer's name and phone number, or say no."
+          pushMessage({ role: 'assistant', content: reply })
+          await speak(reply)
+          return // stay in receipt-awaiting mode
+        }
+        awaitingReceiptRef.current = false
+        const reply = await handleReceipt(
+          { customerName: parsed.name, customerPhone: parsed.phone },
+          storeRef.current.state,
+        )
+        pushMessage({ role: 'assistant', content: reply })
+        await speak(reply)
+        return
+      }
+
+      if (busyRef.current) return
       busyRef.current = true
       setBusy(true)
       const history = messagesRef.current
@@ -339,7 +375,8 @@ export function useAgent() {
           refId: uid(),
           date: formatDate(nowIso),
         }
-        reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number.'
+        awaitingReceiptRef.current = true
+        reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number. If not, say no.'
       }
       pushMessage({ role: 'assistant', content: reply })
       void speak(reply)
@@ -366,6 +403,7 @@ export function useAgent() {
     setPending(null)
     pendingRef.current = null
     resumeAfterConfirmRef.current = false
+    awaitingReceiptRef.current = false
     pushMessage({ role: 'assistant', content: 'Okay, cancelled.' })
   }, [pushMessage])
 
@@ -384,7 +422,11 @@ export function useAgent() {
     void speak(msg)
   }, [])
 
-  const closeReceipt = useCallback(() => setReceiptSales(null), [])
+  const closeReceipt = useCallback(() => {
+    setReceiptSales(null)
+    awaitingReceiptRef.current = false
+    lastSaleRef.current = null
+  }, [])
 
   return {
     messages,

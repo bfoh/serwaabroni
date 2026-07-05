@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useStore } from '@/lib/store'
 import { receiveStock } from '@/services/batchApi'
@@ -13,13 +13,29 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
   const { state, addProduct, updateProduct, addDebt, showToast } = useStore()
   const [rows, setRows] = useState<DraftRow[]>([])
   const [importing, setImporting] = useState(false)
-  const [modeKind, setModeKind] = useState<'opening' | 'purchase' | 'supplier_credit'>('opening')
-  const [account, setAccount] = useState<'cash' | 'bank'>('cash')
+  const [stockKind, setStockKind] = useState<'opening' | 'new'>('opening')
+  const [injectionId, setInjectionId] = useState('')
+  const [payKind, setPayKind] = useState<'cash' | 'bank' | 'unpaid'>('cash')
   const [supplierName, setSupplierName] = useState('')
+  const [injections, setInjections] = useState<{ id: string; label: string }[]>([])
   const [tab, setTab] = useState<'template' | 'photo'>('template')
   const [reading, setReading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const photoRef = useRef<HTMLInputElement>(null)
+
+  // Load active capital injections so a purchase can be tagged to its funding.
+  useEffect(() => {
+    if (!open) return
+    import('@/services/capitalApi').then(({ fetchInjections }) =>
+      fetchInjections()
+        .then((list) =>
+          setInjections(
+            list.filter((i) => i.status !== 'repaid').map((i) => ({ id: i.id, label: i.lender_name || i.source })),
+          ),
+        )
+        .catch(() => {}),
+    )
+  }, [open])
 
   const onFile = async (file: File) => {
     const text = await file.text()
@@ -42,13 +58,15 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
   }
 
   const buildMode = (): CashMode | null => {
-    if (modeKind === 'opening') return { kind: 'opening' }
-    if (modeKind === 'purchase') return { kind: 'purchase', account }
-    if (!supplierName.trim()) {
-      showToast('Supplier name required for supplier credit', 'error')
-      return null
+    if (stockKind === 'opening') return { kind: 'opening' }
+    if (payKind === 'unpaid') {
+      if (!supplierName.trim()) {
+        showToast('Supplier name required for supplier credit', 'error')
+        return null
+      }
+      return { kind: 'supplier_credit', supplierName: supplierName.trim(), supplierPhone: null }
     }
-    return { kind: 'supplier_credit', supplierName: supplierName.trim(), supplierPhone: null }
+    return { kind: 'purchase', account: payKind, injectionId: injectionId || null }
   }
 
   const onImport = async () => {
@@ -120,29 +138,55 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
 
           {rows.length > 0 && (
             <>
-              <div className="bg-warm-gray/40 rounded-sm p-3 space-y-2">
-                <p className="text-micro text-muted-text">This stock is…</p>
-                <div className="flex flex-wrap gap-2">
-                  {([['opening', 'Already mine (opening)'], ['purchase', 'A purchase'], ['supplier_credit', 'Supplier credit']] as const).map(([k, lbl]) => (
-                    <button key={k} onClick={() => setModeKind(k)}
-                      className={`text-xs px-3 py-1.5 rounded-sm border-2 border-ink ${modeKind === k ? 'bg-ink text-white' : 'bg-white'}`}>
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-                {modeKind === 'purchase' && (
-                  <div className="flex gap-2">
-                    {(['cash', 'bank'] as const).map((a) => (
-                      <button key={a} onClick={() => setAccount(a)}
-                        className={`text-xs px-3 py-1.5 rounded-sm border-2 border-ink ${account === a ? 'bg-ink text-white' : 'bg-white'}`}>
-                        {a === 'cash' ? 'Paid cash' : 'Paid bank'}
+              <div className="bg-warm-gray/40 rounded-sm p-3 space-y-3">
+                <div>
+                  <p className="text-micro text-muted-text mb-1.5">This stock is…</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([['opening', 'Already mine'], ['new', 'New stock']] as const).map(([k, lbl]) => (
+                      <button key={k} onClick={() => setStockKind(k)}
+                        className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 border-ink ${stockKind === k ? 'bg-ink text-white' : 'bg-white'}`}>
+                        {lbl}
                       </button>
                     ))}
                   </div>
-                )}
-                {modeKind === 'supplier_credit' && (
-                  <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name"
-                    className="w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                  <p className="text-[10px] text-muted-text mt-1">
+                    {stockKind === 'opening' ? 'Recording stock you already own — no cash is deducted.' : 'New stock bought — this posts the cost to your books.'}
+                  </p>
+                </div>
+
+                {stockKind === 'new' && (
+                  <>
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">BOUGHT WITH CAPITAL</label>
+                      <select value={injectionId}
+                        onChange={(e) => { setInjectionId(e.target.value); if (e.target.value && payKind === 'unpaid') setPayKind('cash') }}
+                        className="w-full harsh-border rounded-sm px-3 py-2 text-sm">
+                        <option value="">Not funded by tracked capital</option>
+                        {injections.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-micro text-muted-text mb-1.5 block">PAID FOR WITH</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['cash', 'bank'] as const).map((a) => (
+                          <button key={a} onClick={() => setPayKind(a)}
+                            className={`py-2 text-xs uppercase tracking-wide rounded-sm border-2 border-ink ${payKind === a ? 'bg-ink text-white' : 'bg-white'}`}>
+                            {a === 'cash' ? 'Paid cash' : 'Paid bank'}
+                          </button>
+                        ))}
+                      </div>
+                      {!injectionId && (
+                        <button onClick={() => setPayKind((p) => (p === 'unpaid' ? 'cash' : 'unpaid'))}
+                          className={`mt-2 w-full py-2 text-xs uppercase tracking-wide rounded-sm border-2 border-ink ${payKind === 'unpaid' ? 'bg-ink text-white' : 'bg-white'}`}>
+                          {payKind === 'unpaid' ? '✓ Unpaid (supplier credit)' : 'Unpaid (supplier credit)'}
+                        </button>
+                      )}
+                      {payKind === 'unpaid' && !injectionId && (
+                        <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name (required)"
+                          className="mt-2 w-full harsh-border rounded-sm px-3 py-2 text-sm" />
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
 

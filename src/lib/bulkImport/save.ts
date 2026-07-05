@@ -4,7 +4,7 @@ import { rowStatus, toBase, type DraftRow } from './rows'
 
 export type CashMode =
   | { kind: 'opening' }
-  | { kind: 'purchase'; account: 'cash' | 'bank' }
+  | { kind: 'purchase'; account: 'cash' | 'bank'; injectionId: string | null }
   | { kind: 'supplier_credit'; supplierName: string; supplierPhone: string | null }
 
 export interface BulkSaveApi {
@@ -18,6 +18,7 @@ export interface BulkSaveApi {
     productId: string
     qty: number
     unitCost: number
+    injectionId?: string | null
     account?: 'cash' | 'bank'
     unpaid?: boolean
     opening?: boolean
@@ -47,6 +48,7 @@ export async function saveBulkRows(
   onProgress?: (done: number, total: number) => void,
 ): Promise<BulkSaveResult> {
   const opts = cashOpts(mode)
+  const injectionId = mode.kind === 'purchase' ? mode.injectionId : null
   const result: BulkSaveResult = { added: 0, restocked: 0, failed: 0, failures: [] }
   let supplierTotal = 0
   const total = rows.length
@@ -75,14 +77,14 @@ export async function saveBulkRows(
             qr_code: null,
             created_at: nowIso,
           },
-          null,
+          injectionId,
           opts,
         )
         result.added++
       } else {
         const id = status.matchId as string
         await api.updateProduct(id, { quantity: api.findQty(id) + base.quantity })
-        await api.receiveStock({ productId: id, qty: base.quantity, unitCost: base.costPrice, ...opts })
+        await api.receiveStock({ productId: id, qty: base.quantity, unitCost: base.costPrice, injectionId, ...opts })
         result.restocked++
       }
       supplierTotal += Math.round(base.costPrice * base.quantity * 100) / 100

@@ -34,10 +34,18 @@ describe('saveBulkRows', () => {
 
   it('purchase paid: passes the account and posts no debt', async () => {
     const api = fakeApi()
-    const mode: CashMode = { kind: 'purchase', account: 'bank' }
+    const mode: CashMode = { kind: 'purchase', account: 'bank', injectionId: null }
     await saveBulkRows([newRow], products, mode, api)
     expect(api.addProduct.mock.calls[0][2]).toEqual({ account: 'bank' })
     expect(api.addDebt).not.toHaveBeenCalled()
+  })
+
+  it('purchase funded by capital: threads injectionId to addProduct and receiveStock', async () => {
+    const api = fakeApi()
+    const mode: CashMode = { kind: 'purchase', account: 'cash', injectionId: 'inj-1' }
+    await saveBulkRows([newRow, restockRow], products, mode, api)
+    expect(api.addProduct.mock.calls[0][1]).toBe('inj-1')
+    expect(api.receiveStock.mock.calls[0][0]).toMatchObject({ injectionId: 'inj-1' })
   })
 
   it('supplier credit: unpaid opts + one aggregate owing debt', async () => {

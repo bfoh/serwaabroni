@@ -112,7 +112,7 @@ export function toBaseSale(
   return {
     quantity: row.quantity * f,
     unitPrice: round2(enteredPrice / f),
-    saleUnit: packed ? product.pack_unit : null,
+    saleUnit: packed ? product.pack_unit ?? null : null,
     saleUnitQty: packed ? row.quantity : null,
   }
 }

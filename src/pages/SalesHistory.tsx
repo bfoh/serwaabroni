@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store'
 import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import ProductIcon from '@/components/ProductIcon'
 import ReceiptModal from '@/components/ReceiptModal'
+import BulkSalesSheet from '@/components/sales/BulkSalesSheet'
 import type { Sale } from '@/lib/supabase'
 
 interface SalesHistoryProps {
@@ -20,6 +21,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   const [confirmDelete, setConfirmDelete] = useState<SaleGroup | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
+  const [showBulk, setShowBulk] = useState(false)
 
   const filteredSales = useMemo(() => {
     let sales = state.sales
@@ -75,9 +77,14 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
       {/* Header */}
       <div className="sticky top-0 z-50 bg-sand border-b-2 border-ink px-5 py-3 pt-safe flex items-center justify-between flex-shrink-0">
         <h1 className="font-display text-xl text-ink uppercase tracking-tight">Sales History</h1>
-        <button onClick={onClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
-          <X size={20} strokeWidth={2.5} className="text-ink" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowBulk(true)} className="btn-tactile border-2 border-ink bg-white text-xs uppercase tracking-wide px-3 h-10 rounded-sm">
+            Bulk add
+          </button>
+          <button onClick={onClose} className="btn-tactile w-10 h-10 flex items-center justify-center rounded-sm bg-warm-gray">
+            <X size={20} strokeWidth={2.5} className="text-ink" />
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -246,6 +253,7 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
       />
+      <BulkSalesSheet open={showBulk} onClose={() => setShowBulk(false)} />
     </div>
   )
 }

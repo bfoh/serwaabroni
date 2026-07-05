@@ -77,15 +77,20 @@ export function primeSpeech(): void {
 }
 
 // Turn written amounts into words the voice reads naturally. The Ghana Cedi is
-// written before the number (GH₵ 30) but spoken AFTER it ("thirty Ghana Cedis").
-// Chat text keeps the symbol; only the spoken copy is rewritten.
+// written as GH₵/GHS/GHC (which TTS spells out "G-H-S") but should be spoken as
+// "Ghana Cedis", AFTER the number ("thirty Ghana Cedis"). Chat text keeps the
+// symbol; only the spoken copy is rewritten.
 export function toSpeakable(text: string): string {
-  return text.replace(
-    /(?:GH₵|GHS|GHC|₵)\s?([\d,]+(?:\.\d+)?)/gi,
-    (_match, num: string) => {
-      const clean = num.replace(/,/g, '').replace(/\.00$/, '')
-      return `${clean} Ghana Cedis`
-    },
+  const num = (s: string) => s.replace(/,/g, '').replace(/\.00$/, '')
+  return (
+    text
+      // symbol before the number: "GH₵ 30", "GHS30", "₵12.50"
+      .replace(/(?:GH₵|GHS|GHC|₵)\s?(\d[\d,]*(?:\.\d+)?)/gi, (_m, n: string) => `${num(n)} Ghana Cedis`)
+      // number before the symbol: "30 GHS", "12.50₵"
+      .replace(/(\d[\d,]*(?:\.\d+)?)\s?(?:GH₵|GHS|GHC|₵)/gi, (_m, n: string) => `${num(n)} Ghana Cedis`)
+      // any bare leftover currency token
+      .replace(/GH₵|₵/g, 'Ghana Cedis')
+      .replace(/\b(?:GHS|GHC)\b/gi, 'Ghana Cedis')
   )
 }
 

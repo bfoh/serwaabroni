@@ -51,4 +51,15 @@ describe('runTurn', () => {
     const out = await runTurn('hi', { history: [], snapshot: snap, readCtx, previewCtx: { products }, callAgent })
     expect(out.reply).toBe('Hello Auntie!')
   })
+
+  it('returns a receipt request (no pending) for the send_receipt tool', async () => {
+    const callAgent = vi.fn().mockResolvedValue({
+      say: '', toolCalls: [{ name: 'send_receipt', input: { customer_name: 'Ama', customer_phone: '0241234567' } }],
+    })
+    const out = await runTurn('send it to Ama, 0241234567', {
+      history: [], snapshot: snap, readCtx, previewCtx: { products }, callAgent,
+    })
+    expect(out.pending).toBeNull()
+    expect(out.receipt).toEqual({ customerName: 'Ama', customerPhone: '0241234567' })
+  })
 })

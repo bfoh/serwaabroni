@@ -8,7 +8,8 @@ import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
 import { postMovement, type NewMovement } from '@/services/cashApi'
 import { receiveStock } from '@/services/batchApi'
 import { listenOnce, speak, speechSupported, stopListening, stopSpeaking } from '@/lib/agent/speech'
-import { formatCurrency } from '@/lib/data'
+import { sendNotification } from '@/services/notify'
+import { formatCurrency, formatDate, uid } from '@/lib/data'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse } from '@/lib/agent/types'
 
 interface TurnDeps {
@@ -22,6 +23,7 @@ interface TurnDeps {
 export interface TurnOutcome {
   reply: string
   pending: ConfirmPreview | null
+  receipt?: { customerName: string; customerPhone: string }
 }
 
 export async function runTurn(userText: string, deps: TurnDeps): Promise<TurnOutcome> {
@@ -31,6 +33,18 @@ export async function runTurn(userText: string, deps: TurnDeps): Promise<TurnOut
   const call = res.toolCalls[0]
   if (!call) {
     return { reply: res.say || "I'm here. Tell me a sale, a restock, or ask about your business.", pending: null }
+  }
+
+  // Receipt request for the last sale — handled by the hook (needs the sale payload).
+  if (call.name === 'send_receipt') {
+    return {
+      reply: res.say || '',
+      pending: null,
+      receipt: {
+        customerName: String(call.input.customer_name ?? '').trim(),
+        customerPhone: String(call.input.customer_phone ?? '').trim(),
+      },
+    }
   }
 
   // Read tool → answer immediately.
@@ -73,11 +87,71 @@ export function useAgent() {
   const convRef = useRef(false)
   const storeRef = useRef(store)
   storeRef.current = store
+  // Payload of the most recent cash sale, so a receipt can be sent if the buyer
+  // asks for one right after.
+  const lastSaleRef = useRef<{
+    items: { name: string; qty: number; price: number; total: number }[]
+    total: number
+    refId: string
+    date: string
+  } | null>(null)
+  // True when a money action paused a voice conversation, so we know to resume
+  // listening after the user confirms it.
+  const resumeAfterConfirmRef = useRef(false)
 
   const pushMessage = useCallback((msg: AgentMessage) => {
     messagesRef.current = [...messagesRef.current, msg]
     setMessages(messagesRef.current)
   }, [])
+
+  // Send a receipt for the most recent cash sale through the existing
+  // notification flow, and keep the customer's contact on file.
+  const handleReceipt = useCallback(
+    async (
+      receipt: { customerName: string; customerPhone: string },
+      s: (typeof storeRef.current)['state'],
+    ): Promise<string> => {
+      const ctx = lastSaleRef.current
+      const name = receipt.customerName.trim()
+      const phone = receipt.customerPhone.trim()
+      if (!ctx) return 'There is no recent sale to send a receipt for.'
+      if (!phone) return "I need the buyer's phone number to send the receipt."
+
+      if (name) {
+        const existing = s.customers.find((c) => c.name.toLowerCase() === name.toLowerCase())
+        if (existing) {
+          if (existing.phone !== phone) void storeRef.current.updateCustomer(existing.id, { phone })
+        } else {
+          void storeRef.current.addCustomer({
+            id: uid(),
+            name,
+            phone,
+            email: null,
+            total_purchases: 0,
+            created_at: new Date().toISOString(),
+          })
+        }
+      }
+
+      void sendNotification({
+        type: 'receipt',
+        data: {
+          businessName: s.businessProfile?.business_name || 'Your vendor',
+          ownerName: s.businessProfile?.owner_name,
+          customerName: name || null,
+          items: ctx.items,
+          total: ctx.total,
+          date: ctx.date,
+        },
+        phoneTo: phone,
+        emailTo: null,
+        refId: ctx.refId,
+      })
+      lastSaleRef.current = null
+      return `Receipt sent to ${name || 'the customer'}.`
+    },
+    [],
+  )
 
   const execApi: StoreExecApi = useMemo(
     () => ({
@@ -126,6 +200,15 @@ export function useAgent() {
           previewCtx: { products: s.products },
           callAgent: defaultCallAgent,
         })
+
+        // Receipt for the last sale: send via the existing notification flow.
+        if (out.receipt) {
+          const reply = await handleReceipt(out.receipt, s)
+          pushMessage({ role: 'assistant', content: reply })
+          await speak(reply)
+          return
+        }
+
         pushMessage({ role: 'assistant', content: out.reply })
         setPending(out.pending)
         pendingRef.current = out.pending
@@ -139,7 +222,7 @@ export function useAgent() {
         setBusy(false)
       }
     },
-    [pushMessage],
+    [pushMessage, handleReceipt],
   )
 
   // Continuous voice conversation: listen → respond → listen again, until the
@@ -157,9 +240,11 @@ export function useAgent() {
       if (heard) {
         await sendText(heard)
         if (pendingRef.current) {
-          // Pause the loop so the user confirms the sale/restock explicitly.
+          // Pause the loop so the user confirms the sale/restock explicitly, and
+          // remember to resume listening once they do.
           convRef.current = false
           setConversing(false)
+          resumeAfterConfirmRef.current = true
           break
         }
       } else {
@@ -197,26 +282,58 @@ export function useAgent() {
     const previewToSave = pendingRef.current
     busyRef.current = true
     setBusy(true)
+    const resume = resumeAfterConfirmRef.current
+    resumeAfterConfirmRef.current = false
     try {
       await executePreview(previewToSave, execApi)
-      const done = describeSaved(previewToSave)
-      pushMessage({ role: 'assistant', content: done })
-      await speak(done)
-    } catch {
-      const msg = 'I could not save it. Please try again.'
-      pushMessage({ role: 'assistant', content: msg })
-      await speak(msg)
-    } finally {
+      // Clear the card and unblock immediately so it feels fast — speak after.
       setPending(null)
       pendingRef.current = null
       busyRef.current = false
       setBusy(false)
+
+      let reply = describeSaved(previewToSave)
+      // Cash sale → remember it and offer a receipt.
+      if (previewToSave.kind === 'sale' && previewToSave.sale) {
+        const items = previewToSave.sale.items.map((i) => ({
+          name: i.productName,
+          qty: i.qty,
+          price: i.unitPrice,
+          total: i.unitPrice * i.qty,
+        }))
+        lastSaleRef.current = {
+          items,
+          total: items.reduce((sum, i) => sum + i.total, 0),
+          refId: uid(),
+          date: formatDate(new Date().toISOString()),
+        }
+        reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number.'
+      }
+      pushMessage({ role: 'assistant', content: reply })
+      void speak(reply)
+
+      // Resume the voice conversation (e.g. to hear the receipt answer) if the
+      // sale came from a voice conversation.
+      if (resume && speechSupported() && !convRef.current) {
+        convRef.current = true
+        setConversing(true)
+        void runConversation()
+      }
+    } catch {
+      setPending(null)
+      pendingRef.current = null
+      busyRef.current = false
+      setBusy(false)
+      const msg = 'I could not save it. Please try again.'
+      pushMessage({ role: 'assistant', content: msg })
+      void speak(msg)
     }
-  }, [execApi, pushMessage])
+  }, [execApi, pushMessage, runConversation])
 
   const cancel = useCallback(() => {
     setPending(null)
     pendingRef.current = null
+    resumeAfterConfirmRef.current = false
     pushMessage({ role: 'assistant', content: 'Okay, cancelled.' })
   }, [pushMessage])
 

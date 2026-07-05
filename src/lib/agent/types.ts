@@ -5,6 +5,7 @@ export type AgentToolName =
   | 'add_stock'
   | 'add_sale'
   | 'add_credit_sale'
+  | 'send_receipt'
   | 'get_summary'
   | 'get_low_stock'
   | 'get_debts'

@@ -68,6 +68,19 @@ export const TOOLS = [
       required: ['product', 'qty'],
     },
   },
+  {
+    name: 'send_receipt',
+    description:
+      "Send a receipt for the sale that was just recorded to the buyer. Use only after a cash sale, when the user has given the buyer's name and phone number.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_name: { type: 'string' },
+        customer_phone: { type: 'string', description: "The buyer's phone number" },
+      },
+      required: ['customer_phone'],
+    },
+  },
   { name: 'get_summary', description: "Get today's or a period's sales, profit, and cash.", input_schema: { type: 'object', properties: { period: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly'] } } } },
   { name: 'get_low_stock', description: 'List products that are low or out of stock.', input_schema: { type: 'object', properties: {} } },
   { name: 'get_debts', description: 'List who owes the shop or who the shop owes.', input_schema: { type: 'object', properties: { direction: { type: 'string', enum: ['owed', 'owing'] } } } },

@@ -8,6 +8,8 @@ import { executePreview, type StoreExecApi } from '@/lib/agent/execute'
 import { postMovement, type NewMovement } from '@/services/cashApi'
 import { receiveStock } from '@/services/batchApi'
 import { listenOnce, speak, speechSupported, stopListening, stopSpeaking } from '@/lib/agent/speech'
+import { transcribeTwi, speakTwi, playBase64Audio, isTwiNotConfigured } from '@/lib/agent/khaya'
+import { recordAudio, stopRecording, audioSupported } from '@/lib/agent/audio'
 import { formatCurrency, formatDate, uid } from '@/lib/data'
 import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse, Sale } from '@/lib/agent/types'
 
@@ -99,6 +101,16 @@ export function useAgent() {
   const [pending, setPending] = useState<ConfirmPreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [conversing, setConversing] = useState(false)
+  const [language, setLanguageState] = useState<'en' | 'tw'>(() =>
+    (typeof localStorage !== 'undefined' && localStorage.getItem('serwaa_agent_lang') === 'tw') ? 'tw' : 'en',
+  )
+  const langRef = useRef(language)
+  langRef.current = language
+  const setLanguage = useCallback((l: 'en' | 'tw') => {
+    langRef.current = l
+    setLanguageState(l)
+    try { localStorage.setItem('serwaa_agent_lang', l) } catch { /* ignore */ }
+  }, [])
   // When set, the receipt box is shown for the user to pick a send channel.
   const [receiptSales, setReceiptSales] = useState<Sale[] | null>(null)
 
@@ -134,6 +146,29 @@ export function useAgent() {
     messagesRef.current = [...messagesRef.current, msg]
     setMessages(messagesRef.current)
   }, [])
+
+  // Show + speak a reply, in the active language. English uses the browser voice;
+  // Twi translates + speaks via Khaya and shows the Twi text. Falls back to
+  // English speech if Twi isn't configured or fails.
+  const respond = useCallback(async (text: string) => {
+    if (langRef.current === 'tw') {
+      try {
+        const { twi, audioBase64, mimeType } = await speakTwi(text)
+        pushMessage({ role: 'assistant', content: twi || text })
+        await playBase64Audio(audioBase64, mimeType)
+        return
+      } catch (e) {
+        if (isTwiNotConfigured(e)) {
+          langRef.current = 'en'
+          setLanguageState('en')
+          pushMessage({ role: 'assistant', content: 'Twi voice is not set up yet — switching to English.' })
+        }
+        // fall through to English speech
+      }
+    }
+    pushMessage({ role: 'assistant', content: text })
+    await speak(text)
+  }, [pushMessage])
 
   // Handle the buyer's receipt details for the most recent cash sale. Saves a new
   // customer (or updates an existing one), then opens the receipt box so the user
@@ -216,8 +251,7 @@ export function useAgent() {
           awaitingReceiptRef.current = false
           lastSaleRef.current = null
           const reply = 'Okay, no receipt.'
-          pushMessage({ role: 'assistant', content: reply })
-          await speak(reply)
+          await respond(reply)
           return
         }
 
@@ -229,8 +263,7 @@ export function useAgent() {
           const reply = draft.name
             ? `Got it, ${draft.name}. What is the phone number? Or say no.`
             : "Please say the buyer's name and phone number, or say no."
-          pushMessage({ role: 'assistant', content: reply })
-          await speak(reply)
+          await respond(reply)
           return
         }
 
@@ -238,8 +271,7 @@ export function useAgent() {
         if (!draft.name && !draft.askedName) {
           draft.askedName = true
           const reply = 'And what is the customer name?'
-          pushMessage({ role: 'assistant', content: reply })
-          await speak(reply)
+          await respond(reply)
           return
         }
 
@@ -249,8 +281,7 @@ export function useAgent() {
           storeRef.current.state,
         )
         receiptDraftRef.current = { name: '', phone: '', askedName: false }
-        pushMessage({ role: 'assistant', content: reply })
-        await speak(reply)
+        await respond(reply)
         return
       }
 
@@ -293,25 +324,22 @@ export function useAgent() {
         // Receipt for the last sale: send via the existing notification flow.
         if (out.receipt) {
           const reply = await handleReceipt(out.receipt, s)
-          pushMessage({ role: 'assistant', content: reply })
-          await speak(reply)
+          await respond(reply)
           return
         }
 
-        pushMessage({ role: 'assistant', content: out.reply })
         setPending(out.pending)
         pendingRef.current = out.pending
-        await speak(out.reply)
+        await respond(out.reply)
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Something went wrong.'
-        pushMessage({ role: 'assistant', content: msg })
-        await speak(msg)
+        await respond(msg)
       } finally {
         busyRef.current = false
         setBusy(false)
       }
     },
-    [pushMessage, handleReceipt],
+    [pushMessage, handleReceipt, respond],
   )
 
   // Continuous voice conversation: listen → respond → listen again, until the
@@ -321,12 +349,29 @@ export function useAgent() {
     while (convRef.current) {
       let heard = ''
       let alternatives: string[] = []
-      try {
-        const res = await listenOnce({ lang: 'en-GH' })
-        heard = res.transcript
-        alternatives = res.alternatives
-      } catch {
-        heard = '' // silence / no-speech — keep listening
+      if (langRef.current === 'tw') {
+        try {
+          const clip = await recordAudio()
+          if (convRef.current && clip.base64) {
+            const { english } = await transcribeTwi(clip.base64, clip.mimeType)
+            heard = english
+          }
+        } catch (e) {
+          if (isTwiNotConfigured(e)) {
+            langRef.current = 'en'
+            setLanguageState('en')
+            pushMessage({ role: 'assistant', content: 'Twi voice is not set up yet — switching to English.' })
+          }
+          heard = ''
+        }
+      } else {
+        try {
+          const res = await listenOnce({ lang: 'en-GH' })
+          heard = res.transcript
+          alternatives = res.alternatives
+        } catch {
+          heard = '' // silence / no-speech — keep listening
+        }
       }
       if (!convRef.current) break
       if (heard) {
@@ -343,11 +388,12 @@ export function useAgent() {
         await new Promise((r) => setTimeout(r, 400))
       }
     }
-  }, [sendText])
+  }, [sendText, pushMessage])
 
   const startConversation = useCallback(() => {
     if (convRef.current) return
-    if (!speechSupported()) {
+    const ok = langRef.current === 'tw' ? audioSupported() : speechSupported()
+    if (!ok) {
       pushMessage({ role: 'assistant', content: 'Voice is not available on this device. Please type instead.' })
       return
     }
@@ -360,6 +406,7 @@ export function useAgent() {
     convRef.current = false
     setConversing(false)
     stopListening()
+    stopRecording()
     stopSpeaking()
   }, [])
 
@@ -414,8 +461,7 @@ export function useAgent() {
       receiptDraftRef.current = { name: '', phone: '', askedName: false }
       reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number. If not, say no.'
     }
-    pushMessage({ role: 'assistant', content: reply })
-    void speak(reply)
+    void respond(reply)
 
     // Resume the voice conversation (e.g. to hear the receipt answer) if the
     // sale came from a voice conversation.
@@ -427,11 +473,9 @@ export function useAgent() {
 
     // Persist in the background; surface an error only if it actually fails.
     executePreview(previewToSave, execApi).catch(() => {
-      const msg = 'Sorry, that did not save. Please try again.'
-      pushMessage({ role: 'assistant', content: msg })
-      void speak(msg)
+      void respond('Sorry, that did not save. Please try again.')
     })
-  }, [execApi, pushMessage, runConversation])
+  }, [execApi, pushMessage, runConversation, respond])
 
   const cancel = useCallback(() => {
     setPending(null)
@@ -442,20 +486,16 @@ export function useAgent() {
     pushMessage({ role: 'assistant', content: 'Okay, cancelled.' })
   }, [pushMessage])
 
-  // Proactive spoken opener shown when the agent is first opened. English only,
-  // greeting by time of day.
+  // Proactive spoken opener shown when the agent is first opened, greeting by
+  // time of day. Spoken in the active language.
   const greet = useCallback(() => {
     const hour = new Date().getHours()
     const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
     const msg =
       `${part}! I'm SerwaaBroni. Tap the microphone to start talking to me. ` +
       'You can tell me a sale, a restock, or ask about your business.'
-    if (messagesRef.current.length === 0) {
-      messagesRef.current = [{ role: 'assistant', content: msg }]
-      setMessages(messagesRef.current)
-    }
-    void speak(msg)
-  }, [])
+    if (messagesRef.current.length === 0) void respond(msg)
+  }, [respond])
 
   const closeReceipt = useCallback(() => {
     setReceiptSales(null)
@@ -470,6 +510,8 @@ export function useAgent() {
     busy,
     conversing,
     receiptSales,
+    language,
+    setLanguage,
     sendText,
     toggleMic,
     stopConversation,

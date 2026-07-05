@@ -10,7 +10,7 @@ import { receiveStock } from '@/services/batchApi'
 import { listenOnce, speak, speechSupported, stopListening, stopSpeaking } from '@/lib/agent/speech'
 import { sendNotification } from '@/services/notify'
 import { formatCurrency, formatDate, uid } from '@/lib/data'
-import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse } from '@/lib/agent/types'
+import type { AgentMessage, BusinessSnapshot, ConfirmPreview, AgentResponse, Sale } from '@/lib/agent/types'
 
 interface TurnDeps {
   history: AgentMessage[]
@@ -78,6 +78,8 @@ export function useAgent() {
   const [pending, setPending] = useState<ConfirmPreview | null>(null)
   const [busy, setBusy] = useState(false)
   const [conversing, setConversing] = useState(false)
+  // When set, the receipt box is shown for the user to pick a send channel.
+  const [receiptSales, setReceiptSales] = useState<Sale[] | null>(null)
 
   // Refs mirror state so the async conversation loop and the stable sendText
   // callback always read the latest values (no stale closures across turns).
@@ -90,7 +92,7 @@ export function useAgent() {
   // Payload of the most recent cash sale, so a receipt can be sent if the buyer
   // asks for one right after.
   const lastSaleRef = useRef<{
-    items: { name: string; qty: number; price: number; total: number }[]
+    rows: Sale[]
     total: number
     refId: string
     date: string
@@ -104,8 +106,9 @@ export function useAgent() {
     setMessages(messagesRef.current)
   }, [])
 
-  // Send a receipt for the most recent cash sale through the existing
-  // notification flow, and keep the customer's contact on file.
+  // Handle a receipt request for the most recent cash sale.
+  // Existing customer → open the receipt box so the user picks how to send it.
+  // New customer → save them (with this purchase) and send the receipt by SMS.
   const handleReceipt = useCallback(
     async (
       receipt: { customerName: string; customerPhone: string },
@@ -117,29 +120,45 @@ export function useAgent() {
       if (!ctx) return 'There is no recent sale to send a receipt for.'
       if (!phone) return "I need the buyer's phone number to send the receipt."
 
-      if (name) {
-        const existing = s.customers.find((c) => c.name.toLowerCase() === name.toLowerCase())
-        if (existing) {
-          if (existing.phone !== phone) void storeRef.current.updateCustomer(existing.id, { phone })
-        } else {
-          void storeRef.current.addCustomer({
-            id: uid(),
-            name,
-            phone,
-            email: null,
-            total_purchases: 0,
-            created_at: new Date().toISOString(),
-          })
-        }
+      const digits = (p: string) => p.replace(/\D/g, '')
+      const existing = s.customers.find(
+        (c) =>
+          (c.phone && digits(c.phone) === digits(phone)) ||
+          (!!name && c.name.toLowerCase() === name.toLowerCase()),
+      )
+
+      // Put the buyer's details on the receipt rows so the box shows them.
+      const rows = ctx.rows.map((r) => ({ ...r, customer_name: name || null, customer_phone: phone }))
+
+      if (existing) {
+        if (existing.phone !== phone) void storeRef.current.updateCustomer(existing.id, { phone })
+        // Stop listening and open the receipt box for the user to choose a channel.
+        convRef.current = false
+        setConversing(false)
+        stopListening()
+        setReceiptSales(rows)
+        lastSaleRef.current = null
+        return `Opening the receipt for ${existing.name}. Choose how to send it.`
       }
 
+      // New customer: save them with this purchase and send the receipt by SMS.
+      if (name) {
+        void storeRef.current.addCustomer({
+          id: uid(),
+          name,
+          phone,
+          email: null,
+          total_purchases: ctx.total,
+          created_at: new Date().toISOString(),
+        })
+      }
       void sendNotification({
         type: 'receipt',
         data: {
           businessName: s.businessProfile?.business_name || 'Your vendor',
           ownerName: s.businessProfile?.owner_name,
           customerName: name || null,
-          items: ctx.items,
+          items: ctx.rows.map((r) => ({ name: r.product_name, qty: r.quantity, price: r.unit_price, total: r.total })),
           total: ctx.total,
           date: ctx.date,
         },
@@ -148,7 +167,7 @@ export function useAgent() {
         refId: ctx.refId,
       })
       lastSaleRef.current = null
-      return `Receipt sent to ${name || 'the customer'}.`
+      return `Added ${name || 'the customer'} as a new customer and sent the receipt by SMS to ${phone}.`
     },
     [],
   )
@@ -293,19 +312,32 @@ export function useAgent() {
       setBusy(false)
 
       let reply = describeSaved(previewToSave)
-      // Cash sale → remember it and offer a receipt.
+      // Cash sale → remember it (as receipt-ready rows) and offer a receipt.
       if (previewToSave.kind === 'sale' && previewToSave.sale) {
-        const items = previewToSave.sale.items.map((i) => ({
-          name: i.productName,
-          qty: i.qty,
-          price: i.unitPrice,
+        const nowIso = new Date().toISOString()
+        const groupId = uid()
+        const rows: Sale[] = previewToSave.sale.items.map((i) => ({
+          id: uid(),
+          user_id: '',
+          product_id: i.productId,
+          product_name: i.productName,
+          quantity: i.qty,
+          unit_price: i.unitPrice,
           total: i.unitPrice * i.qty,
+          profit: (i.unitPrice - i.unitCost) * i.qty,
+          customer_name: null,
+          customer_phone: null,
+          payment_method: 'cash',
+          sale_group_id: groupId,
+          sale_unit: null,
+          sale_unit_qty: null,
+          created_at: nowIso,
         }))
         lastSaleRef.current = {
-          items,
-          total: items.reduce((sum, i) => sum + i.total, 0),
+          rows,
+          total: rows.reduce((sum, r) => sum + r.total, 0),
           refId: uid(),
-          date: formatDate(new Date().toISOString()),
+          date: formatDate(nowIso),
         }
         reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number.'
       }
@@ -352,5 +384,20 @@ export function useAgent() {
     void speak(msg)
   }, [])
 
-  return { messages, pending, busy, conversing, sendText, toggleMic, stopConversation, confirm, cancel, greet }
+  const closeReceipt = useCallback(() => setReceiptSales(null), [])
+
+  return {
+    messages,
+    pending,
+    busy,
+    conversing,
+    receiptSales,
+    sendText,
+    toggleMic,
+    stopConversation,
+    confirm,
+    cancel,
+    greet,
+    closeReceipt,
+  }
 }

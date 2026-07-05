@@ -4,10 +4,11 @@ import { Mic, Send, Square } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useAgent } from '@/hooks/useAgent'
 import { primeSpeech } from '@/lib/agent/speech'
+import ReceiptModal from '@/components/ReceiptModal'
 import ConfirmCard from './ConfirmCard'
 
 export default function AgentSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { messages, pending, busy, conversing, sendText, toggleMic, stopConversation, confirm, cancel, greet } = useAgent()
+  const { messages, pending, busy, conversing, receiptSales, sendText, toggleMic, stopConversation, confirm, cancel, greet, closeReceipt } = useAgent()
   const [text, setText] = useState('')
   const greetedRef = useRef(false)
 
@@ -23,8 +24,9 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
     if (!open) {
       greetedRef.current = false
       stopConversation()
+      closeReceipt()
     }
-  }, [open, messages.length, greet, stopConversation])
+  }, [open, messages.length, greet, stopConversation, closeReceipt])
 
   const submit = async () => {
     const t = text
@@ -33,6 +35,7 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl h-[85vh] flex flex-col">
         <SheetHeader>
@@ -95,5 +98,10 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* Receipt box (shown for existing customers to pick a send channel).
+        Rendered outside the Sheet so it isn't caught in the sheet's focus trap. */}
+    <ReceiptModal sales={receiptSales ?? []} isOpen={!!receiptSales} onClose={closeReceipt} />
+    </>
   )
 }

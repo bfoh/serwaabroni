@@ -232,7 +232,7 @@ interface StoreContextType {
   t: (key: string) => string
   refreshData: () => Promise<void>
   // Supabase-synced actions
-  addProduct: (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean }) => Promise<void>
+  addProduct: (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean; opening?: boolean }) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   removeProduct: (id: string) => Promise<void>
   addSale: (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => Promise<void>
@@ -556,7 +556,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // SUPABASE-SYNCED CRUD — ALL MULTI-TENANT
   // ==========================================================
 
-  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean }) => {
+  const addProduct = useCallback(async (product: Omit<Product, 'user_id'>, injectionId?: string | null, opts?: { account?: CashAccount; unpaid?: boolean; opening?: boolean }) => {
     try {
       const inserted = await insertProduct(product)
       dispatch({ type: 'ADD_PRODUCT', product: inserted })
@@ -574,6 +574,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             purchasedAt: inserted.created_at,
             account: opts?.account ?? 'cash',
             unpaid: opts?.unpaid ?? false,
+            opening: opts?.opening ?? false,
           })
         } catch {
           /* offline or error — batch can be reconciled later; product already added */

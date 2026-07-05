@@ -38,8 +38,15 @@ interface Deps {
 }
 
 async function compressToBase64(file: File): Promise<{ base64: string; mediaType: string }> {
-  const bitmap = await createImageBitmap(file)
-  const max = 1600
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    throw new Error('That image format could not be read. Try a JPG/PNG photo.')
+  }
+  // 1568px on the long edge is Anthropic's vision sweet spot (larger is downscaled
+  // server-side anyway). Keep quality high so handwriting stays legible.
+  const max = 1568
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height))
   const w = Math.round(bitmap.width * scale)
   const h = Math.round(bitmap.height * scale)
@@ -47,7 +54,7 @@ async function compressToBase64(file: File): Promise<{ base64: string; mediaType
   canvas.width = w
   canvas.height = h
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.7)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
   return { base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' }
 }
 

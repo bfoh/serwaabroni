@@ -5,13 +5,19 @@ import { corsHeaders, json } from '../_shared/cors.ts'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
-const MODEL = 'claude-haiku-4-5-20251001'
+// Sonnet is far stronger than Haiku at reading handwriting and messy tables.
+const MODEL = 'claude-sonnet-5'
 
 const PROMPT =
-  'This image is a shop stock list (typed or handwritten, often a table). ' +
-  'Extract every product row. Respond with JSON ONLY: an array of objects with keys ' +
+  'You are reading a photo of a shop\'s stock list. It may be TYPED or HANDWRITTEN, ' +
+  'and may be a neat table or just rough lines. Transcribe it carefully, reading the ' +
+  'handwriting as best you can. Output one row per product line. ' +
+  'Columns are usually name, quantity, unit, cost price, selling price (order may vary; ' +
+  'headers like Qty, Cost, Price, Selling help). ' +
+  'Respond with JSON ONLY — no explanation, no markdown fences: an array of objects with keys ' +
   'name (string), quantity (number), unit (string), cost_price (number), selling_price (number). ' +
-  'Omit a key if its value is not present. Amounts are plain numbers (no currency symbols). No prose.'
+  'Include a row even if some fields are missing — omit only the keys you cannot read. ' +
+  'Amounts are plain numbers with no currency symbols. If the image has no stock list, return [].'
 
 interface Body {
   userJwt?: string
@@ -55,7 +61,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1500,
+        max_tokens: 3000,
         messages: [
           {
             role: 'user',

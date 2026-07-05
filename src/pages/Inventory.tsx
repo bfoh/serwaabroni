@@ -8,6 +8,7 @@ import type { InjectionStockSummary } from '@/lib/capitalStock'
 import ProductIcon from '@/components/ProductIcon'
 import StockHistorySheet from '@/components/StockHistorySheet'
 import BulkAddSheet from '@/components/inventory/BulkAddSheet'
+import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
@@ -468,13 +469,14 @@ export default function Inventory() {
             </p>
           </div>
         )}
-        {filteredProducts.map((product, index) => (
+        {(() => {
+          const renderProductCard = (product: Product, index: number, grouped = false) => (
           <motion.div
             key={product.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.03 }}
-            className="bg-light harsh-border rounded-sm overflow-hidden"
+            className={grouped ? 'overflow-hidden' : 'bg-light harsh-border rounded-sm overflow-hidden'}
           >
             {inlineEditId === product.id ? (
               /* Inline Edit Form */
@@ -602,7 +604,7 @@ export default function Inventory() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm truncate">{product.name}</p>
+                      {!grouped && <p className="font-medium text-sm truncate">{product.name}</p>}
                       {product.quantity <= product.low_stock_threshold && (
                         <span className="text-[10px] bg-accent-red text-white px-1.5 py-0.5 rounded-sm font-display">{t('low')}</span>
                       )}
@@ -777,7 +779,29 @@ export default function Inventory() {
               </>
             )}
           </motion.div>
-        ))}
+          )
+          return groupByName(filteredProducts).map((group, gi) =>
+            group.products.length === 1 ? (
+              renderProductCard(group.products[0], gi)
+            ) : (
+              <motion.div
+                key={group.key}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: gi * 0.03 }}
+                className="bg-light harsh-border rounded-sm overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-3 py-2 border-b-2 border-ink/10 bg-warm-gray/30">
+                  <p className="font-medium text-sm truncate mr-2">{group.name}</p>
+                  <span className="text-xs text-muted-text shrink-0">{groupTotalLabel(group.products)}</span>
+                </div>
+                <div className="divide-y divide-ink/10">
+                  {group.products.map((p, i) => renderProductCard(p, i, true))}
+                </div>
+              </motion.div>
+            ),
+          )
+        })()}
       </section>
 
       {/* Delete Confirmation */}

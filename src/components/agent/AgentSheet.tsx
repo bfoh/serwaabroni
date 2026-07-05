@@ -35,7 +35,6 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
   }
 
   return (
-    <>
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl h-[85vh] flex flex-col">
         <SheetHeader>
@@ -96,12 +95,12 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
             <Send size={18} />
           </button>
         </div>
+
+        {/* Receipt box — rendered inside the sheet's portal so it stacks above the
+            sheet and stays clickable (the sheet is a modal that disables pointer
+            events elsewhere on the page). */}
+        <ReceiptModal sales={receiptSales ?? []} isOpen={!!receiptSales} onClose={closeReceipt} />
       </SheetContent>
     </Sheet>
-
-    {/* Receipt box (shown for existing customers to pick a send channel).
-        Rendered outside the Sheet so it isn't caught in the sheet's focus trap. */}
-    <ReceiptModal sales={receiptSales ?? []} isOpen={!!receiptSales} onClose={closeReceipt} />
-    </>
   )
 }

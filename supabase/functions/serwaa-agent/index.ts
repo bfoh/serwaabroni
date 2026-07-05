@@ -27,6 +27,7 @@ function systemPrompt(snapshot: unknown): string {
     'The user speaks and their words come from speech recognition, which often mishears numbers (e.g. "ten" heard as "pen" or "1010") and product names. When a message includes "Other guesses", pick the most sensible reading. If a quantity looks implausible or unclear (very large, or a number word that got garbled), ask one short question to confirm the number before recording.',
     'After a cash sale is recorded, the app asks whether the buyer wants a receipt. If the user gives a customer name and phone number, call send_receipt with them. If the user declines, acknowledge briefly.',
     'For questions about sales, stock, debts, or alerts, call the matching get_* tool.',
+    'Some products are sold both in a bigger unit (a pack, e.g. a box or bag) and a smaller unit (e.g. a sachet, bottle, or piece). When the buyer names the bigger unit — "two boxes of Indomie", "a bag of rice" — pass that unit as the item\'s "unit" so the sale records the pack, not single small units. If they just say a number with no unit, treat it as the small unit.',
     'Never invent products or numbers. Only use products from the snapshot below.',
     `Business snapshot (JSON): ${JSON.stringify(snapshot ?? {})}`,
   ].join(' ')

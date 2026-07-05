@@ -402,8 +402,8 @@ export function useAgent() {
           customer_phone: null,
           payment_method: 'cash',
           sale_group_id: groupId,
-          sale_unit: null,
-          sale_unit_qty: null,
+          sale_unit: i.saleUnit ?? null,
+          sale_unit_qty: i.saleUnitQty ?? null,
           created_at: nowIso,
         }))
         lastSaleRef.current = {

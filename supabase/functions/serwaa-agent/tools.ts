@@ -10,7 +10,11 @@ export const TOOLS = [
           type: 'array',
           items: {
             type: 'object',
-            properties: { product: { type: 'string' }, qty: { type: 'number' } },
+            properties: {
+              product: { type: 'string' },
+              qty: { type: 'number' },
+              unit: { type: 'string', description: 'The unit the buyer named, e.g. "box" or "sachet". Use the bigger pack unit when they buy a pack (e.g. "two boxes"); omit or use the small unit otherwise.' },
+            },
             required: ['product', 'qty'],
           },
         },
@@ -29,7 +33,11 @@ export const TOOLS = [
           type: 'array',
           items: {
             type: 'object',
-            properties: { product: { type: 'string' }, qty: { type: 'number' } },
+            properties: {
+              product: { type: 'string' },
+              qty: { type: 'number' },
+              unit: { type: 'string', description: 'The unit the buyer named, e.g. "box" or "sachet". Use the bigger pack unit when they buy a pack (e.g. "two boxes"); omit or use the small unit otherwise.' },
+            },
             required: ['product', 'qty'],
           },
         },

@@ -10,6 +10,7 @@ export interface PreviewContext {
 interface RawItem {
   product: string
   qty: number
+  unit?: string
 }
 
 function resolveItems(
@@ -25,12 +26,20 @@ function resolveItems(
       return { error: `Did you mean ${m.candidates.map((c) => c.name).join(' or ')}?` }
     }
     if (!m.product) return { error: `I couldn't find "${r.product}" in your stock. Please say the name again.` }
+    const p = m.product
+    // If the buyer named the bigger (pack) unit, sell in packs: base quantity is
+    // qty × units_per_pack; the price stays per base unit.
+    const reqUnit = String(r.unit ?? '').trim().toLowerCase()
+    const packed = p.units_per_pack >= 2 && !!p.pack_unit && reqUnit === p.pack_unit.trim().toLowerCase()
+    const factor = packed ? p.units_per_pack : 1
     items.push({
-      productId: m.product.id,
-      productName: m.product.name,
-      unitPrice: m.product.selling_price,
-      unitCost: m.product.cost_price,
-      qty,
+      productId: p.id,
+      productName: p.name,
+      unitPrice: p.selling_price,
+      unitCost: p.cost_price,
+      qty: qty * factor,
+      saleUnit: packed ? p.pack_unit : null,
+      saleUnitQty: packed ? qty : null,
     })
   }
   if (items.length === 0) return { error: 'Which item did you sell?' }
@@ -39,7 +48,7 @@ function resolveItems(
 
 function saleLines(items: SaleItemResolved[]): { lines: { label: string; value: string }[]; total: number } {
   const lines = items.map((i) => ({
-    label: `${i.productName} ×${i.qty}`,
+    label: i.saleUnit && i.saleUnitQty ? `${i.productName} ×${i.saleUnitQty} ${i.saleUnit}` : `${i.productName} ×${i.qty}`,
     value: formatCurrency(i.unitPrice * i.qty),
   }))
   const total = items.reduce((s, i) => s + i.unitPrice * i.qty, 0)

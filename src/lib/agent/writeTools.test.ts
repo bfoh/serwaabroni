@@ -26,6 +26,23 @@ describe('buildPreview', () => {
     expect('error' in r).toBe(true)
   })
 
+  it('sells in the bigger pack unit when the buyer names it', () => {
+    const packCtx = { products: [mk('Indomie', { pack_unit: 'box', units_per_pack: 40, selling_price: 3, cost_price: 2 })] }
+    const r = buildPreview({ name: 'add_sale', input: { items: [{ product: 'indomie', qty: 2, unit: 'box' }], payment: 'cash' } }, packCtx)
+    if ('error' in r) throw new Error(r.error)
+    // 2 boxes × 40 = 80 base units; price stays per base
+    expect(r.sale?.items[0]).toMatchObject({ qty: 80, unitPrice: 3, saleUnit: 'box', saleUnitQty: 2 })
+    expect(r.lines.some((l) => l.label.includes('×2 box'))).toBe(true)
+    expect(r.lines.some((l) => l.value.includes('240'))).toBe(true) // 80 × 3
+  })
+
+  it('sells the small unit when no pack unit is named', () => {
+    const packCtx = { products: [mk('Indomie', { pack_unit: 'box', units_per_pack: 40, selling_price: 3 })] }
+    const r = buildPreview({ name: 'add_sale', input: { items: [{ product: 'indomie', qty: 5 }], payment: 'cash' } }, packCtx)
+    if ('error' in r) throw new Error(r.error)
+    expect(r.sale?.items[0]).toMatchObject({ qty: 5, saleUnit: null, saleUnitQty: null })
+  })
+
   it('builds a credit sale preview', () => {
     const r = buildPreview(
       { name: 'add_credit_sale', input: { items: [{ product: 'milo', qty: 2 }], customer_name: 'Ama' } },

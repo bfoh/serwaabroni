@@ -60,6 +60,10 @@ export interface SaleItemResolved {
   unitPrice: number
   unitCost: number
   qty: number
+  // Set when sold in the bigger (pack) unit: qty above is the BASE quantity,
+  // while saleUnitQty of saleUnit describes how the buyer named it (e.g. 2 box).
+  saleUnit?: string | null
+  saleUnitQty?: number | null
 }
 
 export interface ConfirmPreview {

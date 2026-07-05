@@ -43,8 +43,8 @@ function buildSaleRows(
     customer_phone: null,
     payment_method: paymentMethod,
     sale_group_id: groupId,
-    sale_unit: null,
-    sale_unit_qty: null,
+    sale_unit: i.saleUnit ?? null,
+    sale_unit_qty: i.saleUnitQty ?? null,
     created_at: createdAt,
   }))
   const rowItems = items.map((i) => ({ productId: i.productId, qty: i.qty }))

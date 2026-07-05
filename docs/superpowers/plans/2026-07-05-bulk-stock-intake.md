@@ -299,11 +299,13 @@ describe('buildTemplateCSV', () => {
       'Category', 'Pack Unit', 'Units Per Pack', 'Low Stock Threshold',
     ])
   })
-  it('emits a header row and one example row', () => {
+  it('emits a header row plus a piece example and a pack example', () => {
     const lines = buildTemplateCSV().split('\n')
     expect(lines[0]).toBe('Name,Quantity,Unit,Cost Price,Selling Price,Category,Pack Unit,Units Per Pack,Low Stock Threshold')
-    expect(lines).toHaveLength(2)
-    expect(lines[1]).toContain('Indomie')
+    expect(lines).toHaveLength(3)
+    expect(lines[1]).toContain('Milo')                 // per-piece example
+    expect(lines[2]).toContain('Indomie')              // pack example
+    expect(lines[2]).toContain('box')
   })
 })
 ```
@@ -325,10 +327,15 @@ export const TEMPLATE_HEADERS = [
   'Category', 'Pack Unit', 'Units Per Pack', 'Low Stock Threshold',
 ]
 
-const EXAMPLE_ROW = ['Indomie', 24, 'sachet', 2.5, 3, 'Noodles', 'box', 40, 5]
+// Two examples: a per-piece good, and a pack good (Quantity + prices per BOX,
+// since Units Per Pack ≥ 2 means the row is read per pack and converted to base).
+const EXAMPLE_ROWS = [
+  ['Milo', 12, 'tin', 4, 8, 'Beverages', '', '', 5],
+  ['Indomie', 5, 'sachet', 100, 120, 'Noodles', 'box', 40, 20],
+]
 
 export function buildTemplateCSV(): string {
-  return [toCSVRow(TEMPLATE_HEADERS), toCSVRow(EXAMPLE_ROW)].join('\n')
+  return [toCSVRow(TEMPLATE_HEADERS), ...EXAMPLE_ROWS.map(toCSVRow)].join('\n')
 }
 
 export function downloadTemplate(): void {
@@ -365,13 +372,15 @@ git commit -m "feat(bulk): add downloadable CSV stock template"
   - `export function rowsFromMatrix(matrix: string[][]): RawRow[]` — maps a parsed CSV matrix (first row = headers matched case-insensitively against `TEMPLATE_HEADERS`) to `RawRow[]`.
   - `export function normalizeRow(raw: RawRow): DraftRow` — coerce/default (`unit` `piece`, `category` `Groceries`, `unitsPerPack` 1, generates `id`).
   - `export function rowStatus(row: DraftRow, products: Product[]): { status: 'new' | 'restock' | 'invalid'; matchId: string | null; errors: string[] }`
+  - `export function isPacked(row: DraftRow): boolean` — true when `unitsPerPack >= 2` and a `packUnit` is set.
+  - `export function toBase(row: DraftRow): { quantity: number; costPrice: number; sellPrice: number; unitsPerPack: number; packUnit: string | null }` — packed rows convert per-pack values to base (`qty×f`, `cost/f`, `sell/f`, money rounded to 2 dp); per-piece rows pass through with factor 1 and `packUnit` null.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // src/lib/bulkImport/rows.test.ts
 import { describe, it, expect } from 'vitest'
-import { rowsFromMatrix, normalizeRow, rowStatus } from './rows'
+import { rowsFromMatrix, normalizeRow, rowStatus, toBase } from './rows'
 import type { Product } from '@/lib/supabase'
 
 const prod = (name: string, id = name): Product => ({
@@ -415,6 +424,20 @@ describe('rowStatus', () => {
   it('marks an unmatched valid row as new', () => {
     const r = normalizeRow({ name: 'Rice 5kg', cost_price: 40, selling_price: 55, quantity: 3 })
     expect(rowStatus(r, products).status).toBe('new')
+  })
+})
+
+describe('toBase', () => {
+  it('converts per-pack quantity and prices to base', () => {
+    const r = normalizeRow({
+      name: 'Indomie', quantity: 5, cost_price: 100, selling_price: 120,
+      unit: 'sachet', pack_unit: 'box', units_per_pack: 40,
+    })
+    expect(toBase(r)).toEqual({ quantity: 200, costPrice: 2.5, sellPrice: 3, unitsPerPack: 40, packUnit: 'box' })
+  })
+  it('passes through a per-piece row unchanged (factor 1, no pack)', () => {
+    const r = normalizeRow({ name: 'Milo', quantity: 12, cost_price: 4, selling_price: 8, unit: 'tin' })
+    expect(toBase(r)).toEqual({ quantity: 12, costPrice: 4, sellPrice: 8, unitsPerPack: 1, packUnit: null })
   })
 })
 ```
@@ -533,12 +556,34 @@ export function rowStatus(
   if (m.product) return { status: 'restock', matchId: m.product.id, errors: [] }
   return { status: 'new', matchId: null, errors: [] }
 }
+
+// A row is "packed" when it describes a bigger unit holding >= 2 base units.
+export function isPacked(row: DraftRow): boolean {
+  return row.unitsPerPack >= 2 && !!row.packUnit
+}
+
+// Convert a row's entered values to base units. Packed rows: quantity is in packs
+// and prices are per pack, so multiply qty and divide prices by units_per_pack.
+export function toBase(
+  row: DraftRow,
+): { quantity: number; costPrice: number; sellPrice: number; unitsPerPack: number; packUnit: string | null } {
+  const packed = isPacked(row)
+  const f = packed ? row.unitsPerPack : 1
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  return {
+    quantity: row.quantity * f,
+    costPrice: round2(row.costPrice / f),
+    sellPrice: round2(row.sellPrice / f),
+    unitsPerPack: packed ? row.unitsPerPack : 1,
+    packUnit: packed ? row.packUnit : null,
+  }
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/bulkImport/rows.test.ts`
-Expected: PASS (5 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -629,6 +674,17 @@ describe('saveBulkRows', () => {
     expect(res.restocked).toBe(1)
     expect(res.failures[0].name).toBe('Rice 5kg')
   })
+
+  it('converts a packed new row to base before saving', async () => {
+    const api = fakeApi()
+    const packRow = normalizeRow({
+      name: 'Indomie box', quantity: 5, cost_price: 100, selling_price: 120,
+      unit: 'sachet', pack_unit: 'box', units_per_pack: 40,
+    })
+    await saveBulkRows([packRow], products, { kind: 'opening' }, api)
+    const product = api.addProduct.mock.calls[0][0]
+    expect(product).toMatchObject({ quantity: 200, cost_price: 2.5, selling_price: 3, units_per_pack: 40, pack_unit: 'box' })
+  })
 })
 ```
 
@@ -643,7 +699,7 @@ Expected: FAIL — module not found.
 // src/lib/bulkImport/save.ts
 import type { Product } from '@/lib/supabase'
 import { uid } from '@/lib/data'
-import { rowStatus, type DraftRow } from './rows'
+import { rowStatus, toBase, type DraftRow } from './rows'
 
 export type CashMode =
   | { kind: 'opening' }
@@ -697,6 +753,7 @@ export async function saveBulkRows(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     const status = rowStatus(row, products)
+    const base = toBase(row)
     try {
       if (status.status === 'invalid') throw new Error('invalid row')
       if (status.status === 'new') {
@@ -705,14 +762,14 @@ export async function saveBulkRows(
           {
             id: uid(),
             name: row.name,
-            cost_price: row.costPrice,
-            selling_price: row.sellPrice,
-            quantity: row.quantity,
+            cost_price: base.costPrice,
+            selling_price: base.sellPrice,
+            quantity: base.quantity,
             unit: row.unit,
-            pack_unit: row.packUnit,
-            units_per_pack: row.unitsPerPack,
+            pack_unit: base.packUnit,
+            units_per_pack: base.unitsPerPack,
             category: row.category,
-            low_stock_threshold: row.lowStockThreshold ?? Math.max(3, Math.floor(row.quantity * 0.2)),
+            low_stock_threshold: row.lowStockThreshold ?? Math.max(3, Math.floor(base.quantity * 0.2)),
             barcode: null,
             qr_code: null,
             created_at: nowIso,
@@ -723,11 +780,11 @@ export async function saveBulkRows(
         result.added++
       } else {
         const id = status.matchId as string
-        await api.updateProduct(id, { quantity: api.findQty(id) + row.quantity })
-        await api.receiveStock({ productId: id, qty: row.quantity, unitCost: row.costPrice, ...opts })
+        await api.updateProduct(id, { quantity: api.findQty(id) + base.quantity })
+        await api.receiveStock({ productId: id, qty: base.quantity, unitCost: base.costPrice, ...opts })
         result.restocked++
       }
-      supplierTotal += Math.round(row.costPrice * row.quantity * 100) / 100
+      supplierTotal += Math.round(base.costPrice * base.quantity * 100) / 100
     } catch (e) {
       result.failed++
       result.failures.push({ name: row.name || 'row', error: e instanceof Error ? e.message : String(e) })
@@ -761,7 +818,7 @@ export async function saveBulkRows(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/bulkImport/save.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -788,7 +845,8 @@ git commit -m "feat(bulk): add bulk-save orchestrator (opening/purchase/supplier
 // src/components/inventory/BulkReviewTable.tsx
 import { Trash2 } from 'lucide-react'
 import type { Product } from '@/lib/supabase'
-import { rowStatus, UNITS, CATEGORIES, type DraftRow } from '@/lib/bulkImport/rows'
+import { formatCurrency } from '@/lib/data'
+import { rowStatus, isPacked, toBase, UNITS, CATEGORIES, type DraftRow } from '@/lib/bulkImport/rows'
 
 export default function BulkReviewTable({
   rows, products, onChange, onImport, importing,
@@ -817,12 +875,15 @@ export default function BulkReviewTable({
   return (
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto">
-        <div className="min-w-[640px] space-y-2">
+        <div className="min-w-[820px] space-y-2">
           {rows.map((r, i) => {
             const s = statuses[i]
             const err = (k: string) => s.errors.includes(k) ? 'border-accent-red' : 'border-ink/20'
+            const packed = isPacked(r)
+            const base = toBase(r)
             return (
-              <div key={r.id} className="flex items-center gap-2 text-xs">
+              <div key={r.id} className="space-y-0.5">
+              <div className="flex items-center gap-2 text-xs">
                 <input
                   value={r.name}
                   onChange={(e) => set(r.id, { name: e.target.value })}
@@ -859,10 +920,28 @@ export default function BulkReviewTable({
                 >
                   {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+                <input
+                  value={r.packUnit ?? ''}
+                  onChange={(e) => set(r.id, { packUnit: e.target.value.trim() || null })}
+                  placeholder="Pack" title="Bigger unit, e.g. box (leave blank for loose items)"
+                  className="w-16 harsh-border rounded-sm px-2 py-1.5 border border-ink/20"
+                />
+                <input
+                  type="number" inputMode="numeric" value={r.unitsPerPack > 1 ? r.unitsPerPack : ''}
+                  onChange={(e) => set(r.id, { unitsPerPack: Number(e.target.value) || 1 })}
+                  placeholder="/pack" title="How many small units per pack, e.g. 40"
+                  className="w-16 harsh-border rounded-sm px-2 py-1.5 border border-ink/20"
+                />
                 <span className={`shrink-0 px-2 py-1 rounded-sm text-[10px] uppercase ${pill(s.status)}`}>{label(s.status)}</span>
                 <button onClick={() => remove(r.id)} aria-label="Remove row" className="shrink-0 text-muted-text hover:text-accent-red">
                   <Trash2 size={14} />
                 </button>
+              </div>
+              {packed && (
+                <p className="text-[10px] text-muted-text pl-1">
+                  {r.quantity} {r.packUnit} × {r.unitsPerPack} = {base.quantity} {r.unit} · {formatCurrency(base.costPrice)}/{r.unit} cost · {formatCurrency(base.sellPrice)}/{r.unit} sell
+                </p>
+              )}
               </div>
             )
           })}
@@ -1028,6 +1107,8 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
           {rows.length === 0 && (
             <p className="text-sm text-muted-text text-center py-8">
               Download the template, fill it in a spreadsheet, then upload it here to review and import.
+              For pack goods (e.g. a box of 40 sachets), set Pack Unit and Units Per Pack and enter the
+              quantity and prices per box.
             </p>
           )}
         </div>
@@ -1068,6 +1149,7 @@ Run `npm run dev`, sign in, open Inventory → Bulk add:
 3. Fix it; choose "Already mine (opening)"; Import → toast "Added X, restocked Y"; products appear/quantities rise; **cash-in-hand unchanged** (opening stock posts no cash).
 4. Repeat with "A purchase / Paid cash" → cash-in-hand drops by the total cost.
 5. Repeat with "Supplier credit" + a name → a single "you owe" debt appears for that supplier.
+6. **Pack good:** a row with Pack `box`, /pack `40`, Quantity `5`, Cost `100`, Sell `120` shows the hint "5 box × 40 = 200 sachet · GH₵ 2.50/… · GH₵ 3.00/…"; after Import the product's stock is **200** at cost **2.50**, sell **3.00**.
 
 - [ ] **Step 5: Commit**
 
@@ -1443,9 +1525,9 @@ git commit -m "feat(bulk): add photo tab (Claude vision) to bulk-add sheet"
 
 ## Self-Review
 
-- **Spec coverage:** template download+parse (Tasks 2,3,7), photo/vision (Tasks 8,9,10), shared review table (Task 6), new-vs-restock matching (Task 4), opening-vs-purchase + no-cash opening (Tasks 1,5,7), supplier-credit aggregate debt (Task 5), review-before-save gate (Task 6), security/JWT (Task 8), image compression (Task 9). ✓
+- **Spec coverage:** template download+parse (Tasks 2,3,7), photo/vision (Tasks 8,9,10), shared review table (Task 6), new-vs-restock matching (Task 4), pack↔base conversion for big/small quantities (Tasks 3,4,5,6), opening-vs-purchase + no-cash opening (Tasks 1,5,7), supplier-credit aggregate debt (Task 5), review-before-save gate (Task 6), security/JWT (Task 8), image compression (Task 9). ✓
 - **Placeholder scan:** every code step is complete; no TBD/TODO. ✓
-- **Type consistency:** `DraftRow`, `RawRow`, `rowStatus`, `normalizeRow`, `rowsFromMatrix`, `CashMode`, `BulkSaveApi`, `saveBulkRows`, `shouldPostStockCash`, `parseCSV`, `toCSVRow`, `TEMPLATE_HEADERS`, `UNITS`, `CATEGORIES`, `extractRowsFromImage`, `normalizeVisionRows` are defined once and reused with matching shapes. ✓
+- **Type consistency:** `DraftRow`, `RawRow`, `rowStatus`, `normalizeRow`, `rowsFromMatrix`, `isPacked`, `toBase`, `CashMode`, `BulkSaveApi`, `saveBulkRows`, `shouldPostStockCash`, `parseCSV`, `toCSVRow`, `TEMPLATE_HEADERS`, `UNITS`, `CATEGORIES`, `extractRowsFromImage`, `normalizeVisionRows` are defined once and reused with matching shapes. ✓
 
 ## Deferred / out of scope
 

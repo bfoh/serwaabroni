@@ -31,6 +31,7 @@ create supplier debt. A toggle lets the user instead mark the whole batch as a
 | CSV parsing | Small hand-rolled RFC-4180-subset parser (handles quoted commas), TDD'd — no new dependency |
 | Photo OCR | Claude vision via a new Supabase edge function, reusing `ANTHROPIC_API_KEY` |
 | Review step | Always show an editable review table before saving |
+| Pack goods | When a row has Units Per Pack ≥ 2 (+ a Pack Unit), its Quantity/Cost/Selling are read PER PACK and converted to base on save (mirrors the single Add-Product form). Rows without pack info are per-piece. |
 | Scope | One spec, two phases: Phase 1 CSV, Phase 2 photo |
 
 ## 3. Architecture
@@ -124,6 +125,31 @@ Headers (in order):
 - `rowStatus(row, products): { status: 'new' | 'restock' | 'invalid'; matchId: string | null; errors: string[] }`
   — invalid when name empty or cost/sell/qty not a positive number; restock when
   `matchProduct(row.name, products)` yields a unique match; else new.
+
+## 6a. Pack goods (big vs small quantities)
+
+The app stores products base-canonical: `quantity`, `cost_price`, `selling_price`
+are all in the smallest (base) unit, with `pack_unit` + `units_per_pack`
+describing the bigger unit. The single Add-Product form lets the user enter
+quantity and prices in the **pack** unit and converts to base
+(`baseQty = qty × units_per_pack`, `baseCost = cost ÷ units_per_pack`,
+`baseSell = sell ÷ units_per_pack`, `Inventory.tsx:143-147`).
+
+Bulk import mirrors this exactly:
+
+- A row is **packed** when `Units Per Pack ≥ 2` and a `Pack Unit` is present. Its
+  `Quantity`, `Cost Price`, `Selling Price` are then interpreted **per pack** and
+  converted to base on save (round money to 2 dp). `units_per_pack`/`pack_unit`
+  are stored so the product sells per base unit.
+- A row without pack info is per-piece (factor 1, no conversion).
+- The **review table shows the conversion** for packed rows (e.g.
+  "5 box × 40 = 200 sachet · GH₵ 2.50/sachet") so the user sees base values
+  before importing.
+- Restock of an existing packed product adds the **base** quantity and uses the
+  **base** unit cost.
+
+`rows.ts` exposes `toBase(row)` returning the base `{ quantity, costPrice,
+sellPrice, unitsPerPack, packUnit }`; `save.ts` and the review display use it.
 
 ## 7. Bulk save
 

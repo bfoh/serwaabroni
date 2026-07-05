@@ -72,7 +72,13 @@ Deno.serve(async (req) => {
 
     if (body.action === 'transcribe') {
       if (!body.audioBase64 || !body.mimeType) return json({ error: 'Missing audio' }, 400)
-      const asrRes = await fetch(`${ASR_URL}?language=${ASR_LANG}`, {
+      // ASR v3 takes the language as a URL/path template, not a query. Set
+      // KHAYA_ASR_URL with a {lang} placeholder (e.g. .../asr/v3/transcribe/{lang});
+      // otherwise fall back to a ?language= query.
+      const asrUrl = ASR_URL.includes('{lang}')
+        ? ASR_URL.replace('{lang}', ASR_LANG)
+        : `${ASR_URL}?language=${ASR_LANG}`
+      const asrRes = await fetch(asrUrl, {
         method: 'POST',
         headers: { 'Content-Type': body.mimeType, ...KEY_HEADER },
         body: b64ToBytes(body.audioBase64),

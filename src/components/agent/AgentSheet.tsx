@@ -8,7 +8,7 @@ import ReceiptModal from '@/components/ReceiptModal'
 import ConfirmCard from './ConfirmCard'
 
 export default function AgentSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { messages, pending, busy, conversing, receiptSales, sendText, toggleMic, stopConversation, confirm, cancel, greet, closeReceipt } = useAgent()
+  const { messages, pending, busy, conversing, receiptSales, language, setLanguage, sendText, toggleMic, stopConversation, confirm, cancel, greet, closeReceipt } = useAgent()
   const [text, setText] = useState('')
   const greetedRef = useRef(false)
 
@@ -38,7 +38,17 @@ export default function AgentSheet({ open, onClose }: { open: boolean; onClose: 
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl h-[85vh] flex flex-col">
         <SheetHeader>
-          <SheetTitle>SerwaaBroni</SheetTitle>
+          <div className="flex items-center justify-between gap-2">
+            <SheetTitle>SerwaaBroni</SheetTitle>
+            <div className="flex items-center gap-1 bg-warm-gray rounded-sm p-0.5 text-[11px] uppercase tracking-wide">
+              {(['en', 'tw'] as const).map((l) => (
+                <button key={l} onClick={() => setLanguage(l)}
+                  className={`px-2.5 py-1 rounded-sm ${language === l ? 'bg-ink text-white' : 'text-ink'}`}>
+                  {l === 'en' ? 'EN' : 'TW'}
+                </button>
+              ))}
+            </div>
+          </div>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto space-y-3 py-3">

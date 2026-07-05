@@ -641,9 +641,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const recorded = await recordSaleBatch(sales, items)
       recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
-      const products = await fetchProducts()
+      // Refresh the product cache and dashboard in parallel (one round-trip).
+      const [products, summary] = await Promise.all([fetchProducts(), getDashboardSummary()])
       dispatch({ type: 'SET_PRODUCTS', products })
-      const summary = await getDashboardSummary()
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })

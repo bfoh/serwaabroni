@@ -372,69 +372,65 @@ export function useAgent() {
   const confirm = useCallback(async () => {
     if (!pendingRef.current) return
     const previewToSave = pendingRef.current
-    busyRef.current = true
-    setBusy(true)
     const resume = resumeAfterConfirmRef.current
     resumeAfterConfirmRef.current = false
-    try {
-      await executePreview(previewToSave, execApi)
-      // Clear the card and unblock immediately so it feels fast — speak after.
-      setPending(null)
-      pendingRef.current = null
-      busyRef.current = false
-      setBusy(false)
 
-      let reply = describeSaved(previewToSave)
-      // Cash sale → remember it (as receipt-ready rows) and offer a receipt.
-      if (previewToSave.kind === 'sale' && previewToSave.sale) {
-        const nowIso = new Date().toISOString()
-        const groupId = uid()
-        const rows: Sale[] = previewToSave.sale.items.map((i) => ({
-          id: uid(),
-          user_id: '',
-          product_id: i.productId,
-          product_name: i.productName,
-          quantity: i.qty,
-          unit_price: i.unitPrice,
-          total: i.unitPrice * i.qty,
-          profit: (i.unitPrice - i.unitCost) * i.qty,
-          customer_name: null,
-          customer_phone: null,
-          payment_method: 'cash',
-          sale_group_id: groupId,
-          sale_unit: i.saleUnit ?? null,
-          sale_unit_qty: i.saleUnitQty ?? null,
-          created_at: nowIso,
-        }))
-        lastSaleRef.current = {
-          rows,
-          total: rows.reduce((sum, r) => sum + r.total, 0),
-          refId: uid(),
-          date: formatDate(nowIso),
-        }
-        awaitingReceiptRef.current = true
-        receiptDraftRef.current = { name: '', phone: '', askedName: false }
-        reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number. If not, say no.'
-      }
-      pushMessage({ role: 'assistant', content: reply })
-      void speak(reply)
+    // Optimistic: clear the card and respond immediately so it feels instant;
+    // the actual DB write + refresh happen in the background.
+    setPending(null)
+    pendingRef.current = null
+    busyRef.current = false
+    setBusy(false)
 
-      // Resume the voice conversation (e.g. to hear the receipt answer) if the
-      // sale came from a voice conversation.
-      if (resume && speechSupported() && !convRef.current) {
-        convRef.current = true
-        setConversing(true)
-        void runConversation()
+    let reply = describeSaved(previewToSave)
+    // Cash sale → remember it (as receipt-ready rows) and offer a receipt.
+    if (previewToSave.kind === 'sale' && previewToSave.sale) {
+      const nowIso = new Date().toISOString()
+      const groupId = uid()
+      const rows: Sale[] = previewToSave.sale.items.map((i) => ({
+        id: uid(),
+        user_id: '',
+        product_id: i.productId,
+        product_name: i.productName,
+        quantity: i.qty,
+        unit_price: i.unitPrice,
+        total: i.unitPrice * i.qty,
+        profit: (i.unitPrice - i.unitCost) * i.qty,
+        customer_name: null,
+        customer_phone: null,
+        payment_method: 'cash',
+        sale_group_id: groupId,
+        sale_unit: i.saleUnit ?? null,
+        sale_unit_qty: i.saleUnitQty ?? null,
+        created_at: nowIso,
+      }))
+      lastSaleRef.current = {
+        rows,
+        total: rows.reduce((sum, r) => sum + r.total, 0),
+        refId: uid(),
+        date: formatDate(nowIso),
       }
-    } catch {
-      setPending(null)
-      pendingRef.current = null
-      busyRef.current = false
-      setBusy(false)
-      const msg = 'I could not save it. Please try again.'
+      awaitingReceiptRef.current = true
+      receiptDraftRef.current = { name: '', phone: '', askedName: false }
+      reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number. If not, say no.'
+    }
+    pushMessage({ role: 'assistant', content: reply })
+    void speak(reply)
+
+    // Resume the voice conversation (e.g. to hear the receipt answer) if the
+    // sale came from a voice conversation.
+    if (resume && speechSupported() && !convRef.current) {
+      convRef.current = true
+      setConversing(true)
+      void runConversation()
+    }
+
+    // Persist in the background; surface an error only if it actually fails.
+    executePreview(previewToSave, execApi).catch(() => {
+      const msg = 'Sorry, that did not save. Please try again.'
       pushMessage({ role: 'assistant', content: msg })
       void speak(msg)
-    }
+    })
   }, [execApi, pushMessage, runConversation])
 
   const cancel = useCallback(() => {

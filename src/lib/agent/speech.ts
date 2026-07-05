@@ -14,19 +14,31 @@ export function speechSupported(): boolean {
 // when the user stops the session.
 let activeRec: SpeechRecognition | null = null
 
-export function listenOnce(opts?: { lang?: string }): Promise<string> {
+export interface Heard {
+  transcript: string
+  alternatives: string[]
+}
+
+export function listenOnce(opts?: { lang?: string }): Promise<Heard> {
   return new Promise((resolve, reject) => {
     const rec = getRecognition()
     if (!rec) return reject(new Error('Voice input is not supported on this device.'))
     rec.lang = opts?.lang ?? 'en-GH'
     rec.interimResults = false
-    rec.maxAlternatives = 1
+    // Ask for several guesses so the agent can pick the sensible one — speech
+    // recognition often mishears numbers ("ten" → "pen" or "1010").
+    rec.maxAlternatives = 6
     activeRec = rec
     let finished = false
     rec.onresult = (e: SpeechRecognitionEvent) => {
       finished = true
-      const transcript = e.results[0]?.[0]?.transcript ?? ''
-      resolve(transcript.trim())
+      const result = e.results[0]
+      const alternatives: string[] = []
+      for (let i = 0; result && i < result.length; i++) {
+        const t = result[i]?.transcript?.trim()
+        if (t && !alternatives.includes(t)) alternatives.push(t)
+      }
+      resolve({ transcript: alternatives[0] ?? '', alternatives })
     }
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       finished = true

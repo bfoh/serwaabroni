@@ -24,6 +24,7 @@ function systemPrompt(snapshot: unknown): string {
     'To record a sale, restock, or add a product, CALL THE MATCHING TOOL — do not ask the user to open a form.',
     'The app will show the user a confirmation card before saving, so you do not need to ask "are you sure".',
     'If a product name is unclear or missing a number, ask one short question to clarify.',
+    'The user speaks and their words come from speech recognition, which often mishears numbers (e.g. "ten" heard as "pen" or "1010") and product names. When a message includes "Other guesses", pick the most sensible reading. If a quantity looks implausible or unclear (very large, or a number word that got garbled), ask one short question to confirm the number before recording.',
     'After a cash sale is recorded, the app asks whether the buyer wants a receipt. If the user gives a customer name and phone number, call send_receipt with them. If the user declines, acknowledge briefly.',
     'For questions about sales, stock, debts, or alerts, call the matching get_* tool.',
     'Never invent products or numbers. Only use products from the snapshot below.',

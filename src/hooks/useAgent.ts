@@ -199,7 +199,7 @@ export function useAgent() {
   )
 
   const sendText = useCallback(
-    async (text: string) => {
+    async (text: string, alternatives?: string[]) => {
       const clean = text.trim()
       if (!clean) return
 
@@ -276,7 +276,13 @@ export function useAgent() {
           expenses: s.expenses,
           snapshot,
         }
-        const out = await runTurn(clean, {
+        // Give the model the other speech guesses so it can pick the sensible
+        // reading (numbers are often misheard: "ten" → "pen" / "1010").
+        const extras = (alternatives ?? []).filter((a) => a.trim() && a.trim() !== clean).slice(0, 4)
+        const modelText = extras.length
+          ? `${clean}\n[Speech recognition — may be misheard, especially numbers. Other guesses: ${extras.join(' | ')}]`
+          : clean
+        const out = await runTurn(modelText, {
           history,
           snapshot,
           readCtx,
@@ -314,14 +320,17 @@ export function useAgent() {
   const runConversation = useCallback(async () => {
     while (convRef.current) {
       let heard = ''
+      let alternatives: string[] = []
       try {
-        heard = await listenOnce({ lang: 'en-GH' })
+        const res = await listenOnce({ lang: 'en-GH' })
+        heard = res.transcript
+        alternatives = res.alternatives
       } catch {
         heard = '' // silence / no-speech — keep listening
       }
       if (!convRef.current) break
       if (heard) {
-        await sendText(heard)
+        await sendText(heard, alternatives)
         if (pendingRef.current) {
           // Pause the loop so the user confirms the sale/restock explicitly, and
           // remember to resume listening once they do.

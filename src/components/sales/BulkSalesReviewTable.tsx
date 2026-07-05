@@ -36,6 +36,13 @@ export default function BulkSalesReviewTable({
           {rows.map((r, i) => {
             const s = statuses[i]
             const product = r.productId ? products.find((p) => p.id === r.productId) : undefined
+            const packed = product ? isPackedSale(r, product) : false
+            // Default price shown for the CHOSEN unit: per pack when a pack unit is selected.
+            const defaultPrice = product
+              ? packed
+                ? Math.round(product.selling_price * product.units_per_pack * 100) / 100
+                : product.selling_price
+              : null
             return (
               <div key={r.id} className="space-y-0.5">
                 <div className="flex items-center gap-2 text-xs">
@@ -55,7 +62,19 @@ export default function BulkSalesReviewTable({
                     onChange={(e) => set(r.id, { quantity: Number(e.target.value) })} placeholder="Qty"
                     className={`w-14 harsh-border rounded-sm px-2 py-1.5 border ${s.errors.includes('quantity') ? 'border-accent-red' : 'border-ink/20'}`} />
                   {product ? (
-                    <select value={r.unit} onChange={(e) => set(r.id, { unit: e.target.value })}
+                    <select value={r.unit}
+                      onChange={(e) => {
+                        const newUnit = e.target.value
+                        const willPack = product.units_per_pack >= 2 && !!product.pack_unit &&
+                          newUnit.toLowerCase() === product.pack_unit.toLowerCase()
+                        let unitPrice = r.unitPrice
+                        // Convert an entered price to the new unit basis (per pack ↔ per base).
+                        if (unitPrice !== null && willPack !== packed) {
+                          const f = product.units_per_pack
+                          unitPrice = Math.round((willPack ? unitPrice * f : unitPrice / f) * 100) / 100
+                        }
+                        set(r.id, { unit: newUnit, unitPrice })
+                      }}
                       title="Choose the unit sold (small unit or pack)"
                       className="w-20 harsh-border rounded-sm px-1 py-1.5 border border-ink/20">
                       {(product.units_per_pack >= 2 && product.pack_unit
@@ -69,7 +88,7 @@ export default function BulkSalesReviewTable({
                   )}
                   <input type="number" inputMode="decimal" value={r.unitPrice ?? ''}
                     onChange={(e) => set(r.id, { unitPrice: e.target.value === '' ? null : Number(e.target.value) })}
-                    placeholder={product ? String(product.selling_price) : 'Price'}
+                    placeholder={defaultPrice !== null ? String(defaultPrice) : 'Price'}
                     className={`w-20 harsh-border rounded-sm px-2 py-1.5 border ${s.errors.includes('price') ? 'border-accent-red' : 'border-ink/20'}`} />
                   <select value={r.payment} onChange={(e) => set(r.id, { payment: e.target.value as SaleDraftRow['payment'] })}
                     className="w-20 harsh-border rounded-sm px-1 py-1.5 border border-ink/20">

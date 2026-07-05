@@ -158,9 +158,10 @@ export function useAgent() {
         await playBase64Audio(audioBase64, mimeType)
         return
       } catch (e) {
+        // Any Twi failure → revert to English for the rest of the session.
+        langRef.current = 'en'
+        setLanguageState('en')
         if (isTwiNotConfigured(e)) {
-          langRef.current = 'en'
-          setLanguageState('en')
           pushMessage({ role: 'assistant', content: 'Twi voice is not set up yet — switching to English.' })
         }
         // fall through to English speech
@@ -357,11 +358,16 @@ export function useAgent() {
             heard = english
           }
         } catch (e) {
-          if (isTwiNotConfigured(e)) {
-            langRef.current = 'en'
-            setLanguageState('en')
-            pushMessage({ role: 'assistant', content: 'Twi voice is not set up yet — switching to English.' })
-          }
+          // Any Twi failure (not configured, not deployed, network) → fall back to
+          // English so the mic keeps working instead of looping silently.
+          langRef.current = 'en'
+          setLanguageState('en')
+          pushMessage({
+            role: 'assistant',
+            content: isTwiNotConfigured(e)
+              ? 'Twi voice is not set up yet — switching to English.'
+              : 'Twi voice had a problem — switching to English.',
+          })
           heard = ''
         }
       } else {

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { Product } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/data'
@@ -15,6 +16,10 @@ export default function BulkReviewTable({
   const set = (id: string, patch: Partial<DraftRow>) =>
     onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: string) => onChange(rows.filter((r) => r.id !== id))
+
+  // Raw text for the "/pack" field so mid-typing digits (e.g. the "1" in "10")
+  // aren't wiped by the numeric model.
+  const [packText, setPackText] = useState<Record<string, string>>({})
 
   const statuses = rows.map((r) => rowStatus(r, products))
   const anyInvalid = statuses.some((s) => s.status === 'invalid')
@@ -82,8 +87,13 @@ export default function BulkReviewTable({
                   className="w-16 harsh-border rounded-sm px-2 py-1.5 border border-ink/20"
                 />
                 <input
-                  type="number" inputMode="numeric" value={r.unitsPerPack > 1 ? r.unitsPerPack : ''}
-                  onChange={(e) => set(r.id, { unitsPerPack: Number(e.target.value) || 1 })}
+                  type="number" inputMode="numeric"
+                  value={packText[r.id] ?? (r.unitsPerPack > 1 ? String(r.unitsPerPack) : '')}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d]/g, '')
+                    setPackText((d) => ({ ...d, [r.id]: raw }))
+                    set(r.id, { unitsPerPack: raw === '' ? 1 : Math.max(1, parseInt(raw, 10) || 1) })
+                  }}
                   placeholder="/pack" title="How many small units per pack, e.g. 40"
                   className="w-16 harsh-border rounded-sm px-2 py-1.5 border border-ink/20"
                 />

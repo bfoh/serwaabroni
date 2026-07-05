@@ -121,8 +121,14 @@ export function useAgent() {
   // True when a money action paused a voice conversation, so we know to resume
   // listening after the user confirms it.
   const resumeAfterConfirmRef = useRef(false)
-  // True right after a cash sale while we wait for the buyer's receipt answer.
+  // True right after a cash sale while we wait for the buyer's receipt answer,
+  // plus a draft that accumulates the name/phone across several replies.
   const awaitingReceiptRef = useRef(false)
+  const receiptDraftRef = useRef<{ name: string; phone: string; askedName: boolean }>({
+    name: '',
+    phone: '',
+    askedName: false,
+  })
 
   const pushMessage = useCallback((msg: AgentMessage) => {
     messagesRef.current = [...messagesRef.current, msg]
@@ -198,11 +204,15 @@ export function useAgent() {
       if (!clean) return
 
       // Receipt answer (captured client-side, no LLM, so it's reliable and the
-      // agent never claims it "can't access the customer database").
+      // agent never claims it "can't access the customer database"). The name and
+      // phone can arrive over several replies — accumulate them.
       if (awaitingReceiptRef.current) {
         pushMessage({ role: 'user', content: clean })
         const parsed = parseReceiptReply(clean)
-        if (parsed.negative) {
+        const draft = receiptDraftRef.current
+
+        // "No" only cancels while we don't yet have a number.
+        if (parsed.negative && !draft.phone) {
           awaitingReceiptRef.current = false
           lastSaleRef.current = null
           const reply = 'Okay, no receipt.'
@@ -210,17 +220,35 @@ export function useAgent() {
           await speak(reply)
           return
         }
-        if (!parsed.phone) {
-          const reply = "Please tell me the buyer's name and phone number, or say no."
+
+        if (parsed.name) draft.name = parsed.name
+        if (parsed.phone) draft.phone = parsed.phone
+
+        // Still need a phone number.
+        if (!draft.phone) {
+          const reply = draft.name
+            ? `Got it, ${draft.name}. What is the phone number? Or say no.`
+            : "Please say the buyer's name and phone number, or say no."
           pushMessage({ role: 'assistant', content: reply })
           await speak(reply)
-          return // stay in receipt-awaiting mode
+          return
         }
+
+        // Have a phone but no name yet — ask once, then proceed regardless.
+        if (!draft.name && !draft.askedName) {
+          draft.askedName = true
+          const reply = 'And what is the customer name?'
+          pushMessage({ role: 'assistant', content: reply })
+          await speak(reply)
+          return
+        }
+
         awaitingReceiptRef.current = false
         const reply = await handleReceipt(
-          { customerName: parsed.name, customerPhone: parsed.phone },
+          { customerName: draft.name, customerPhone: draft.phone },
           storeRef.current.state,
         )
+        receiptDraftRef.current = { name: '', phone: '', askedName: false }
         pushMessage({ role: 'assistant', content: reply })
         await speak(reply)
         return
@@ -376,6 +404,7 @@ export function useAgent() {
           date: formatDate(nowIso),
         }
         awaitingReceiptRef.current = true
+        receiptDraftRef.current = { name: '', phone: '', askedName: false }
         reply += ' Would the buyer like a receipt? If yes, tell me their name and phone number. If not, say no.'
       }
       pushMessage({ role: 'assistant', content: reply })
@@ -404,6 +433,7 @@ export function useAgent() {
     pendingRef.current = null
     resumeAfterConfirmRef.current = false
     awaitingReceiptRef.current = false
+    receiptDraftRef.current = { name: '', phone: '', askedName: false }
     pushMessage({ role: 'assistant', content: 'Okay, cancelled.' })
   }, [pushMessage])
 
@@ -426,6 +456,7 @@ export function useAgent() {
     setReceiptSales(null)
     awaitingReceiptRef.current = false
     lastSaleRef.current = null
+    receiptDraftRef.current = { name: '', phone: '', askedName: false }
   }, [])
 
   return {

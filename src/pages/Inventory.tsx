@@ -12,7 +12,7 @@ import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
-  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt } = useStore()
+  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
@@ -350,6 +350,27 @@ export default function Inventory() {
         units_per_pack: factor,
         category: inlineEditCategory,
       }).catch(() => {})
+
+      // If this stock was bought on supplier credit, keep the linked "I owe them"
+      // debt in step with the edited cost/quantity. The debt is tagged by a
+      // "Stock: <name> (...)" description; only adjust when exactly one unpaid
+      // owing debt matches (to avoid guessing among several restock debts).
+      const stockPrefix = `Stock: ${original.name} (`
+      const linkedDebts = state.debts.filter(
+        (d) => d.type === 'owing' && !d.is_paid && (d.description ?? '').startsWith(stockPrefix),
+      )
+      if (linkedDebts.length === 1) {
+        const debt = linkedDebts[0]
+        const newAmount = Math.round(baseCost * baseQty * 100) / 100
+        const paid = debt.amount_paid || 0
+        const settled = paid >= newAmount - 0.001
+        updateDebt(debt.id, {
+          amount: newAmount,
+          description: `Stock: ${inlineEditName} (${baseQty} ${inlineEditUnit})`,
+          is_paid: settled,
+          paid_at: settled ? debt.paid_at ?? new Date().toISOString() : null,
+        }).catch(() => {})
+      }
 
       showToast('Product updated!', 'success')
       setInlineEditId(null)

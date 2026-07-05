@@ -12,7 +12,7 @@ import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
 
 export default function Inventory() {
-  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt } = useStore()
+  const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt, removeDebt } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
@@ -384,8 +384,18 @@ export default function Inventory() {
   const handleDelete = async (productId: string) => {
     setDeletingProduct(true)
     try {
+      const product = state.products.find((p) => p.id === productId)
       dispatch({ type: 'DELETE_PRODUCT', id: productId })
       removeProduct(productId).catch(() => {})
+      // Remove the unpaid supplier-credit "I owe them" entries tied to this stock
+      // (tagged "Stock: <name> (...)"). Partly-paid debts are kept to preserve
+      // their payment history.
+      if (product) {
+        const prefix = `Stock: ${product.name} (`
+        state.debts
+          .filter((d) => d.type === 'owing' && (d.amount_paid || 0) === 0 && (d.description ?? '').startsWith(prefix))
+          .forEach((d) => removeDebt(d.id).catch(() => {}))
+      }
       setShowDeleteConfirm(null)
     } catch {
       showToast('Failed to delete', 'error')

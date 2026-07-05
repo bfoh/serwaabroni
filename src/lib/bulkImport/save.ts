@@ -50,7 +50,6 @@ export async function saveBulkRows(
   const opts = cashOpts(mode)
   const injectionId = mode.kind === 'purchase' ? mode.injectionId : null
   const result: BulkSaveResult = { added: 0, restocked: 0, failed: 0, failures: [] }
-  let supplierTotal = 0
   const total = rows.length
 
   for (let i = 0; i < rows.length; i++) {
@@ -87,31 +86,38 @@ export async function saveBulkRows(
         await api.receiveStock({ productId: id, qty: base.quantity, unitCost: base.costPrice, injectionId, ...opts })
         result.restocked++
       }
-      supplierTotal += Math.round(base.costPrice * base.quantity * 100) / 100
+      // Supplier credit → one "I owe them" entry per item (matches single-add),
+      // so each can be traced, edited, and removed individually.
+      if (mode.kind === 'supplier_credit') {
+        const amount = Math.round(base.costPrice * base.quantity * 100) / 100
+        if (amount > 0) {
+          try {
+            await api.addDebt({
+              id: uid(),
+              person_name: mode.supplierName,
+              phone: mode.supplierPhone,
+              amount,
+              amount_paid: 0,
+              payments: [],
+              description: `Stock: ${row.name} (${base.quantity} ${row.unit})`,
+              type: 'owing',
+              due_date: null,
+              injection_id: null,
+              sale_group_id: null,
+              is_paid: false,
+              paid_at: null,
+              created_at: new Date().toISOString(),
+            })
+          } catch {
+            /* debt is best-effort; the stock is already saved */
+          }
+        }
+      }
     } catch (e) {
       result.failed++
       result.failures.push({ name: row.name || 'row', error: e instanceof Error ? e.message : String(e) })
     }
     onProgress?.(i + 1, total)
-  }
-
-  if (mode.kind === 'supplier_credit' && supplierTotal > 0) {
-    await api.addDebt({
-      id: uid(),
-      person_name: mode.supplierName,
-      phone: mode.supplierPhone,
-      amount: Math.round(supplierTotal * 100) / 100,
-      amount_paid: 0,
-      payments: [],
-      description: `Bulk stock (${result.added + result.restocked} items)`,
-      type: 'owing',
-      due_date: null,
-      injection_id: null,
-      sale_group_id: null,
-      is_paid: false,
-      paid_at: null,
-      created_at: new Date().toISOString(),
-    })
   }
 
   return result

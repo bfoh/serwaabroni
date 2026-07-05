@@ -48,14 +48,17 @@ describe('saveBulkRows', () => {
     expect(api.receiveStock.mock.calls[0][0]).toMatchObject({ injectionId: 'inj-1' })
   })
 
-  it('supplier credit: unpaid opts + one aggregate owing debt', async () => {
+  it('supplier credit: unpaid opts + one owing debt per item', async () => {
     const api = fakeApi()
     const mode: CashMode = { kind: 'supplier_credit', supplierName: 'Ali', supplierPhone: null }
     await saveBulkRows([newRow, restockRow], products, mode, api)
     expect(api.addProduct.mock.calls[0][2]).toEqual({ unpaid: true })
-    expect(api.addDebt).toHaveBeenCalledTimes(1)
+    expect(api.addDebt).toHaveBeenCalledTimes(2) // one per item
+    const amounts = api.addDebt.mock.calls.map((c) => (c[0] as { amount: number }).amount).sort((a, b) => a - b)
+    expect(amounts).toEqual([2 * 24, 40 * 3]) // Indomie restock, Rice new
     const debt = api.addDebt.mock.calls[0][0]
-    expect(debt).toMatchObject({ person_name: 'Ali', type: 'owing', amount: 40 * 3 + 2 * 24 })
+    expect(debt).toMatchObject({ person_name: 'Ali', type: 'owing' })
+    expect((debt as { description: string }).description).toContain('Stock: ')
   })
 
   it('reports per-row failures without aborting', async () => {

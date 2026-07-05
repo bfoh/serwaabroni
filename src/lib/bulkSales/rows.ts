@@ -90,7 +90,13 @@ export function normalizeSaleRow(raw: SaleRawRow): SaleDraftRow {
 
 export function matchSaleRow(row: SaleDraftRow, products: Product[]): SaleDraftRow {
   const m = matchProduct(row.product, products)
-  return { ...row, productId: m.product ? m.product.id : null }
+  if (!m.product) return { ...row, productId: null }
+  const p = m.product
+  // Default the unit to the product's real base unit; keep the bigger (pack) unit
+  // only if the row explicitly named it.
+  const packUnit = p.pack_unit
+  const isPack = p.units_per_pack >= 2 && !!packUnit && row.unit.trim().toLowerCase() === packUnit.trim().toLowerCase()
+  return { ...row, productId: p.id, unit: isPack ? packUnit! : p.unit }
 }
 
 export function isPackedSale(row: SaleDraftRow, product: Product): boolean {

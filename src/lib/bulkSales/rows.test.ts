@@ -46,6 +46,16 @@ describe('matchSaleRow', () => {
     const r = matchSaleRow(normalizeSaleRow({ product: 'ZZZ', quantity: 2 }), [prod({})])
     expect(r.productId).toBeNull()
   })
+  it('defaults unit to the product base unit when the row unit is generic', () => {
+    const products = [prod({ id: 'indomie', name: 'Indomie', unit: 'sachet', pack_unit: 'box', units_per_pack: 40 })]
+    const r = matchSaleRow(normalizeSaleRow({ product: 'Indomie', quantity: 2 }), products) // unit defaults 'piece'
+    expect(r.unit).toBe('sachet')
+  })
+  it('keeps the pack unit when the row explicitly names it', () => {
+    const products = [prod({ id: 'indomie', name: 'Indomie', unit: 'sachet', pack_unit: 'box', units_per_pack: 40 })]
+    const r = matchSaleRow(normalizeSaleRow({ product: 'Indomie', quantity: 2, unit: 'box' }), products)
+    expect(r.unit).toBe('box')
+  })
 })
 
 describe('toBaseSale', () => {

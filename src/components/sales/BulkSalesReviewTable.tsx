@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import type { Product } from '@/lib/supabase'
-import { saleRowStatus, PAYMENTS, type SaleDraftRow } from '@/lib/bulkSales/rows'
+import { formatCurrency } from '@/lib/data'
+import { saleRowStatus, isPackedSale, toBaseSale, PAYMENTS, type SaleDraftRow } from '@/lib/bulkSales/rows'
 
 const toDateInput = (iso: string) => {
   const d = new Date(iso)
@@ -39,7 +40,12 @@ export default function BulkSalesReviewTable({
               <div key={r.id} className="space-y-0.5">
                 <div className="flex items-center gap-2 text-xs">
                   <select
-                    value={r.productId ?? ''} onChange={(e) => set(r.id, { productId: e.target.value || null })}
+                    value={r.productId ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value || null
+                      const p = id ? products.find((x) => x.id === id) : undefined
+                      set(r.id, { productId: id, unit: p ? p.unit : r.unit })
+                    }}
                     className={`flex-1 min-w-0 harsh-border rounded-sm px-1 py-1.5 border ${r.productId ? 'border-ink/20' : 'border-accent-red'}`}
                   >
                     <option value="">— pick product{r.product ? ` (“${r.product}”)` : ''} —</option>
@@ -48,8 +54,19 @@ export default function BulkSalesReviewTable({
                   <input type="number" inputMode="decimal" value={r.quantity || ''}
                     onChange={(e) => set(r.id, { quantity: Number(e.target.value) })} placeholder="Qty"
                     className={`w-14 harsh-border rounded-sm px-2 py-1.5 border ${s.errors.includes('quantity') ? 'border-accent-red' : 'border-ink/20'}`} />
-                  <input value={r.unit} onChange={(e) => set(r.id, { unit: e.target.value })} placeholder="Unit"
-                    className="w-16 harsh-border rounded-sm px-2 py-1.5 border border-ink/20" />
+                  {product ? (
+                    <select value={r.unit} onChange={(e) => set(r.id, { unit: e.target.value })}
+                      title="Choose the unit sold (small unit or pack)"
+                      className="w-20 harsh-border rounded-sm px-1 py-1.5 border border-ink/20">
+                      {(product.units_per_pack >= 2 && product.pack_unit
+                        ? [product.unit, product.pack_unit]
+                        : [product.unit]
+                      ).map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  ) : (
+                    <input value={r.unit} onChange={(e) => set(r.id, { unit: e.target.value })} placeholder="Unit"
+                      className="w-20 harsh-border rounded-sm px-2 py-1.5 border border-ink/20" />
+                  )}
                   <input type="number" inputMode="decimal" value={r.unitPrice ?? ''}
                     onChange={(e) => set(r.id, { unitPrice: e.target.value === '' ? null : Number(e.target.value) })}
                     placeholder={product ? String(product.selling_price) : 'Price'}
@@ -70,6 +87,11 @@ export default function BulkSalesReviewTable({
                     <Trash2 size={14} />
                   </button>
                 </div>
+                {product && isPackedSale(r, product) && (
+                  <p className="text-[10px] text-muted-text pl-1">
+                    {r.quantity} {r.unit} × {product.units_per_pack} = {toBaseSale(r, product).quantity} {product.unit} · {formatCurrency(toBaseSale(r, product).unitPrice)}/{product.unit}
+                  </p>
+                )}
                 {s.warnings.includes('stock') && (
                   <p className="text-[10px] text-accent-red pl-1">More than current stock — allowed, but stock will floor at 0.</p>
                 )}

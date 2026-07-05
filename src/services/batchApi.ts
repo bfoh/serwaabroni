@@ -9,6 +9,12 @@ async function uidOrThrow(): Promise<string> {
   return uid
 }
 
+// Whether a received stock batch should post a cash outflow. Opening stock
+// (recording inventory already owned) and supplier credit (unpaid) do not.
+export function shouldPostStockCash(o: { unpaid?: boolean; opening?: boolean; totalCost: number }): boolean {
+  return !o.unpaid && !o.opening && o.totalCost > 0
+}
+
 // Create a batch when stock is received. injectionId links it to capital (Plan 2);
 // pass null for an ordinary restock.
 export async function receiveStock(params: {
@@ -19,6 +25,7 @@ export async function receiveStock(params: {
   purchasedAt?: string
   account?: import('@/lib/cashBalances').CashAccount
   unpaid?: boolean
+  opening?: boolean
 }): Promise<StockBatch> {
   const uid = await uidOrThrow()
   const { data, error } = await supabase
@@ -39,7 +46,7 @@ export async function receiveStock(params: {
   const batch = data as StockBatch
   // Ledger: a stock purchase leaves the chosen account, unless bought on supplier
   // credit (unpaid). Existing callers pass nothing → defaults to a cash outflow.
-  if (!params.unpaid && batch.total_cost > 0) {
+  if (shouldPostStockCash({ unpaid: params.unpaid, opening: params.opening, totalCost: batch.total_cost })) {
     try {
       const { postMovement } = await import('@/services/cashApi')
       await postMovement({

@@ -21,3 +21,8 @@ verify_jwt = false
 # JWT check is disabled.
 [functions.serwaa-agent]
 verify_jwt = false
+
+# Client-invoked: reads a stock-list photo with Claude vision. The function
+# validates the user token in the body, so the gateway JWT check is disabled.
+[functions.serwaa-stock-vision]
+verify_jwt = false

@@ -13,7 +13,7 @@ function toCSV(headers: string[], rows: (string | number | null)[][]): string {
   return [headers.map(escape).join(','), ...rows.map((row) => row.map(escape).join(','))].join('\n')
 }
 
-function download(filename: string, content: string) {
+export function download(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)

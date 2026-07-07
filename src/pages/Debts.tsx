@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2, Landmark } from 'lucide-react'
+import { Plus, X, Phone, User, CalendarDays, CheckCircle, Send, Pencil, Trash2, Landmark, Undo2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, formatTime, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
@@ -288,7 +288,42 @@ export default function Debts() {
   const handleMarkPaid = (debtId: string) => {
     const debt = state.debts.find((d) => d.id === debtId)
     if (!debt) return
+    if (!confirm(`Mark ${debt.person_name}'s debt of ${formatCurrency(remainingAmount(debt))} as fully paid?`)) return
     recordPayment(debtId, remainingAmount(debt))
+  }
+
+  const handleUnmarkPaid = async (debt: Debt) => {
+    if (!debt.payments || debt.payments.length === 0) return
+
+    const lastPayment = debt.payments[debt.payments.length - 1]
+    const newPayments = debt.payments.slice(0, -1)
+    const newPaid = Math.max(0, (debt.amount_paid || 0) - lastPayment.amount)
+
+    try {
+      await updateDebt(debt.id, {
+        amount_paid: newPaid,
+        payments: newPayments,
+        is_paid: false,
+        paid_at: null,
+      })
+      if (debt.type === 'owed') {
+        dispatch({ type: 'SET_BALANCE', value: state.balance - lastPayment.amount })
+        dispatch({ type: 'SET_PENDING_DEBTS', value: state.pendingDebts + lastPayment.amount })
+      }
+      // Reverse the corresponding cash movement ledger entry
+      try {
+        const { fetchMovements } = await import('@/services/cashApi')
+        const rows = await fetchMovements(500)
+        const match = rows.find((m) => m.ref_table === 'debts' && m.ref_id === debt.id && Math.abs(m.amount - lastPayment.amount) < 0.001)
+        if (match) {
+          const { supabase } = await import('@/lib/supabase')
+          await supabase.from('cash_movements').delete().eq('id', match.id)
+        }
+      } catch { /* best-effort */ }
+      showToast(`${debt.person_name}'s debt reopened`, 'success')
+    } catch {
+      showToast('Failed to undo payment', 'error')
+    }
   }
 
   // Allocate a supplier repayment across that supplier's owing debts, oldest
@@ -339,6 +374,8 @@ export default function Debts() {
 
   const markGroupPaid = (debts: Debt[]) => {
     const total = debts.reduce((s, d) => s + remainingAmount(d), 0)
+    const name = debts[0]?.person_name || 'this supplier'
+    if (!confirm(`Mark all ${formatCurrency(total)} owed to ${name} as fully paid?`)) return
     recordGroupPayment(debts, total, 'cash')
   }
 
@@ -648,12 +685,27 @@ export default function Debts() {
             <p className="text-micro text-muted-text mb-3">{t('paid_debts')}</p>
             <div className="space-y-2">
               {paidDebts.slice(0, 5).map((debt) => (
-                <div key={debt.id} className="bg-light/60 border border-ink/10 rounded-sm px-4 py-3 flex items-center justify-between opacity-60">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle size={14} className="text-accent-green" />
-                    <span className="text-sm">{debt.person_name}</span>
+                <div key={debt.id} className="bg-light/60 border border-ink/10 rounded-sm px-4 py-3 flex items-center justify-between opacity-80 transition-opacity hover:opacity-100">
+                  <div className="flex flex-col min-w-0 pr-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={14} className="text-accent-green shrink-0" />
+                      <span className="text-sm font-medium truncate">{debt.person_name}</span>
+                    </div>
+                    <div className="text-[10px] text-muted-text mt-0.5 ml-5 flex flex-col gap-0.5">
+                      <span className="uppercase tracking-wider">{debt.type === 'owed' ? t('they_owe_you') : t('you_owe')}</span>
+                      {debt.paid_at && <span>Paid {formatDate(debt.paid_at)}</span>}
+                    </div>
                   </div>
-                  <span className="font-display text-sm text-muted-text">{formatCurrency(debt.amount)}</span>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="font-display text-sm text-muted-text">{formatCurrency(debt.amount)}</span>
+                    <button 
+                      onClick={() => confirm(`Reopen this debt for ${debt.person_name}? It will move back to the active list.`) && handleUnmarkPaid(debt)}
+                      className="p-1.5 text-ink/40 hover:text-ink hover:bg-ink/5 rounded-sm transition-colors"
+                      aria-label="Undo payment"
+                    >
+                      <Undo2 size={16} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { ArrowLeft, AlertTriangle, Users, ChevronRight } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Users, ChevronRight, Undo2 } from 'lucide-react'
 import { formatCurrency, formatDate, formatTime } from '@/lib/data'
 import {
   fetchInjection, fetchInstallments, fetchRecoveredProfit, fetchFundedStock, fetchConsumptions,
-  fetchInjectionReceivables, recordInstallmentPayment, updateInjectionRisk,
+  fetchInjectionReceivables, recordInstallmentPayment, updateInjectionRisk, undoInstallmentPayment,
   type FundedStockRow, type InjectionReceivable,
 } from '@/services/capitalApi'
 import { computeRisk } from '@/lib/capitalRisk'
@@ -78,6 +78,17 @@ export default function InjectionDetail() {
     finally { setBusy(false) }
   }
 
+  const undoInstallment = async (installmentId: string, amount: number) => {
+    if (!confirm(`Undo this installment payment of ${formatCurrency(amount)}?`)) return
+    setBusy(true)
+    try {
+      await undoInstallmentPayment(inj.id, installmentId)
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-light pb-12">
       <header className="bg-ink text-white px-5 pt-[calc(env(safe-area-inset-top)_+_1.5rem)] pb-4">
@@ -128,11 +139,23 @@ export default function InjectionDetail() {
               const paid = i.amount_paid >= i.amount_due
               const overdue = !paid && new Date(i.due_date).getTime() <= Date.now()
               return (
-                <div key={i.id} className="flex justify-between">
+                <div key={i.id} className="flex justify-between items-center py-1">
                   <span>{paid ? '✅' : overdue ? '🔴' : '🔔'} {formatDate(i.due_date)} · {formatCurrency(i.amount_due)}</span>
-                  <span className={paid ? 'text-accent-green' : overdue ? 'text-accent-red' : 'text-muted-text'}>
-                    {paid ? 'paid' : overdue ? 'overdue' : 'upcoming'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={paid ? 'text-accent-green' : overdue ? 'text-accent-red' : 'text-muted-text'}>
+                      {paid ? 'paid' : overdue ? 'overdue' : 'upcoming'}
+                    </span>
+                    {paid && (
+                      <button
+                        onClick={() => undoInstallment(i.id, i.amount_paid)}
+                        disabled={busy}
+                        className="p-1 text-ink/40 hover:text-ink hover:bg-ink/5 rounded-sm transition-colors disabled:opacity-50"
+                        aria-label="Undo payment"
+                      >
+                        <Undo2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}

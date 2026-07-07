@@ -330,6 +330,61 @@ export async function recordInstallmentPayment(injectionId: string, amount: numb
   }
 }
 
+export async function undoInstallmentPayment(injectionId: string, installmentId: string): Promise<void> {
+  const uid = await uidOrThrow()
+  
+  // 1. Fetch the specific installment
+  const { data: instData, error: instError } = await supabase
+    .from('repayment_installments')
+    .select('*')
+    .eq('id', installmentId)
+    .eq('user_id', uid)
+    .single()
+  
+  if (instError || !instData) throw instError || new Error('Installment not found')
+  const inst = instData as RepaymentInstallment
+
+  if (inst.amount_paid <= 0) return
+
+  const amountToUndo = inst.amount_paid
+  const isOverdue = new Date(inst.due_date).getTime() <= Date.now()
+
+  // 2. Reset installment
+  await supabase
+    .from('repayment_installments')
+    .update({ amount_paid: 0, status: isOverdue ? 'overdue' : 'due', paid_at: null })
+    .eq('id', installmentId)
+    .eq('user_id', uid)
+
+  // 3. Update injection amount_repaid and status
+  const injection = await fetchInjection(injectionId)
+  if (injection) {
+    const newRepaid = Math.max(0, Math.round((injection.amount_repaid - amountToUndo) * 100) / 100)
+    await supabase
+      .from('capital_injections')
+      .update({ amount_repaid: newRepaid, status: 'active' }) // Reverts to active
+      .eq('id', injectionId)
+      .eq('user_id', uid)
+  }
+
+  // 4. Reverse corresponding cash movement
+  const { data: moveData } = await supabase
+    .from('cash_movements')
+    .select('id, amount')
+    .eq('ref_table', 'capital_injections')
+    .eq('ref_id', injectionId)
+    .eq('category', 'loan_repayment')
+    .eq('user_id', uid)
+    .order('created_at', { ascending: false })
+
+  if (moveData && moveData.length > 0) {
+    const match = moveData.find(m => Math.abs(m.amount - amountToUndo) < 0.001)
+    if (match) {
+      await supabase.from('cash_movements').delete().eq('id', match.id)
+    }
+  }
+}
+
 // ── Receivables: customers who owe against a loan ────────────────────────────
 // Two sources are unioned per loan:
 //  • manual debts tagged injection_id = X (shown at full outstanding)

@@ -1,14 +1,23 @@
 import type { ReactElement } from 'react'
+import { CATEGORY_ICON_MAP } from '@/lib/categoryIconMap'
 
 interface ProductIconProps {
   category: string
+  iconKey?: string
   size?: number
   className?: string
 }
 
-export default function ProductIcon({ category, size = 32, className = '' }: ProductIconProps) {
+export default function ProductIcon({ category, iconKey, size = 32, className = '' }: ProductIconProps) {
   const strokeWidth = 2
   const color = '#1A150D'
+
+  // Custom/non-legacy categories carry their own stored icon key
+  // (business_categories.icon) — render that via lucide-react when present.
+  if (iconKey && CATEGORY_ICON_MAP[iconKey]) {
+    const Lucide = CATEGORY_ICON_MAP[iconKey]
+    return <Lucide size={size} color={color} strokeWidth={strokeWidth} className={className} />
+  }
 
   const icons: Record<string, ReactElement> = {
     Dairy: (

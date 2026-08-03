@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle, Clock } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -10,9 +10,16 @@ import StockHistorySheet from '@/components/StockHistorySheet'
 import BulkAddSheet from '@/components/inventory/BulkAddSheet'
 import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
+import { templateForIndustry } from '@/lib/categories'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt, removeDebt } = useStore()
+  const categoryNames = useMemo(
+    () => (state.categories.length > 0
+      ? state.categories.map((c) => c.name)
+      : templateForIndustry('Supermarket').map((c) => c.name)),
+    [state.categories],
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
@@ -194,7 +201,7 @@ export default function Inventory() {
       }
       showToast(addUnpaid ? `Product added — owe ${addSupplierName.trim()}` : (t('product_added') || 'Product added!'), 'success')
       setShowAddProduct(false)
-      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries', multiUnit: false, packUnit: 'box', unitsPerPack: '', qtyUnitKind: 'base' })
+      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: categoryNames[0] || 'Uncategorized', multiUnit: false, packUnit: 'box', unitsPerPack: '', qtyUnitKind: 'base' })
       setAddProductInjectionId('')
       setAddPayFrom('cash')
       setAddUnpaid(false)
@@ -404,8 +411,6 @@ export default function Inventory() {
     }
   }
 
-  const categories = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
-
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}
@@ -420,7 +425,10 @@ export default function Inventory() {
               Bulk add
             </button>
             <button
-              onClick={() => setShowAddProduct(true)}
+              onClick={() => {
+                setNewProduct((prev) => ({ ...prev, category: categoryNames[0] || 'Uncategorized' }))
+                setShowAddProduct(true)
+              }}
               className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
             >
               <Plus size={20} strokeWidth={2.5} className="text-white" />
@@ -626,7 +634,7 @@ export default function Inventory() {
                     onChange={(e) => setInlineEditCategory(e.target.value)}
                     className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                   >
-                    {categories.map((cat) => (
+                    {categoryNames.map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -651,7 +659,7 @@ export default function Inventory() {
               <>
                 <div className="p-4 flex items-center gap-3">
                   <div className="w-12 h-12 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
-                    <ProductIcon category={product.category} size={28} />
+                    <ProductIcon category={product.category} iconKey={state.categories.find((c) => c.name === product.category)?.icon} size={28} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -1079,7 +1087,7 @@ export default function Inventory() {
                   <div>
                     <label className="text-micro text-muted-text mb-1.5 block">CATEGORY</label>
                     <div className="grid grid-cols-4 gap-2">
-                      {categories.map((cat) => (
+                      {categoryNames.map((cat) => (
                         <button
                           key={cat}
                           onClick={() => setNewProduct({ ...newProduct, category: cat })}

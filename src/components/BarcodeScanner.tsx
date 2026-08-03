@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Flashlight, FlashlightOff, Package, Plus, Minus, Camera,
@@ -16,6 +16,7 @@ const loadHtml5 = async () => (html5Mod ??= await import('html5-qrcode'))
 import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
+import { templateForIndustry } from '@/lib/categories'
 
 // ============================================================
 // TYPES
@@ -99,13 +100,19 @@ const UNIT_OPTIONS = [
   { value: 'loaf', label: 'Loaf' },
   { value: 'kg', label: 'Kg' },
 ]
-const CATEGORY_OPTIONS = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
-
 // ============================================================
 // COMPONENT
 // ============================================================
 export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps) {
   const { state, showToast, addProduct, updateProduct } = useStore()
+  // Per-tenant category list (falls back to the Supermarket template before
+  // categories have loaded, e.g. right after login or while offline).
+  const categoryNames = useMemo(
+    () => (state.categories.length > 0
+      ? state.categories.map((c) => c.name)
+      : templateForIndustry('Supermarket').map((c) => c.name)),
+    [state.categories],
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Live camera + decode loop is owned by the shared useScanCamera hook.
@@ -160,7 +167,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   const [manualPrice, setManualPrice] = useState('')
   const [manualQty, setManualQty] = useState(1)
   const [manualUnit, setManualUnit] = useState('piece')
-  const [manualCategory, setManualCategory] = useState('Groceries')
+  const [manualCategory, setManualCategory] = useState(categoryNames[0] || 'Uncategorized')
 
   const resetManual = useCallback(() => {
     setManualName('')
@@ -168,8 +175,8 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     setManualPrice('')
     setManualQty(1)
     setManualUnit('piece')
-    setManualCategory('Groceries')
-  }, [])
+    setManualCategory(categoryNames[0] || 'Uncategorized')
+  }, [categoryNames])
   const [isListening, setIsListening] = useState(false)
 
   // ==========================================================
@@ -234,7 +241,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
           selling_price: Number(json.selling_price) || Number(json.price) || 0,
           quantity: Number(json.quantity) || 1,
           unit: json.unit || 'piece',
-          category: json.category || 'Groceries',
+          category: json.category || categoryNames[0] || 'Uncategorized',
           low_stock_threshold: 5,
           source: 'qr',
         })
@@ -277,7 +284,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
         selling_price: 0,
         quantity: 1,
         unit: catalogData.unit || 'piece',
-        category: catalogData.category || 'Groceries',
+        category: catalogData.category || categoryNames[0] || 'Uncategorized',
         low_stock_threshold: 5,
         source: 'catalog',
       })
@@ -313,13 +320,13 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       selling_price: 0,
       quantity: 1,
       unit: 'piece',
-      category: 'Groceries',
+      category: categoryNames[0] || 'Uncategorized',
       low_stock_threshold: 5,
       source: 'manual',
     })
     setScanMode('manual')
     resetManual()
-  }, [state.products])
+  }, [state.products, categoryNames])
 
   // ==========================================================
   // CAMERA SCAN SUCCESS
@@ -833,7 +840,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
               <div className="mb-5">
                 <label className="text-micro text-muted-text mb-2 block">CATEGORY</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {CATEGORY_OPTIONS.map((cat) => (
+                  {categoryNames.map((cat) => (
                     <button
                       key={cat}
                       type="button"
@@ -1067,7 +1074,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   <div className="mb-5">
                     <label className="text-micro text-muted-text mb-2 block">CATEGORY</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {CATEGORY_OPTIONS.map((cat) => (
+                      {categoryNames.map((cat) => (
                         <button
                           key={cat}
                           type="button"

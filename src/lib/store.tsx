@@ -25,7 +25,7 @@ import {
 import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
 import {
   fetchCategories, insertCategory, renameCategoryDb, deleteCategoryDb,
-  seedCategoriesForIndustry,
+  seedCategoriesForIndustry, updateProductsCategoryBulk,
 } from '@/services/categoriesApi'
 import { canDeleteCategory, applyCategoryRename } from '@/lib/categoriesLogic'
 import { contributeCatalog } from '@/services/catalogApi'
@@ -270,6 +270,7 @@ interface StoreContextType {
   renameCategory: (id: string, newName: string) => Promise<void>
   removeCategory: (id: string) => Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }>
   loadStarterCategories: (industry: string) => Promise<void>
+  reassignAndDeleteCategory: (id: string, fromName: string, toName: string) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   resetAllData: () => Promise<void>
   logout: () => Promise<void>
@@ -916,6 +917,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast])
 
+  const reassignAndDeleteCategory = useCallback(async (id: string, fromName: string, toName: string) => {
+    try {
+      await updateProductsCategoryBulk(fromName, toName)
+      dispatch({ type: 'SET_PRODUCTS', products: applyCategoryRename(state.products, fromName, toName) })
+      await deleteCategoryDb(id)
+      dispatch({ type: 'DELETE_CATEGORY', id })
+      showToast('Products moved, category deleted', 'success')
+    } catch {
+      showToast('Could not delete category', 'error')
+    }
+  }, [state.products, showToast])
+
   const logout = useCallback(async () => {
     await supabaseSignOut()
     dispatch({ type: 'SET_USER', user: null })
@@ -979,7 +992,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addProduct, updateProduct, removeProduct,
       addSale, addSaleBatch, deleteSale, addDebt, updateDebt, removeDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
-      addCategory, renameCategory, removeCategory, loadStarterCategories,
+      addCategory, renameCategory, removeCategory, loadStarterCategories, reassignAndDeleteCategory,
       updateBusinessProfile,
       resetAllData,
       logout,

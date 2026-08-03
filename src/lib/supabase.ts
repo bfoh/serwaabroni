@@ -183,6 +183,7 @@ export interface BusinessProfile {
   logo_url?: string | null
   currency: string
   language: string
+  industry?: string | null
   status?: 'active' | 'suspended'
   suspended_at?: string | null
   suspended_reason?: string | null

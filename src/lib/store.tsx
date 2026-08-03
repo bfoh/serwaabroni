@@ -383,7 +383,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.dataLoading) return // don't persist during initial load
     persistFromState(state)
-  }, [state.products, state.sales, state.debts, state.expenses, state.customers])
+  }, [state.products, state.sales, state.debts, state.expenses, state.customers, state.categories])
 
   const setTab = useCallback((tab: Tab) => { dispatch({ type: 'SET_TAB', tab }) }, [])
 

@@ -8,9 +8,10 @@ CREATE TABLE IF NOT EXISTS business_categories (
   icon text NOT NULL DEFAULT 'box',
   sort_order int NOT NULL DEFAULT 0,
   is_builtin boolean NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, lower(name))
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_business_categories_user_name ON business_categories (user_id, lower(name));
 
 ALTER TABLE business_categories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own business_categories"   ON business_categories FOR SELECT USING (auth.uid() = user_id);

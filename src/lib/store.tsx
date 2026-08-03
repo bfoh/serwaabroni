@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
-import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
+import type { Product, Sale, Debt, Expense, BusinessProfile, Customer, BusinessCategory } from './supabase'
 import { cacheOfflineData, clearOfflineData, queueOperation, syncQueue, getQueue, getQueueLength, mergeDebts, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
@@ -23,6 +23,11 @@ import {
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
 import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
+import {
+  fetchCategories, insertCategory, renameCategoryDb, deleteCategoryDb,
+  seedCategoriesForIndustry,
+} from '@/services/categoriesApi'
+import { canDeleteCategory, applyCategoryRename } from '@/lib/categoriesLogic'
 import { contributeCatalog } from '@/services/catalogApi'
 import { postMovement as postCashMovement, deleteMovementsByRef as deleteCashByRef } from '@/services/cashApi'
 import type { CashAccount } from '@/lib/cashBalances'
@@ -49,6 +54,7 @@ export interface AppState {
   debts: Debt[]
   expenses: Expense[]
   customers: Customer[]
+  categories: BusinessCategory[]
   alerts: Alert[]
   showAddSheet: boolean
   selectedProductId: string | null
@@ -91,6 +97,10 @@ type Action =
   | { type: 'SET_CUSTOMERS'; customers: Customer[] }
   | { type: 'ADD_CUSTOMER'; customer: Customer }
   | { type: 'UPDATE_CUSTOMER'; customer: Customer }
+  | { type: 'SET_CATEGORIES'; categories: BusinessCategory[] }
+  | { type: 'ADD_CATEGORY'; category: BusinessCategory }
+  | { type: 'UPDATE_CATEGORY'; category: BusinessCategory }
+  | { type: 'DELETE_CATEGORY'; id: string }
   | { type: 'TOGGLE_ADD_SHEET'; show: boolean }
   | { type: 'SELECT_PRODUCT'; id: string | null }
   | { type: 'SHOW_TOAST'; message: string; toastType: 'success' | 'error' }
@@ -107,7 +117,7 @@ type Action =
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
   | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
-  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
+  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; categories: BusinessCategory[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
 function getStoredLang(): Language {
   try { return (localStorage.getItem('serwaabroni_language') as Language) || 'en' }
@@ -126,6 +136,7 @@ const initialState: AppState = {
   debts: [],
   expenses: [],
   customers: [],
+  categories: [],
   alerts: [],
   showAddSheet: false,
   selectedProductId: null,
@@ -145,16 +156,22 @@ const initialState: AppState = {
 }
 
 // Helper: persist current data to localStorage (for offline access)
-function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses' | 'customers'>) {
+function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses' | 'customers' | 'categories'>) {
   saveData({
     products: state.products,
     sales: state.sales,
     debts: state.debts,
     expenses: state.expenses,
     customers: state.customers,
+    categories: state.categories,
     businessName: '',
     ownerName: '',
   })
+}
+
+// Categories display order: explicit sort_order, then name as a tiebreak.
+function byCategorySortOrder(a: BusinessCategory, b: BusinessCategory): number {
+  return a.sort_order - b.sort_order || a.name.localeCompare(b.name)
 }
 
 function appReducer(state: AppState, action: Action): AppState {
@@ -182,6 +199,10 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_CUSTOMERS': return { ...state, customers: action.customers }
     case 'ADD_CUSTOMER': return { ...state, customers: [action.customer, ...state.customers] }
     case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map((c) => (c.id === action.customer.id ? action.customer : c)) }
+    case 'SET_CATEGORIES': return { ...state, categories: [...action.categories].sort(byCategorySortOrder) }
+    case 'ADD_CATEGORY': return { ...state, categories: [...state.categories, action.category].sort(byCategorySortOrder) }
+    case 'UPDATE_CATEGORY': return { ...state, categories: state.categories.map((c) => (c.id === action.category.id ? action.category : c)) }
+    case 'DELETE_CATEGORY': return { ...state, categories: state.categories.filter((c) => c.id !== action.id) }
     case 'TOGGLE_ADD_SHEET': return { ...state, showAddSheet: action.show }
     case 'SELECT_PRODUCT': return { ...state, selectedProductId: action.id }
     case 'SHOW_TOAST': return { ...state, toast: { message: action.message, type: action.toastType } }
@@ -211,12 +232,12 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
     case 'RESET_TENANT_DATA': return {
       ...state,
-      products: [], sales: [], debts: [], expenses: [], customers: [], alerts: [],
+      products: [], sales: [], debts: [], expenses: [], customers: [], categories: [], alerts: [],
       balance: 0, bankBalance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
     }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
-    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
+    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, categories: action.categories, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
     default: return state
   }
 }
@@ -245,6 +266,10 @@ interface StoreContextType {
   removeExpense: (id: string) => Promise<void>
   addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
+  addCategory: (name: string, icon: string) => Promise<void>
+  renameCategory: (id: string, newName: string) => Promise<void>
+  removeCategory: (id: string) => Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }>
+  loadStarterCategories: (industry: string) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   resetAllData: () => Promise<void>
   logout: () => Promise<void>
@@ -401,6 +426,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         getDashboardSummary(),
         fetchBusinessProfile(),
         fetchCustomers(),
+        fetchCategories(),
       ])
 
       const remoteProducts = results[0].status === 'fulfilled' ? results[0].value : []
@@ -410,6 +436,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0, cashInBank: 0 }
       const profile = results[5].status === 'fulfilled' ? results[5].value : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
+      const remoteCategories = results[7].status === 'fulfilled' ? results[7].value : []
 
       // Defensive tenant guard: only keep rows owned by the active session user
       // (or not-yet-synced local rows). Server queries already scope by user_id;
@@ -436,6 +463,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
         .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const categories = [...(local.categories || []).filter((c) => c.user_id === 'local'), ...remoteCategories]
+        .filter(ownsRow)
+        .sort(byCategorySortOrder)
 
       const generatedAlerts = generateAlerts(products, sales, debts, expenses)
 
@@ -446,6 +476,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts,
         expenses,
         customers,
+        categories,
         alerts: generatedAlerts,
         balance: summary.cashInHand || 0,
         todaySales: summary.todaySales || 0,
@@ -502,6 +533,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        categories: local.categories || [],
         alerts: localAlerts,
         balance: totalSales - totalExpenses - creditSalesOutstanding,
         todaySales,
@@ -534,6 +566,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        categories: local.categories || [],
         alerts: generateAlerts(local.products, local.sales, local.debts, local.expenses),
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
@@ -819,6 +852,70 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state])
 
+  const addCategory = useCallback(async (name: string, icon: string) => {
+    try {
+      const sortOrder = state.categories.length
+      const inserted = await insertCategory({ name, icon, sortOrder })
+      dispatch({ type: 'ADD_CATEGORY', category: inserted })
+      showToast('Category added', 'success')
+    } catch {
+      const localCategory: BusinessCategory = {
+        id: `local-${Date.now()}`,
+        user_id: 'local',
+        name,
+        icon,
+        sort_order: state.categories.length,
+        is_builtin: false,
+        created_at: new Date().toISOString(),
+      }
+      dispatch({ type: 'ADD_CATEGORY', category: localCategory })
+      showToast('Saved locally (will sync when online)', 'success')
+    }
+  }, [state.categories, showToast])
+
+  const renameCategory = useCallback(async (id: string, newName: string) => {
+    const existing = state.categories.find((c) => c.id === id)
+    if (!existing) return
+    const oldName = existing.name
+    try {
+      const updated = await renameCategoryDb(id, newName)
+      dispatch({ type: 'UPDATE_CATEGORY', category: updated })
+      dispatch({ type: 'SET_PRODUCTS', products: applyCategoryRename(state.products, oldName, newName) })
+      showToast('Category renamed', 'success')
+    } catch {
+      showToast('Could not rename category — check your connection', 'error')
+    }
+  }, [state.categories, state.products, showToast])
+
+  const removeCategory = useCallback(async (id: string): Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }> => {
+    const cat = state.categories.find((c) => c.id === id)
+    if (!cat) return { blocked: false, count: 0 }
+    if (cat.is_builtin) {
+      showToast("Uncategorized can't be deleted", 'error')
+      return { blocked: true, count: 0, reason: 'builtin' }
+    }
+    const { allowed, count } = canDeleteCategory(cat.name, state.products)
+    if (!allowed) return { blocked: true, count, reason: 'in-use' }
+    try {
+      await deleteCategoryDb(id)
+      dispatch({ type: 'DELETE_CATEGORY', id })
+      showToast('Category deleted', 'success')
+    } catch {
+      showToast('Could not delete category', 'error')
+    }
+    return { blocked: false, count: 0 }
+  }, [state.categories, state.products, showToast])
+
+  const loadStarterCategories = useCallback(async (industry: string) => {
+    try {
+      const categories = await seedCategoriesForIndustry(industry)
+      dispatch({ type: 'SET_CATEGORIES', categories })
+      showToast('Starter categories loaded', 'success')
+    } catch {
+      showToast('Could not load starter categories', 'error')
+    }
+  }, [showToast])
+
   const logout = useCallback(async () => {
     await supabaseSignOut()
     dispatch({ type: 'SET_USER', user: null })
@@ -882,6 +979,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addProduct, updateProduct, removeProduct,
       addSale, addSaleBatch, deleteSale, addDebt, updateDebt, removeDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
+      addCategory, renameCategory, removeCategory, loadStarterCategories,
       updateBusinessProfile,
       resetAllData,
       logout,

@@ -103,6 +103,16 @@ export interface Customer {
   created_at: string
 }
 
+export interface BusinessCategory {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  sort_order: number
+  is_builtin: boolean
+  created_at: string
+}
+
 export interface StockBatch {
   id: string
   user_id: string

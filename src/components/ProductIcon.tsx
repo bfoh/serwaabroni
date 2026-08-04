@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { CATEGORY_ICON_MAP } from '@/lib/categoryIconMap'
+import { useStore } from '@/lib/store'
 
 interface ProductIconProps {
   category: string
@@ -12,10 +13,17 @@ export default function ProductIcon({ category, iconKey, size = 32, className = 
   const strokeWidth = 2
   const color = '#1A150D'
 
+  // An explicit iconKey prop always wins; otherwise resolve it internally from
+  // the tenant's own category list so every call site gets the right icon for
+  // free, not just the ones that remembered to compute and pass it. See
+  // final-review fix wave, Finding 4.
+  const { state } = useStore()
+  const resolvedIconKey = iconKey ?? state.categories.find((c) => c.name === category)?.icon
+
   // Custom/non-legacy categories carry their own stored icon key
   // (business_categories.icon) — render that via lucide-react when present.
-  if (iconKey && CATEGORY_ICON_MAP[iconKey]) {
-    const Lucide = CATEGORY_ICON_MAP[iconKey]
+  if (resolvedIconKey && CATEGORY_ICON_MAP[resolvedIconKey]) {
+    const Lucide = CATEGORY_ICON_MAP[resolvedIconKey]
     return <Lucide size={size} color={color} strokeWidth={strokeWidth} className={className} />
   }
 

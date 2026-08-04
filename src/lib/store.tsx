@@ -948,7 +948,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const saved = await upsertBusinessProfile(profile)
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
     } catch {
-      dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+      // Do NOT optimistically dispatch the locally-built `profile` here: unlike
+      // every other upsertBusinessProfile caller (which edits an already-fetched
+      // real profile, preserving its real `id`), this profile's `id` is a
+      // fabricated placeholder (state.user?.id, not the row's real gen_random_uuid
+      // primary key). If this write failed because a real profile already exists
+      // (e.g. this gate fired for an existing tenant due to a transient
+      // fetchBusinessProfile glitch rather than a genuine new signup), silently
+      // "succeeding" here would show fabricated data (owner_name wiped, currency
+      // hardcoded to GHS) that looks real but was never saved. Surface the
+      // failure instead and leave state.businessProfile as-is so the next
+      // refreshData() can recover the tenant's real profile.
+      showToast('Could not save your business type — check your connection and try again', 'error')
+      return
     }
     try {
       const seeded = await seedCategoriesForIndustry(industry)

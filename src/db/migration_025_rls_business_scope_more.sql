@@ -10,6 +10,18 @@ DROP POLICY IF EXISTS "Users can insert own expenses" ON expenses;
 CREATE POLICY "Users can insert own expenses" ON expenses
   FOR INSERT WITH CHECK (business_id_for(auth.uid()) = user_id AND is_tenant_active(business_id_for(auth.uid())));
 
+-- Not in the original task brief — migration_005_super_admin.sql:97-99 created
+-- this policy (absent from schema.sql, which only had SELECT/INSERT/DELETE for
+-- expenses), so it's live in the deployed schema and needs the same re-target
+-- as every other owner-scoped policy in this file. The app issues no UPDATE
+-- against expenses today (verified: no .update() call site on this table), so
+-- leaving it un-retargeted would fail closed rather than leak access — but
+-- it's a real completeness gap worth closing now rather than a landmine for
+-- a future expense-editing feature.
+DROP POLICY IF EXISTS "Users can update own expenses" ON expenses;
+CREATE POLICY "Users can update own expenses" ON expenses
+  FOR UPDATE USING (business_id_for(auth.uid()) = user_id AND is_tenant_active(business_id_for(auth.uid())));
+
 DROP POLICY IF EXISTS "Users can delete own expenses" ON expenses;
 CREATE POLICY "Users can delete own expenses" ON expenses
   FOR DELETE USING (business_id_for(auth.uid()) = user_id AND is_tenant_active(business_id_for(auth.uid())));

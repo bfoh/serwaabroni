@@ -5,12 +5,16 @@
 import { supabase } from '@/lib/supabase'
 import type { Product, Sale, Debt, Expense, Customer } from '@/lib/supabase'
 import { consumeForSale, reverseConsumptions } from '@/services/batchApi'
+import { resolveScopeId } from '@/services/scopeId'
 
 // Get the real Supabase user UUID — this is the tenant key
 async function getCurrentUserId(): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getUser()
-    return data.user?.id ?? null
+    const uid = data.user?.id ?? null
+    if (!uid) return null
+    const { data: businessId, error } = await supabase.rpc('business_id_for', { uid })
+    return resolveScopeId(uid, (businessId as string) ?? null, !!error)
   } catch {
     return null
   }

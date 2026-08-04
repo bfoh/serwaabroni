@@ -1,12 +1,14 @@
 import { supabase } from '@/lib/supabase'
 import type { StockBatch } from '@/lib/supabase'
 import { allocateFifo, type FifoBatch, type FifoResult } from '@/lib/fifo'
+import { resolveScopeId } from '@/services/scopeId'
 
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
   const uid = data.user?.id
   if (!uid) throw new Error('Not authenticated')
-  return uid
+  const { data: businessId, error } = await supabase.rpc('business_id_for', { uid })
+  return resolveScopeId(uid, (businessId as string) ?? null, !!error) as string
 }
 
 // Whether a received stock batch should post a cash outflow. Opening stock

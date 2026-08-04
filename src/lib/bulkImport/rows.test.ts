@@ -23,7 +23,7 @@ describe('rowsFromMatrix', () => {
 describe('normalizeRow', () => {
   it('applies defaults', () => {
     const r = normalizeRow({ name: 'Milo', cost_price: 4, selling_price: 8, quantity: 10 })
-    expect(r).toMatchObject({ name: 'Milo', unit: 'piece', category: 'Groceries', unitsPerPack: 1 })
+    expect(r).toMatchObject({ name: 'Milo', unit: 'piece', category: 'Uncategorized', unitsPerPack: 1 })
     expect(r.id).toBeTruthy()
   })
 })

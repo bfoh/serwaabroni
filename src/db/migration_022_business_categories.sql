@@ -25,7 +25,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE business_categories;
 ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS industry text;
 
 -- ────────────────────────────────────────────────────────────────────────
--- Backfill (idempotent — safe to re-run)
+-- Backfill (idempotent — steps 1-4 below are safe to re-run). The RLS
+-- policies and ALTER PUBLICATION statements ABOVE this section are NOT
+-- re-run-safe (CREATE POLICY / ALTER PUBLICATION both error on a second run)
+-- — same convention as migration_005_super_admin.sql / migration_019_cash_movements.sql.
 -- ────────────────────────────────────────────────────────────────────────
 
 -- 1. Ensure every auth user who has ever used the app as a tenant (has a
@@ -46,9 +49,14 @@ ON CONFLICT (user_id) DO NOTHING;
 --    created via Settings before today).
 UPDATE business_profiles SET industry = 'Supermarket' WHERE industry IS NULL;
 
--- 3. Give every tenant with a business_profiles row the legacy 8 Supermarket
---    categories (now editable), skipping any name they already have
---    (case-insensitive) so this is safe to re-run.
+-- 3. Give every SUPERMARKET tenant with a business_profiles row the legacy 8
+--    Supermarket categories (now editable), skipping any name they already
+--    have (case-insensitive) so this is safe to re-run. Scoped to
+--    industry='Supermarket' so re-running this file after a non-Supermarket
+--    tenant has signed up can never inject supermarket categories into their
+--    list — step 2 above only ever defaults NULLs to 'Supermarket', so a
+--    genuinely new non-Supermarket tenant's industry is never NULL by the
+--    time this runs.
 INSERT INTO business_categories (user_id, name, icon, sort_order, is_builtin)
 SELECT bp.user_id, v.name, v.icon, v.sort_order, false
 FROM business_profiles bp
@@ -62,10 +70,11 @@ CROSS JOIN (VALUES
   ('Noodles', 'soup', 6),
   ('Bakery', 'croissant', 7)
 ) AS v(name, icon, sort_order)
-WHERE NOT EXISTS (
-  SELECT 1 FROM business_categories bc
-  WHERE bc.user_id = bp.user_id AND lower(bc.name) = lower(v.name)
-);
+WHERE bp.industry = 'Supermarket'
+  AND NOT EXISTS (
+    SELECT 1 FROM business_categories bc
+    WHERE bc.user_id = bp.user_id AND lower(bc.name) = lower(v.name)
+  );
 
 -- 4. Every tenant also gets a builtin 'Uncategorized' row (never deletable),
 --    skipping tenants that already have one.

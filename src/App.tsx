@@ -214,10 +214,22 @@ export default function App() {
                     : <Navigate to="/" replace />
             }
           />
+          {/* /capital, /capital/:id, /cash: same "don't bounce on an unresolved
+              role" spinner /settings uses (see !state.roleResolved above) —
+              canView(role, area) returns false for role===null regardless of
+              whether that null means "genuinely denied" or "still resolving,"
+              so a deep-link/hard-refresh here used to evict a genuine Owner
+              before their role finished loading. Found in the RBAC feature's
+              final whole-branch review, fix-wave re-review round 3. */}
           <Route
             path="/capital"
             element={
               !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
               : !canView('capital') ? <Navigate to="/" replace />
               : <div className="h-full w-full overflow-y-auto bg-sand relative"><Capital /></div>
             }
@@ -226,6 +238,11 @@ export default function App() {
             path="/capital/:id"
             element={
               !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
               : !canView('capital') ? <Navigate to="/" replace />
               : <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
             }
@@ -234,6 +251,11 @@ export default function App() {
             path="/cash"
             element={
               !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
               : !canView('cashFlow') ? <Navigate to="/" replace />
               : <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
             }

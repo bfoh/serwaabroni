@@ -78,8 +78,15 @@ export default function BottomNav() {
           Staff gets a Log Out button in this same slot instead: Settings is the
           app's only other Log Out entry point, so hiding it with no replacement
           left Staff/Manager-without-Settings unable to ever sign out. Found in
-          the RBAC feature's final whole-branch review, fix-wave re-review round 2. */}
-      {settingsAccess !== 'none' ? (
+          the RBAC feature's final whole-branch review, fix-wave re-review round 2.
+          settingsAccess is computed from role, which reads 'none' both while
+          genuinely unresolved and once resolved-to-Staff — render an empty
+          placeholder slot instead of guessing during that window, so an
+          Owner/Manager doesn't see a LOG OUT button flash where SETTINGS
+          belongs on every cold start and account switch (round 3). */}
+      {!state.roleResolved ? (
+        <div className="flex-1 h-full" />
+      ) : settingsAccess !== 'none' ? (
         <Link
           to="/settings"
           className="btn-tactile flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative"

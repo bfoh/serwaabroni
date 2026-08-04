@@ -646,6 +646,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // (account switch / impersonation) so the view always reflects the active user.
   useEffect(() => {
     if (state.authLoading) return // wait for auth check
+    // Also wait for role/businessId to resolve before the first fetch: without
+    // this, an authenticated Staff/Manager session fires refreshData() TWICE —
+    // once immediately (state.businessId still null, so scopeUid falls back to
+    // the caller's own raw uid, which owns none of the remote rows) and once
+    // more after role resolves a moment later. Whichever response lands LAST
+    // wins the dispatch, so a slow-syncing offline queue on the first pass can
+    // let its empty result overwrite the second pass's correct data — the
+    // exact "empty app" failure this state.businessId fix was meant to close.
+    // Found in the RBAC feature's final whole-branch review, fix-wave
+    // re-review round 3.
+    if (state.isAuthenticated && !state.roleResolved) return
     isFirstLoad.current = false
 
     if (state.isAuthenticated) {

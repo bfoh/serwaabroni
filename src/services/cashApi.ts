@@ -76,6 +76,23 @@ export async function deleteMovementsByRef(refTable: string, refId: string): Pro
   if (error) throw error
 }
 
+// Reverses ONE payment's movement, not every movement sharing a ref: unlike a
+// sale's sale_group_id (unique per cash entry), debts.id is shared by every
+// partial payment ever made on that debt — deleteMovementsByRef would wipe
+// all of them. Used when deleting/undoing a single debt payment. Callers
+// that only have the amount to match on (not the movement's own id) should
+// use this instead of reading cash_movements client-side: staff/manager
+// can never read that table directly (owner-only RLS), so the old
+// fetch-then-match-then-delete pattern silently no-op'd for them.
+export async function deleteMovementByRefAndAmount(refTable: string, refId: string, amount: number): Promise<void> {
+  const { error } = await supabase.rpc('delete_cash_movement_by_ref_amount', {
+    p_ref_table: refTable,
+    p_ref_id: refId,
+    p_amount: Math.round(amount * 100) / 100,
+  })
+  if (error) throw error
+}
+
 // A transfer is two legs (out of `from`, into `to`) sharing one transfer_id.
 export async function postTransfer(from: CashAccount, to: CashAccount, amount: number, note?: string | null): Promise<void> {
   const uid = await uidOrThrow()

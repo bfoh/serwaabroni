@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate, formatTime, uid, remainingAmount } from '@/lib/data'
 import { sendNotification } from '@/services/notify'
 import { fetchInjections } from '@/services/capitalApi'
-import { postMovement } from '@/services/cashApi'
+import { postMovement, deleteMovementByRefAndAmount } from '@/services/cashApi'
 import type { Debt, DebtPayment, CapitalInjection } from '@/lib/supabase'
 
 type DebtTab = 'owed' | 'owing'
@@ -234,13 +234,7 @@ export default function Debts() {
       }
       // Ledger: remove the most recent movement for this debt matching the amount.
       try {
-        const { fetchMovements } = await import('@/services/cashApi')
-        const rows = await fetchMovements(500)
-        const match = rows.find((m) => m.ref_table === 'debts' && m.ref_id === debt.id && Math.abs(m.amount - p.amount) < 0.001)
-        if (match) {
-          const { supabase } = await import('@/lib/supabase')
-          await supabase.from('cash_movements').delete().eq('id', match.id)
-        }
+        await deleteMovementByRefAndAmount('debts', debt.id, p.amount)
       } catch { /* best-effort */ }
       showToast('Payment deleted', 'success')
     } catch {
@@ -312,13 +306,7 @@ export default function Debts() {
       }
       // Reverse the corresponding cash movement ledger entry
       try {
-        const { fetchMovements } = await import('@/services/cashApi')
-        const rows = await fetchMovements(500)
-        const match = rows.find((m) => m.ref_table === 'debts' && m.ref_id === debt.id && Math.abs(m.amount - lastPayment.amount) < 0.001)
-        if (match) {
-          const { supabase } = await import('@/lib/supabase')
-          await supabase.from('cash_movements').delete().eq('id', match.id)
-        }
+        await deleteMovementByRefAndAmount('debts', debt.id, lastPayment.amount)
       } catch { /* best-effort */ }
       showToast(`${debt.person_name}'s debt reopened`, 'success')
     } catch {

@@ -7,6 +7,8 @@ import { exportToCSV } from '@/lib/export'
 import type { BusinessProfile } from '@/lib/supabase'
 import { CURATED_ICONS } from '@/lib/categories'
 import { CATEGORY_ICON_MAP } from '@/lib/categoryIconMap'
+import { usePermission } from '@/hooks/usePermission'
+import { fetchStaff, inviteStaff, updateStaffRole, revokeStaff, type StaffMember } from '@/services/staffApi'
 
 interface SettingsProps {
   onClose: () => void
@@ -25,6 +27,12 @@ export default function Settings({ onClose }: SettingsProps) {
   const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || localStorage.getItem('serwaabroni_logo') || '')
   const [smsSenderId, setSmsSenderId] = useState(state.businessProfile?.sms_sender_id || '')
   const [saving, setSaving] = useState(false)
+  const { settingsAccess } = usePermission()
+  const [showStaff, setShowStaff] = useState(false)
+  const [staff, setStaff] = useState<StaffMember[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<'manager' | 'staff'>('staff')
+  const [inviting, setInviting] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatIcon, setNewCatIcon] = useState(CURATED_ICONS[0])
@@ -33,6 +41,33 @@ export default function Settings({ onClose }: SettingsProps) {
   const [reassignFrom, setReassignFrom] = useState<{ id: string; name: string; count: number } | null>(null)
   const [reassignTo, setReassignTo] = useState('')
   const [savingCategory, setSavingCategory] = useState(false)
+
+  const loadStaff = async () => {
+    try { setStaff(await fetchStaff()) } catch { showToast('Could not load staff', 'error') }
+  }
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return
+    setInviting(true)
+    try {
+      await inviteStaff(inviteEmail, inviteRole)
+      setInviteEmail('')
+      await loadStaff()
+      showToast('Invite sent', 'success')
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not send invite', 'error')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleRoleChange = async (id: string, role: 'manager' | 'staff') => {
+    try { await updateStaffRole(id, role); await loadStaff() } catch { showToast('Could not update role', 'error') }
+  }
+
+  const handleRevoke = async (id: string) => {
+    try { await revokeStaff(id); await loadStaff() } catch { showToast('Could not revoke access', 'error') }
+  }
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -146,6 +181,9 @@ export default function Settings({ onClose }: SettingsProps) {
   const menuItems = [
     ...(state.isSuperAdmin
       ? [{ icon: Shield, label: 'Super Admin', action: () => navigate('/admin') }]
+      : []),
+    ...(settingsAccess === 'edit'
+      ? [{ icon: User, label: 'Staff', action: () => { setShowStaff(true); loadStaff() } }]
       : []),
     { icon: User, label: 'Edit Profile', action: () => setShowProfile(true) },
     { icon: Tag, label: 'Manage Categories', badge: String(state.categories.length), action: () => setShowCategories(true) },
@@ -561,6 +599,76 @@ export default function Settings({ onClose }: SettingsProps) {
                 >
                   <Trash2 size={12} /> Move & Delete
                 </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Staff Management Modal */}
+      <AnimatePresence>
+        {showStaff && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowStaff(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+              exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[90vw] max-w-sm max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b-2 border-ink sticky top-0 bg-sand">
+                <h2 className="font-display text-lg text-ink uppercase">Staff</h2>
+                <button onClick={() => setShowStaff(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider">Invite</p>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="staff@example.com"
+                    className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'manager' | 'staff')}
+                    className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                  <button
+                    onClick={handleInvite}
+                    disabled={inviting || !inviteEmail.trim()}
+                    className="w-full h-11 bg-ink text-white font-display text-sm uppercase tracking-wider rounded-sm disabled:opacity-50"
+                  >
+                    {inviting ? '...' : 'Send Invite'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider">Team</p>
+                  {staff.length === 0 && <p className="text-xs text-muted-text">No staff invited yet.</p>}
+                  {staff.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-light harsh-border rounded-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-ink truncate">{m.invited_email}</p>
+                        <p className="text-[10px] text-muted-text uppercase">{m.status}</p>
+                      </div>
+                      <select
+                        value={m.role}
+                        onChange={(e) => handleRoleChange(m.id, e.target.value as 'manager' | 'staff')}
+                        className="h-8 px-2 bg-warm-gray rounded-sm text-xs"
+                      >
+                        <option value="staff">Staff</option>
+                        <option value="manager">Manager</option>
+                      </select>
+                      <button onClick={() => handleRevoke(m.id)} className="h-8 px-2 bg-accent-red/10 text-accent-red rounded-sm text-xs">
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           </>

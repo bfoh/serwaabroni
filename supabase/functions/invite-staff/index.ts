@@ -59,6 +59,14 @@ Deno.serve(async (req) => {
     if (existing?.status === 'active') {
       return json({ error: 'This person is already an active team member' }, 409)
     }
+    // Known, accepted TOCTOU: this SELECT and the upsert below are separate
+    // round-trips, so the invitee's own activate_membership() (triggered by
+    // their first login, a wholly separate process) could flip the row to
+    // 'active' in between — this request would then still overwrite it.
+    // Low-probability (requires a re-invite landing within milliseconds of
+    // that exact invitee's first-ever login) and self-healing (their next
+    // login re-runs activate_membership() and restores 'active'), so not
+    // worth an atomic upsert-with-guard for now.
 
     // Upsert the membership row: re-inviting a removed/previously-invited
     // email re-activates it instead of hitting the unique constraint.

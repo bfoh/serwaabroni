@@ -113,6 +113,15 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
       : templateForIndustry('Supermarket').map((c) => c.name)),
     [state.categories],
   )
+  // Every refreshData() rebuilds state.categories from scratch (even when its
+  // contents haven't changed), so categoryNames gets a new array identity on
+  // every background refresh. Read it via a ref inside resetManual so that
+  // callback's own identity stays stable — otherwise the reset-on-open effect
+  // below (keyed on resetManual) re-fires while the sheet is still open and
+  // silently wipes an in-progress scan basket. See final-review fix wave,
+  // Finding 2.
+  const categoryNamesRef = useRef(categoryNames)
+  categoryNamesRef.current = categoryNames
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Live camera + decode loop is owned by the shared useScanCamera hook.
@@ -175,8 +184,8 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
     setManualPrice('')
     setManualQty(1)
     setManualUnit('piece')
-    setManualCategory(categoryNames[0] || 'Uncategorized')
-  }, [categoryNames])
+    setManualCategory(categoryNamesRef.current[0] || 'Uncategorized')
+  }, [])
   const [isListening, setIsListening] = useState(false)
 
   // ==========================================================

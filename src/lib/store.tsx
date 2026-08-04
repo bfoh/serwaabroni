@@ -123,7 +123,7 @@ type Action =
   | { type: 'SET_ADMIN_CHECKED'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
-  | { type: 'SET_ROLE'; role: Role | null }
+  | { type: 'SET_ROLE'; role: Role | null; resolved?: boolean }
   | { type: 'SET_BUSINESS_ID'; businessId: string | null }
   | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
@@ -253,7 +253,14 @@ function appReducer(state: AppState, action: Action): AppState {
     // pattern. Found in the RBAC feature's final whole-branch review, fix-wave
     // re-review round 2 (a brand-new owner or a hard-refresh on /settings was
     // being bounced home during this window instead of shown a loading state).
-    case 'SET_ROLE': return { ...state, role: action.role, roleResolved: true }
+    // `resolved` defaults true; the account-switch synchronous pre-clear below
+    // (search identityChanged) passes resolved: false explicitly — that
+    // dispatch clears the OUTGOING identity's role before an async re-resolve
+    // starts, it is not itself a resolution, and round 3 found that treating
+    // it as one made refreshData's roleResolved-gated effect (see below)
+    // permanently skip fetching for the incoming identity whenever their role
+    // happens to resolve to null (a brand-new owner mid-signup, in particular).
+    case 'SET_ROLE': return { ...state, role: action.role, roleResolved: action.resolved ?? true }
     case 'SET_BUSINESS_ID': return { ...state, businessId: action.businessId }
     case 'RESET_TENANT_DATA': return {
       ...state,
@@ -397,7 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // from their last resolve, so re-running activate_membership() +
         // two more RPCs on every token refresh would be pure waste.
         if (identityChanged) {
-          dispatch({ type: 'SET_ROLE', role: null })
+          dispatch({ type: 'SET_ROLE', role: null, resolved: false })
           dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
           resolveRoleAndDispatch(session.user.id)
         }
@@ -658,6 +665,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // re-review round 3.
     if (state.isAuthenticated && !state.roleResolved) return
     isFirstLoad.current = false
+    // state.roleResolved MUST be in this effect's own dependency array (not
+    // just relied on via the guard above): when role resolves to null — a
+    // brand-new signup with no business_profiles/business_members row yet,
+    // an offline/RPC-failure session, or a super-admin with no shop — neither
+    // state.role nor state.businessId changes value, so without roleResolved
+    // as an explicit dep this effect would never re-run and refreshData()
+    // would never fire for that session. Found in the RBAC feature's final
+    // whole-branch review, fix-wave re-review round 4.
 
     if (state.isAuthenticated) {
       // User is logged in — fetch their data from Supabase
@@ -678,7 +693,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
-  }, [state.authLoading, state.isAuthenticated, state.user?.id, state.role, refreshData, syncPending])
+  }, [state.authLoading, state.isAuthenticated, state.user?.id, state.role, state.roleResolved, refreshData, syncPending])
 
   // Flush the offline write queue when the network returns or the tab regains
   // focus, then re-sync from the server. This is what makes a payment recorded

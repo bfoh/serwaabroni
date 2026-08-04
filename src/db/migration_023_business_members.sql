@@ -32,6 +32,17 @@ CREATE POLICY "Owner can delete own staff" ON business_members
 CREATE INDEX IF NOT EXISTS idx_business_members_business ON business_members(business_id);
 CREATE INDEX IF NOT EXISTS idx_business_members_member ON business_members(member_user_id);
 
+-- Enforces "at most one active business per member" as a real DB constraint,
+-- not just an assumption business_id_for()/role_for() rely on. Without this,
+-- a user invited by two different owners could accumulate a second active
+-- membership across repeated activate_membership() calls (the per-call LIMIT
+-- 1 below only bounds a single call, not the sequence of calls across
+-- logins). The client's activateMembership() wrapper (Task 8) already treats
+-- the RPC as best-effort and swallows any error, so a unique-violation here
+-- fails closed and silently — exactly the desired outcome, not a UX break.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_business_members_one_active_per_user
+  ON business_members(member_user_id) WHERE status = 'active';
+
 -- ============================================================
 -- business_id_for(uid): "which tenant does this caller belong to."
 -- Owner resolves to their own id; an ACTIVE staff/manager resolves to their

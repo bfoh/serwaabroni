@@ -359,6 +359,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             logo: session.user.user_metadata?.logo || localStorage.getItem('serwaabroni_logo') || undefined,
           },
         })
+        // Clear synchronously before the async resolve below, mirroring
+        // reconcileActiveUser's synchronous RESET_TENANT_DATA above: an
+        // account switch that bypasses a SIGNED_OUT event first (impersonation
+        // uses verifyOtp/setSession directly — see enterImpersonation/
+        // exitImpersonation in adminApi.ts) would otherwise let the PREVIOUS
+        // identity's role/businessId stay visible until the RPC round-trip in
+        // resolveRoleAndDispatch resolves. permissions.ts's canView(role, area)
+        // already returns false for role=null (deny-everything), so this
+        // transient window fails closed (safe) instead of leaking the
+        // outgoing identity's permissions.
+        dispatch({ type: 'SET_ROLE', role: null })
+        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
         resolveRoleAndDispatch(session.user.id)
         const backup = readAdminBackup()
         dispatch({

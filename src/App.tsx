@@ -173,6 +173,18 @@ export default function App() {
             path="/settings"
             element={
               !state.isAuthenticated ? <Navigate to="/login" replace />
+              // role hasn't resolved yet (fresh login / hard refresh on this
+              // route) — settingsAccess is computed from state.role, which is
+              // still null at this instant for EVERY role, not just Staff.
+              // Bouncing home here would incorrectly evict a genuine
+              // Owner/Manager mid-resolve; show a spinner instead, same as the
+              // /admin route below. Found in the RBAC feature's final
+              // whole-branch review, fix-wave re-review round 2.
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
               // Staff has zero business-settings access per the permission
               // matrix (settingsAccess === 'none') — Settings is where the
               // catastrophic "Reset All Data" action lives, among other

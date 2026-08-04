@@ -77,6 +77,7 @@ export interface AppState {
   impersonating: { tenantId: string; tenantName: string } | null
   role: Role | null
   businessId: string | null
+  roleResolved: boolean
 }
 
 type Action =
@@ -165,6 +166,7 @@ const initialState: AppState = {
   impersonating: null,
   role: null,
   businessId: null,
+  roleResolved: false,
 }
 
 // Helper: persist current data to localStorage (for offline access)
@@ -220,7 +222,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SHOW_TOAST': return { ...state, toast: { message: action.message, type: action.toastType } }
     case 'HIDE_TOAST': return { ...state, toast: null }
     case 'SET_USER': {
-      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false, isSuperAdmin: false, adminChecked: false }
+      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false, isSuperAdmin: false, adminChecked: false, roleResolved: false }
       return {
         ...state,
         user: {
@@ -243,7 +245,15 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
     case 'SET_ADMIN_CHECKED': return { ...state, adminChecked: action.value }
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
-    case 'SET_ROLE': return { ...state, role: action.role }
+    // roleResolved flips true the first time we learn a definitive role for the
+    // active session (including a legitimate "resolved to null" — logged-out or
+    // unaffiliated) so callers like App.tsx's /settings route can tell "still
+    // resolving, show a spinner" apart from "resolved, actually denied" instead
+    // of conflating both with role === null. Mirrors the existing adminChecked
+    // pattern. Found in the RBAC feature's final whole-branch review, fix-wave
+    // re-review round 2 (a brand-new owner or a hard-refresh on /settings was
+    // being bounced home during this window instead of shown a loading state).
+    case 'SET_ROLE': return { ...state, role: action.role, roleResolved: true }
     case 'SET_BUSINESS_ID': return { ...state, businessId: action.businessId }
     case 'RESET_TENANT_DATA': return {
       ...state,
@@ -505,13 +515,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
       const remoteCategories = results[7].status === 'fulfilled' ? results[7].value : []
 
-      // Defensive tenant guard: only keep rows owned by the active session user
-      // (or not-yet-synced local rows). Server queries already scope by user_id;
-      // this stops any stale/mismatched row from ever reaching the UI.
+      // Defensive tenant guard: only keep rows owned the active session's TENANT
+      // (or not-yet-synced local rows). Every row's user_id is business_id_for()
+      // — the OWNER's id — never the raw caller uid, so an active Manager/Staff
+      // session must compare against state.businessId, not their own session
+      // uid: comparing against the raw uid (as this used to) filtered out every
+      // single remote row for Staff/Manager, since business_id_for(staff) !==
+      // staff's own auth uid. Falls back to the raw uid only while businessId
+      // hasn't resolved yet (matches an owner's businessId, which always equals
+      // their own uid) — found in the RBAC feature's final whole-branch review,
+      // fix-wave re-review round 2.
       const { data: sessData } = await supabase.auth.getSession()
       const uid = sessData.session?.user?.id ?? null
+      const scopeUid = state.businessId ?? uid
       const ownsRow = <T extends { user_id: string }>(x: T) =>
-        !uid || x.user_id === uid || x.user_id === 'local'
+        !scopeUid || x.user_id === scopeUid || x.user_id === 'local'
 
       // Merge offline-created data that hasn't synced and sort newest first
       const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
@@ -622,7 +640,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_DATA_LOADING', loading: false })
       dispatch({ type: 'SET_ADMIN_CHECKED', value: true })
     }
-  }, [syncPending, state.role])
+  }, [syncPending, state.role, state.businessId])
 
   // Load data after auth is confirmed, and RE-load whenever the user changes
   // (account switch / impersonation) so the view always reflects the active user.
@@ -1060,6 +1078,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const saved = await upsertBusinessProfile(profile)
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
       dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
+      // role_for()/business_id_for() now resolve this caller to 'owner'/their own
+      // id (the business_profiles row they just created is what those RPCs key
+      // off of) — but state.role/state.businessId were set before this row
+      // existed and resolveRoleAndDispatch only re-runs on mount/identity
+      // change, not here. Without this, a brand-new owner stays role===null for
+      // the rest of the session: settingsAccessFor(null)==='none', which hides
+      // Settings — the app's only Log Out entry point — until they reload.
+      // Found in the RBAC feature's final whole-branch review, fix-wave
+      // re-review round 2.
+      dispatch({ type: 'SET_ROLE', role: 'owner' })
+      dispatch({ type: 'SET_BUSINESS_ID', businessId: saved.user_id })
     } catch {
       // Do NOT optimistically dispatch the locally-built `profile` here: unlike
       // every other upsertBusinessProfile caller (which edits an already-fetched

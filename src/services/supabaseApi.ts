@@ -621,7 +621,14 @@ export async function upsertBusinessProfile(profile: any): Promise<any> {
 // this function carried is no longer sufficient on its own — a staff/manager
 // caller's uid would resolve to the SAME id an owner's delete would use.
 export async function resetAllUserData(role?: Role | null): Promise<void> {
-  if (role && role !== 'owner') throw new Error('Only the business owner can reset all data')
+  // Was `if (role && role !== 'owner')` — short-circuited past a null/undefined
+  // role (the transient state during initial role resolution, see store.tsx's
+  // roleResolved) and let the call through unchecked. This function is the
+  // app-layer half of C3's defense-in-depth; migration_030 is what actually
+  // enforces it, but the app-layer check should fail closed too, not just for
+  // known non-owners. Found in the RBAC feature's final whole-branch review,
+  // fix-wave re-review round 2.
+  if (role !== 'owner') throw new Error('Only the business owner can reset all data')
   const uid = await getCurrentUserId()
   if (!uid) throw new Error('Not authenticated')
 

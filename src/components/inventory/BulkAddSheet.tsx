@@ -190,7 +190,7 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
                 )}
               </div>
 
-              <BulkReviewTable rows={rows} products={state.products} onChange={setRows} onImport={onImport} importing={importing} />
+              <BulkReviewTable rows={rows} products={state.products} categories={state.categories.map((c) => c.name)} onChange={setRows} onImport={onImport} importing={importing} />
             </>
           )}
 

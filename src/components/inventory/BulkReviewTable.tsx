@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { Product } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/data'
-import { rowStatus, isPacked, toBase, UNITS, CATEGORIES, type DraftRow } from '@/lib/bulkImport/rows'
+import { rowStatus, isPacked, toBase, UNITS, type DraftRow } from '@/lib/bulkImport/rows'
 
 export default function BulkReviewTable({
-  rows, products, onChange, onImport, importing,
+  rows, products, categories, onChange, onImport, importing,
 }: {
   rows: DraftRow[]
   products: Product[]
+  categories: string[]
   onChange: (rows: DraftRow[]) => void
   onImport: () => void
   importing: boolean
@@ -78,7 +79,7 @@ export default function BulkReviewTable({
                   value={r.category} onChange={(e) => set(r.id, { category: e.target.value })}
                   className="w-28 harsh-border rounded-sm px-1 py-1.5 border border-ink/20"
                 >
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <input
                   value={r.packUnit ?? ''}

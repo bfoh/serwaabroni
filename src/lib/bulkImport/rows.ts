@@ -2,7 +2,6 @@ import type { Product } from '@/lib/supabase'
 import { matchProduct } from '@/lib/agent/match'
 import { uid } from '@/lib/data'
 
-export const CATEGORIES = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
 export const UNITS = ['piece', 'sachet', 'bag', 'tin', 'bottle', 'box', 'pack', 'kg']
 
 export interface RawRow {

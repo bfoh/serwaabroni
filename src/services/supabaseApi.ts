@@ -448,7 +448,7 @@ export async function updateCustomer(id: string, updates: Partial<Customer>): Pr
 // ============================================
 // DASHBOARD SUMMARY (scoped to user)
 // ============================================
-export async function getDashboardSummary(): Promise<{
+export async function getDashboardSummary(role?: Role | null): Promise<{
   totalSales: number
   totalProfit: number
   totalExpenses: number
@@ -469,17 +469,27 @@ export async function getDashboardSummary(): Promise<{
 
   const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00'
 
+  // Staff never receives cost_price from the server (see fetchProducts above)
+  // — this query ran unmasked in parallel with it, so a Staff session could
+  // read raw cost_price straight off the network response even though the
+  // products list itself was already correctly narrowed. stockValue/
+  // projectedProfit are both cost_price-derived, so for Staff they're 0
+  // rather than computed from data the caller was never supposed to receive.
+  const isStaff = role === 'staff'
+  // : string widening matches the same fetchProducts() workaround — supabase-js's
+  // typed .select() rejects a ternary of string literals.
+  const PRODUCT_SUMMARY_COLUMNS: string = isStaff ? 'selling_price, quantity' : 'cost_price, selling_price, quantity'
   const [salesRes, expensesRes, debtsRes, productsRes] = await Promise.all([
     supabase.from('sales').select('total, profit, created_at').eq('user_id', uid),
     supabase.from('expenses').select('amount').eq('user_id', uid),
     supabase.from('debts').select('amount, amount_paid, type, is_paid, sale_group_id').eq('user_id', uid),
-    supabase.from('products').select('cost_price, selling_price, quantity').eq('user_id', uid),
+    supabase.from('products').select(PRODUCT_SUMMARY_COLUMNS).eq('user_id', uid),
   ])
 
   const sales = salesRes.data || []
   const expenses = expensesRes.data || []
   const debts = debtsRes.data || []
-  const products = productsRes.data || []
+  const products = (productsRes.data as unknown as Record<string, number>[]) || []
 
   const totalSales = sales.reduce((s: number, sale: Record<string, number>) => s + (sale.total || 0), 0)
   const totalProfit = sales.reduce((s: number, sale: Record<string, number>) => s + (sale.profit || 0), 0)

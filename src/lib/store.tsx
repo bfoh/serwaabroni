@@ -489,7 +489,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchSales(),
         fetchDebts(),
         fetchExpenses(),
-        getDashboardSummary(),
+        getDashboardSummary(state.role),
         fetchBusinessProfile(),
         fetchCustomers(),
         fetchCategories(),
@@ -728,7 +728,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'ADD_SALE', sale: recorded })
       const products = await fetchProducts(state.role)
       dispatch({ type: 'SET_PRODUCTS', products })
-      const summary = await getDashboardSummary()
+      const summary = await getDashboardSummary(state.role)
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
@@ -753,7 +753,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const recorded = await recordSaleBatch(sales, items)
       recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
       // Refresh the product cache and dashboard in parallel (one round-trip).
-      const [products, summary] = await Promise.all([fetchProducts(state.role), getDashboardSummary()])
+      const [products, summary] = await Promise.all([fetchProducts(state.role), getDashboardSummary(state.role)])
       dispatch({ type: 'SET_PRODUCTS', products })
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
@@ -784,7 +784,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Re-sync derived data in parallel (one wall-clock round-trip, not three).
       const [products, summary, customers] = await Promise.all([
         fetchProducts(state.role),
-        getDashboardSummary(),
+        getDashboardSummary(state.role),
         fetchCustomers(),
       ])
       dispatch({ type: 'SET_PRODUCTS', products })

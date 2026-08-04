@@ -271,6 +271,7 @@ interface StoreContextType {
   removeCategory: (id: string) => Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }>
   loadStarterCategories: (industry: string) => Promise<void>
   reassignAndDeleteCategory: (id: string, fromName: string, toName: string) => Promise<void>
+  chooseIndustry: (industry: string) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   resetAllData: () => Promise<void>
   logout: () => Promise<void>
@@ -929,6 +930,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state.products, showToast])
 
+  const chooseIndustry = useCallback(async (industry: string) => {
+    const profile: BusinessProfile = {
+      id: state.user?.id || 'local',
+      user_id: state.user?.id || 'local',
+      business_name: state.user?.business_name || 'My Shop',
+      owner_name: null,
+      phone: state.user?.phone || null,
+      email: state.user?.email || null,
+      currency: 'GHS',
+      language: state.language,
+      industry,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    try {
+      const saved = await upsertBusinessProfile(profile)
+      dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+    } catch {
+      dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+    }
+    try {
+      const seeded = await seedCategoriesForIndustry(industry)
+      dispatch({ type: 'SET_CATEGORIES', categories: seeded })
+    } catch {
+      showToast('Could not load starter categories — try again from Settings', 'error')
+    }
+  }, [state.user, state.language, showToast])
+
   const logout = useCallback(async () => {
     await supabaseSignOut()
     dispatch({ type: 'SET_USER', user: null })
@@ -992,7 +1021,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addProduct, updateProduct, removeProduct,
       addSale, addSaleBatch, deleteSale, addDebt, updateDebt, removeDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
-      addCategory, renameCategory, removeCategory, loadStarterCategories, reassignAndDeleteCategory,
+      addCategory, renameCategory, removeCategory, loadStarterCategories, reassignAndDeleteCategory, chooseIndustry,
       updateBusinessProfile,
       resetAllData,
       logout,

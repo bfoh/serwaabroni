@@ -10,6 +10,7 @@ import SettingsPage from '@/pages/Settings'
 import SalesHistory from '@/pages/SalesHistory'
 import Expenses from '@/pages/Expenses'
 import Login from '@/pages/Login'
+import IndustryPicker from '@/components/IndustryPicker'
 import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
@@ -117,6 +118,17 @@ export default function App() {
       <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
         <ImpersonationBanner />
         <div className="flex-1 overflow-hidden"><SuspendedScreen /></div>
+      </div>
+    )
+  }
+
+  // Every real tenant has a business_profiles row after migration_022 (see
+  // that migration's backfill). A logged-in user with none is a brand-new
+  // signup who hasn't picked their industry yet.
+  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.businessProfile === null) {
+    return (
+      <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
+        <IndustryPicker />
       </div>
     )
   }

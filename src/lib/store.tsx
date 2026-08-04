@@ -726,7 +726,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const recorded = await recordSale(sale, productId, quantitySold)
       dispatch({ type: 'ADD_SALE', sale: recorded })
-      const products = await fetchProducts()
+      const products = await fetchProducts(state.role)
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary()
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
@@ -753,7 +753,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const recorded = await recordSaleBatch(sales, items)
       recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
       // Refresh the product cache and dashboard in parallel (one round-trip).
-      const [products, summary] = await Promise.all([fetchProducts(), getDashboardSummary()])
+      const [products, summary] = await Promise.all([fetchProducts(state.role), getDashboardSummary()])
       dispatch({ type: 'SET_PRODUCTS', products })
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
@@ -783,7 +783,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteSaleGroup(group.sales)
       // Re-sync derived data in parallel (one wall-clock round-trip, not three).
       const [products, summary, customers] = await Promise.all([
-        fetchProducts(),
+        fetchProducts(state.role),
         getDashboardSummary(),
         fetchCustomers(),
       ])

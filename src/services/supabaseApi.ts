@@ -24,22 +24,31 @@ async function getCurrentUserId(): Promise<string | null> {
 // ============================================
 // PRODUCTS (scoped to user)
 // ============================================
-// _role is unused for now — reserved for Task 13's cost_price masking for
-// Staff callers. Accepted here so refreshData's call site (which needs to
-// re-fetch whenever the resolved role changes, per Task 8) compiles ahead
-// of Task 13 actually implementing the masking body.
-export async function fetchProducts(_role?: Role | null): Promise<Product[]> {
+// Staff never receives cost_price from the server; see
+// docs/superpowers/specs/2026-08-03-staff-rbac-design.md §2/§5 for why this
+// one control is app-layer (RLS is row-scoped, not column-scoped).
+const STAFF_SAFE_PRODUCT_COLUMNS: string =
+  'id, user_id, name, selling_price, quantity, unit, pack_unit, units_per_pack, category, low_stock_threshold, barcode, qr_code, created_at, updated_at'
+
+export async function fetchProducts(role?: Role | null): Promise<Product[]> {
   const uid = await getCurrentUserId()
   if (!uid) return []
 
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select(role === 'staff' ? STAFF_SAFE_PRODUCT_COLUMNS : '*')
     .eq('user_id', uid)
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return (data as Product[]) || []
+  return maskCostPriceForRole((data as unknown as Product[]) || [], role)
+}
+
+// Pure: masks cost_price client-side too so every consumer keeps a complete
+// Product shape without ever holding the real value for a Staff caller.
+export function maskCostPriceForRole(products: Product[], role?: Role | null): Product[] {
+  if (role !== 'staff') return products
+  return products.map((p) => ({ ...p, cost_price: 0 }))
 }
 
 export async function insertProduct(product: Omit<Product, 'user_id'>): Promise<Product> {

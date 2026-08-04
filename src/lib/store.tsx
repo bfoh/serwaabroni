@@ -22,6 +22,7 @@ import {
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
+import type { BusinessProfileResult } from '@/services/supabaseApi'
 import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
 import {
   fetchCategories, insertCategory, renameCategoryDb, deleteCategoryDb,
@@ -64,6 +65,7 @@ export interface AppState {
   authLoading: boolean
   language: Language
   businessProfile: BusinessProfile | null
+  businessProfileStatus: 'unknown' | 'missing' | 'found'
   dataLoading: boolean
   isOnline: boolean
   pendingSync: number
@@ -108,6 +110,7 @@ type Action =
   | { type: 'SET_USER'; user: UserState | null }
   | { type: 'SET_LANGUAGE'; lang: Language }
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
+  | { type: 'SET_BUSINESS_PROFILE_STATUS'; status: 'unknown' | 'missing' | 'found' }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
   | { type: 'SET_PENDING_SYNC'; value: number }
@@ -146,6 +149,7 @@ const initialState: AppState = {
   authLoading: true,
   language: getStoredLang(),
   businessProfile: null,
+  businessProfileStatus: 'unknown',
   dataLoading: false,
   isOnline: navigator.onLine,
   pendingSync: 0,
@@ -224,6 +228,7 @@ function appReducer(state: AppState, action: Action): AppState {
     }
     case 'SET_LANGUAGE': return { ...state, language: action.lang }
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
+    case 'SET_BUSINESS_PROFILE_STATUS': return { ...state, businessProfileStatus: action.status }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
     case 'SET_PENDING_SYNC': return { ...state, pendingSync: action.value }
@@ -436,7 +441,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const remoteDebts = results[2].status === 'fulfilled' ? results[2].value : []
       const remoteExpenses = results[3].status === 'fulfilled' ? results[3].value : []
       const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0, cashInBank: 0 }
-      const profile = results[5].status === 'fulfilled' ? results[5].value : null
+      const profileResult: BusinessProfileResult = results[5].status === 'fulfilled' ? results[5].value : { status: 'error' }
+      const profile = profileResult.status === 'found' ? profileResult.profile : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
       const remoteCategories = results[7].status === 'fulfilled' ? results[7].value : []
 
@@ -487,8 +493,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank || 0 })
 
-      if (profile) {
+      if (profileResult.status === 'found') {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+        dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
 
         // Push critical alerts to the owner (SMS/email). Per-day de-dupe lives in the
         // edge function, so repeated app loads won't re-send the same alert.
@@ -503,7 +510,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             })
           }
         }
+      } else if (profileResult.status === 'missing') {
+        // Genuinely no business_profiles row (confirmed via PGRST116, not just an
+        // errored fetch) — this is the only case the signup industry-picker gate
+        // in App.tsx is allowed to treat as "new tenant."
+        dispatch({ type: 'SET_BUSINESS_PROFILE', profile: null })
+        dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'missing' })
       }
+      // status 'error': dispatch nothing — never downgrade a previously-known
+      // 'found'/'missing' status back to 'unknown' due to one failed refresh, and
+      // never clobber a real profile with null on a transient fetch failure (e.g.
+      // an offline cold start). See final-review fix wave, Finding 1.
 
       // Admin + suspension flags
       const admin = await amISuperAdmin()
@@ -855,25 +872,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const addCategory = useCallback(async (name: string, icon: string) => {
+    const trimmed = name.trim()
+    // Catch a duplicate name before hitting the DB: the catch block below can't
+    // tell "offline" apart from "unique-constraint violation" without this,
+    // and used to silently fabricate a phantom local category that could never
+    // sync on a genuine name conflict. See final-review fix wave, Finding 5.
+    if (state.categories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      showToast(`A category named "${trimmed}" already exists`, 'error')
+      return
+    }
     try {
       const sortOrder = state.categories.length
-      const inserted = await insertCategory({ name, icon, sortOrder })
+      const inserted = await insertCategory({ name: trimmed, icon, sortOrder })
       dispatch({ type: 'ADD_CATEGORY', category: inserted })
       showToast('Category added', 'success')
     } catch {
-      const localCategory: BusinessCategory = {
-        id: `local-${Date.now()}`,
-        user_id: 'local',
-        name,
-        icon,
-        sort_order: state.categories.length,
-        is_builtin: false,
-        created_at: new Date().toISOString(),
+      if (!state.isOnline) {
+        const localCategory: BusinessCategory = {
+          id: `local-${Date.now()}`,
+          user_id: 'local',
+          name: trimmed,
+          icon,
+          sort_order: state.categories.length,
+          is_builtin: false,
+          created_at: new Date().toISOString(),
+        }
+        dispatch({ type: 'ADD_CATEGORY', category: localCategory })
+        showToast('Saved locally (will sync when online)', 'success')
+      } else {
+        showToast('Could not add category — check your connection and try again', 'error')
       }
-      dispatch({ type: 'ADD_CATEGORY', category: localCategory })
-      showToast('Saved locally (will sync when online)', 'success')
     }
-  }, [state.categories, showToast])
+  }, [state.categories, state.isOnline, showToast])
 
   const renameCategory = useCallback(async (id: string, newName: string) => {
     const existing = state.categories.find((c) => c.id === id)
@@ -947,6 +977,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const saved = await upsertBusinessProfile(profile)
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
     } catch {
       // Do NOT optimistically dispatch the locally-built `profile` here: unlike
       // every other upsertBusinessProfile caller (which edits an already-fetched
@@ -1005,8 +1036,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const saved = await upsertBusinessProfile(profile)
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
     } catch {
       dispatch({ type: 'SET_BUSINESS_PROFILE', profile }) // local fallback
+      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
     }
   }, [state.user])
 

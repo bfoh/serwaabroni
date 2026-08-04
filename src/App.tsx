@@ -124,8 +124,13 @@ export default function App() {
 
   // Every real tenant has a business_profiles row after migration_022 (see
   // that migration's backfill). A logged-in user with none is a brand-new
-  // signup who hasn't picked their industry yet.
-  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.businessProfile === null) {
+  // signup who hasn't picked their industry yet — but `businessProfile === null`
+  // is also what a transient fetch failure (offline cold start, network blip,
+  // RLS hiccup) looks like, since it's indistinguishable at that point. Gate on
+  // the definitive 'missing' status instead (set only when the fetch actually
+  // confirms zero rows, never on error) and require online, so an existing
+  // tenant can never get locked out of their own data by this screen.
+  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.isOnline && state.businessProfileStatus === 'missing') {
     return (
       <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
         <IndustryPicker />

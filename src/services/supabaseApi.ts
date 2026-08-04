@@ -496,9 +496,19 @@ export async function getDashboardSummary(): Promise<{
 // ============================================
 // BUSINESS PROFILE (scoped to user)
 // ============================================
-export async function fetchBusinessProfile(): Promise<any> {
+export type BusinessProfileResult =
+  | { status: 'found'; profile: any }
+  | { status: 'missing' }
+  | { status: 'error' }
+
+// Distinguishes "no profile row exists" (status: 'missing') from a transient
+// fetch failure (status: 'error') — callers that need to gate onboarding UI on
+// a genuinely-missing profile (not just an errored fetch) depend on this
+// distinction. See docs/superpowers/plans/2026-08-03-multi-industry-categories-plan.md
+// Task 7 / final-review fix wave.
+export async function fetchBusinessProfile(): Promise<BusinessProfileResult> {
   const uid = await getCurrentUserId()
-  if (!uid) return null
+  if (!uid) return { status: 'error' }
 
   try {
     const { data, error } = await supabase
@@ -508,13 +518,14 @@ export async function fetchBusinessProfile(): Promise<any> {
       .single()
 
     if (error) {
+      if (error.code === 'PGRST116') return { status: 'missing' }
       console.warn('Supabase business_profiles error:', error.message)
-      return null
+      return { status: 'error' }
     }
-    return data
+    return { status: 'found', profile: data }
   } catch (err) {
     console.warn('fetchBusinessProfile catch:', err)
-    return null
+    return { status: 'error' }
   }
 }
 

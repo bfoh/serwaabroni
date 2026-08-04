@@ -41,6 +41,25 @@ Deno.serve(async (req) => {
     if (ownerErr) return json({ error: 'server error', detail: ownerErr.message }, 500)
     if (!owner) return json({ error: 'forbidden' }, 403)
 
+    // Re-inviting an already-ACTIVE member must never happen through this
+    // path: the upsert below resets status/member_user_id/joined_at, which
+    // would sever a real, active membership (business_id_for()/role_for()
+    // stop resolving for that user until their next login re-triggers
+    // activate_membership()) on a simple double-click or accidental re-send.
+    // Changing an active member's role is a separate, non-destructive update
+    // (Settings' updateStaffRole, Task 12) — this endpoint is for inviting
+    // someone new or re-inviting a not-yet-accepted/removed one.
+    const { data: existing, error: existingErr } = await admin
+      .from('business_members')
+      .select('status')
+      .eq('business_id', callerId)
+      .eq('invited_email', email)
+      .maybeSingle()
+    if (existingErr) return json({ error: 'server error', detail: existingErr.message }, 500)
+    if (existing?.status === 'active') {
+      return json({ error: 'This person is already an active team member' }, 409)
+    }
+
     // Upsert the membership row: re-inviting a removed/previously-invited
     // email re-activates it instead of hitting the unique constraint.
     const { error: upsertErr } = await admin

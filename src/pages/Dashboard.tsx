@@ -74,20 +74,22 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         </div>
       </header>
 
-      {/* Total Balance Hero */}
+      {/* Total Balance Hero — cash-in-hand is exactly the figure cashFlow
+          gates everywhere else on this page (bank balance link, Cash Flow
+          button below); this was the one spot showing it unconditionally. */}
       <section className="px-5 pt-6 pb-4">
-        <div className="text-center">
-          <p className="text-micro text-muted-text mb-2">{t('total_cash')}</p>
-          <Odometer value={state.balance} />
-          {canView('cashFlow') && (
+        {canView('cashFlow') && (
+          <div className="text-center">
+            <p className="text-micro text-muted-text mb-2">{t('total_cash')}</p>
+            <Odometer value={state.balance} />
             <button
               onClick={() => navigate('/cash')}
               className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-text active:opacity-60"
             >
               <span className="font-display text-ink">{formatCurrency(state.bankBalance)}</span> in bank →
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Sub stats */}
         <div className="flex gap-3 mt-5">

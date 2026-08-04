@@ -31,3 +31,9 @@ verify_jwt = false
 # validates the user token in the body, so the gateway JWT check is disabled.
 [functions.serwaa-sales-vision]
 verify_jwt = false
+
+# Client-invoked: an owner invites a Manager/Staff member. Re-verifies the
+# caller (getUser + business_profiles ownership) inside the function, so the
+# gateway JWT check is not needed. Same asymmetric-JWT reason as admin-impersonate.
+[functions.invite-staff]
+verify_jwt = false

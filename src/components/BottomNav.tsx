@@ -14,7 +14,7 @@ const allMainTabs: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
 
 export default function BottomNav() {
   const { state, setTab, dispatch } = useStore()
-  const { role } = usePermission()
+  const { role, settingsAccess } = usePermission()
   const navigate = useNavigate()
   const location = useLocation()
   const mainTabs = allMainTabs.filter((t) => visibleMainTabKeys(role).includes(t.key))
@@ -70,20 +70,23 @@ export default function BottomNav() {
         </div>
       </button>
 
-      {/* Settings Link */}
-      <Link
-        to="/settings"
-        className="btn-tactile flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative"
-      >
-        <Settings
-          size={22}
-          strokeWidth={1.5}
-          className="text-white/70"
-        />
-        <span className="text-[10px] font-display tracking-wider text-white/50">
-          SETTINGS
-        </span>
-      </Link>
+      {/* Settings Link — hidden for Staff (settingsAccess === 'none'); the
+          /settings route itself is also gated in App.tsx as the real backstop. */}
+      {settingsAccess !== 'none' && (
+        <Link
+          to="/settings"
+          className="btn-tactile flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative"
+        >
+          <Settings
+            size={22}
+            strokeWidth={1.5}
+            className="text-white/70"
+          />
+          <span className="text-[10px] font-display tracking-wider text-white/50">
+            SETTINGS
+          </span>
+        </Link>
+      )}
     </nav>
   )
 }

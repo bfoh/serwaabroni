@@ -110,7 +110,7 @@ function MainApp() {
 
 export default function App() {
   const { state } = useStore()
-  const { canView } = usePermission()
+  const { canView, settingsAccess } = usePermission()
 
   if (state.authLoading) {
     return (
@@ -140,7 +140,19 @@ export default function App() {
   // the definitive 'missing' status instead (set only when the fetch actually
   // confirms zero rows, never on error) and require online, so an existing
   // tenant can never get locked out of their own data by this screen.
-  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.isOnline && state.businessProfileStatus === 'missing') {
+  //
+  // ALSO require role === null: migration_027 correctly restricts
+  // business_profiles SELECT to Owner/Manager only (Staff has zero DB access
+  // to it, by design) — so an active Staff account's businessProfileStatus is
+  // ALWAYS 'missing', even though their employer's business genuinely exists.
+  // role_for() is SECURITY DEFINER and resolves correctly regardless of that
+  // SELECT restriction (it queries business_members directly, unaffected by
+  // RLS on a different table) — role !== null there means "this uid belongs
+  // to a real business already," which is the actual signal a genuinely new,
+  // unaffiliated signup can never produce (their role is null too, precisely
+  // because they own no profile and belong to no business_members row yet).
+  // Without this, every Staff login would be permanently stuck on this screen.
+  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.isOnline && state.businessProfileStatus === 'missing' && state.role === null) {
     return (
       <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
         <IndustryPicker />
@@ -159,11 +171,20 @@ export default function App() {
           />
           <Route
             path="/settings"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-hidden bg-sand relative">
-                <SettingsPage onClose={() => window.history.back()} />
-              </div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              // Staff has zero business-settings access per the permission
+              // matrix (settingsAccess === 'none') — Settings is where the
+              // catastrophic "Reset All Data" action lives, among other
+              // owner/manager-only actions, so Staff never reaches this page
+              // at all rather than relying on in-page gating alone.
+              : settingsAccess === 'none' ? <Navigate to="/" replace />
+              : (
+                <div className="h-full w-full overflow-hidden bg-sand relative">
+                  <SettingsPage onClose={() => window.history.back()} />
+                </div>
+              )
+            }
           />
           <Route
             path="/admin"

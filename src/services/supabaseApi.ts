@@ -85,31 +85,57 @@ export async function deleteProductDb(id: string): Promise<void> {
   const uid = await getCurrentUserId()
   if (!uid) throw new Error('Not authenticated')
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('products')
     .delete()
     .eq('id', id)
     .eq('user_id', uid) // ensure tenant isolation
+    .select('id')
 
   if (error) throw error
+  // A delete blocked by RLS returns 0 rows and NO error — same pattern already
+  // fixed for debts/sales (migration_004/018's original bug). Now that DELETE
+  // on products is owner-only (migration_030), a Manager/Staff caller hits
+  // exactly this silently-blocked case, and the caller (removeProduct in
+  // store.tsx) needs a real error to react to instead of a lie.
+  if (!data || data.length === 0) {
+    throw new Error('Product not deleted — no rows affected (check RLS delete policy).')
+  }
 }
 
 // ============================================
 // SALES (scoped to user, auto-reduce stock)
 // ============================================
-export async function fetchSales(): Promise<Sale[]> {
+// Staff never receives profit (revenue minus cost) — same rationale and
+// pattern as fetchProducts' cost_price exclusion above (RLS is row-scoped,
+// not column-scoped, so this is necessarily an app-layer control). Found in
+// the RBAC feature's final whole-branch review: fetchSales() was the one
+// remaining unrestricted select('*') exposing the exact derived value Task
+// 13's cost_price work exists to protect.
+const STAFF_SAFE_SALE_COLUMNS: string =
+  'id, user_id, product_id, product_name, quantity, unit_price, sale_unit, sale_unit_qty, total, customer_name, customer_phone, payment_method, qr_invoice, sale_group_id, created_at'
+
+export async function fetchSales(role?: Role | null): Promise<Sale[]> {
   const uid = await getCurrentUserId()
   if (!uid) return []
 
   const { data, error } = await supabase
     .from('sales')
-    .select('*')
+    .select(role === 'staff' ? STAFF_SAFE_SALE_COLUMNS : '*')
     .eq('user_id', uid)
     .order('created_at', { ascending: false })
     .limit(200)
 
   if (error) throw error
-  return (data as Sale[]) || []
+  return maskProfitForRole((data as unknown as Sale[]) || [], role)
+}
+
+// Pure: masks profit client-side too, mirroring maskCostPriceForRole, so
+// every consumer keeps a complete Sale shape without ever holding the real
+// value for a Staff caller.
+export function maskProfitForRole(sales: Sale[], role?: Role | null): Sale[] {
+  if (role !== 'staff') return sales
+  return sales.map((s) => ({ ...s, profit: 0 }))
 }
 
 export async function recordSale(
@@ -479,23 +505,32 @@ export async function getDashboardSummary(role?: Role | null): Promise<{
   // : string widening matches the same fetchProducts() workaround — supabase-js's
   // typed .select() rejects a ternary of string literals.
   const PRODUCT_SUMMARY_COLUMNS: string = isStaff ? 'selling_price, quantity' : 'cost_price, selling_price, quantity'
+  // sales.profit is exactly the derived quantity (revenue - cost) Task 13's
+  // cost_price work exists to keep from Staff — dropped from the SELECT the
+  // same way, not just masked after the fact. Found alongside fetchSales()'s
+  // equivalent gap in the RBAC feature's final whole-branch review.
+  const SALES_SUMMARY_COLUMNS: string = isStaff ? 'total, created_at' : 'total, profit, created_at'
   const [salesRes, expensesRes, debtsRes, productsRes] = await Promise.all([
-    supabase.from('sales').select('total, profit, created_at').eq('user_id', uid),
+    supabase.from('sales').select(SALES_SUMMARY_COLUMNS).eq('user_id', uid),
     supabase.from('expenses').select('amount').eq('user_id', uid),
     supabase.from('debts').select('amount, amount_paid, type, is_paid, sale_group_id').eq('user_id', uid),
     supabase.from('products').select(PRODUCT_SUMMARY_COLUMNS).eq('user_id', uid),
   ])
 
-  const sales = salesRes.data || []
+  const sales = (salesRes.data as unknown as Record<string, string | number>[]) || []
   const expenses = expensesRes.data || []
   const debts = debtsRes.data || []
   const products = (productsRes.data as unknown as Record<string, number>[]) || []
 
-  const totalSales = sales.reduce((s: number, sale: Record<string, number>) => s + (sale.total || 0), 0)
-  const totalProfit = sales.reduce((s: number, sale: Record<string, number>) => s + (sale.profit || 0), 0)
+  const totalSales = sales.reduce((s: number, sale: Record<string, string | number>) => s + (Number(sale.total) || 0), 0)
+  // Explicitly 0 for staff rather than relying on the missing column to
+  // degrade the arithmetic — same reasoning as stockValue/projectedProfit
+  // above: `(sale.profit || 0)` would already yield 0 once the field is
+  // absent, but stating it directly makes the intent unambiguous.
+  const totalProfit = isStaff ? 0 : sales.reduce((s: number, sale: Record<string, string | number>) => s + (Number(sale.profit) || 0), 0)
   const totalExpenses = expenses.reduce((s: number, e: Record<string, number>) => s + (e.amount || 0), 0)
-  const todaySales = sales.filter((s: Record<string, string>) => s.created_at >= todayStart).reduce((sum: number, s: Record<string, number>) => sum + (s.total || 0), 0)
-  const todayProfit = sales.filter((s: Record<string, string>) => s.created_at >= todayStart).reduce((sum: number, s: Record<string, number>) => sum + (s.profit || 0), 0)
+  const todaySales = sales.filter((s: Record<string, string | number>) => (s.created_at as string) >= todayStart).reduce((sum: number, s: Record<string, string | number>) => sum + (Number(s.total) || 0), 0)
+  const todayProfit = isStaff ? 0 : sales.filter((s: Record<string, string | number>) => (s.created_at as string) >= todayStart).reduce((sum: number, s: Record<string, string | number>) => sum + (Number(s.profit) || 0), 0)
   const debtRemaining = (d: Record<string, number>) => Math.max(0, (d.amount || 0) - (d.amount_paid || 0))
   const pendingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owed' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
   const owingDebts = debts.filter((d: Record<string, unknown>) => d.type === 'owing' && !d.is_paid).reduce((sum: number, d: Record<string, number>) => sum + debtRemaining(d), 0)
@@ -578,11 +613,20 @@ export async function upsertBusinessProfile(profile: any): Promise<any> {
 // ============================================
 // RESET DATA (scoped to user)
 // ============================================
-export async function resetAllUserData(): Promise<void> {
+// role is app-layer defense in depth for a clear, immediate error — the real
+// enforcement is the DB-layer DELETE policies (migration_030), which reject
+// a non-owner's delete regardless of this check. getCurrentUserId() now
+// resolves to the OWNER's business id even when called by an active
+// Staff/Manager account, so the old "RLS scopes by user_id alone" comment
+// this function carried is no longer sufficient on its own — a staff/manager
+// caller's uid would resolve to the SAME id an owner's delete would use.
+export async function resetAllUserData(role?: Role | null): Promise<void> {
+  if (role && role !== 'owner') throw new Error('Only the business owner can reset all data')
   const uid = await getCurrentUserId()
   if (!uid) throw new Error('Not authenticated')
 
-  // Due to RLS, we can just blindly delete all rows matching user_id
+  // Row deletion is scoped by user_id AND (as of migration_030) restricted to
+  // the owner at the RLS layer — a non-owner's delete affects 0 rows.
   await Promise.all([
     supabase.from('sales').delete().eq('user_id', uid),
     supabase.from('products').delete().eq('user_id', uid),

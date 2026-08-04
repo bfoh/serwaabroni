@@ -486,7 +486,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const results = await Promise.allSettled([
         fetchProducts(state.role),
-        fetchSales(),
+        fetchSales(state.role),
         fetchDebts(),
         fetchExpenses(),
         getDashboardSummary(state.role),
@@ -717,9 +717,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const removeProduct = useCallback(async (id: string) => {
-    try { await deleteProductDb(id) } catch { /* may not exist in db */ }
+    // A product created while offline exists only locally (user_id === 'local')
+    // and was never synced to the server — nothing to delete there, so skip
+    // straight to the local removal instead of calling deleteProductDb, which
+    // would otherwise throw "no rows affected" for a row that legitimately
+    // never existed server-side.
+    const existing = state.products.find((p) => p.id === id)
+    if (existing?.user_id === 'local') {
+      dispatch({ type: 'DELETE_PRODUCT', id })
+      showToast('Product deleted', 'success')
+      return
+    }
+    // Optimistic remove so the UI feels instant.
     dispatch({ type: 'DELETE_PRODUCT', id })
-    showToast('Product deleted', 'success')
+    try {
+      await deleteProductDb(id)
+      showToast('Product deleted', 'success')
+    } catch {
+      // Blocked by RLS (e.g. a non-owner, now that DELETE on products is
+      // owner-only) or a real network failure — restore the real server
+      // state instead of faking a delete that never happened.
+      try {
+        const products = await fetchProducts(state.role)
+        dispatch({ type: 'SET_PRODUCTS', products })
+      } catch { /* leave optimistic state if even the re-fetch fails */ }
+      showToast('Could not delete product', 'error')
+    }
   }, [state, showToast])
 
   const addSale = useCallback(async (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => {
@@ -821,7 +844,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Online but the server rejected the delete — restore the row so the UI
       // matches the server instead of faking a delete that never happened.
       try {
-        const sales = await fetchSales()
+        const sales = await fetchSales(state.role)
         dispatch({ type: 'SET_SALES', sales })
       } catch { /* leave optimistic state if even the re-fetch fails */ }
       showToast('Could not delete sale', 'error')
@@ -1104,7 +1127,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const resetAllData = useCallback(async () => {
     try {
-      await resetAllUserData()
+      await resetAllUserData(state.role)
       dispatch({ type: 'SET_PRODUCTS', products: [] })
       dispatch({ type: 'SET_SALES', sales: [] })
       dispatch({ type: 'SET_DEBTS', debts: [] })
@@ -1117,7 +1140,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       showToast('Failed to reset data', 'error')
     }
-  }, [])
+  }, [state.role, showToast])
 
   return (
     <StoreContext.Provider value={{

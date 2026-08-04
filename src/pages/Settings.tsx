@@ -199,7 +199,13 @@ export default function Settings({ onClose }: SettingsProps) {
       } },
     { icon: Shield, label: 'Privacy & Security', action: () => showToast('All data stored securely on Supabase', 'success') },
     { icon: HelpCircle, label: 'Help & Support', action: () => showToast('Contact: support@serwaabroni.com', 'success') },
-    { icon: Trash2, label: 'Reset All Data', danger: true, action: () => setShowConfirmReset(true) },
+    // Owner-only: this wipes every product, sale, debt, expense, and customer
+    // in one tap. Manager's settingsAccess is 'view', not 'edit' — a
+    // catastrophic destructive action is never appropriate for view-only
+    // access regardless of what else 'view' might reasonably permit.
+    ...(settingsAccess === 'edit'
+      ? [{ icon: Trash2, label: 'Reset All Data', danger: true, action: () => setShowConfirmReset(true) }]
+      : []),
     { icon: LogOut, label: 'Log Out', danger: true, action: () => setShowConfirmLogout(true) },
   ]
 

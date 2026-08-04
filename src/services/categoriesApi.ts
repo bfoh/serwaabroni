@@ -1,22 +1,38 @@
 import { supabase } from '@/lib/supabase'
 import type { BusinessCategory } from '@/lib/supabase'
 import { templateForIndustry, mergeSeedNames, UNCATEGORIZED } from '@/lib/categories'
+import { resolveScopeId } from '@/services/scopeId'
 
+// This file had its own local, un-migrated uidOrThrow() — Task 2 (RBAC)
+// converted supabaseApi.ts and batchApi.ts to resolve business_id_for() so
+// an active Manager/Staff account scopes to their employer's tenant, but
+// this file was missed entirely. Every call here used the caller's own raw
+// auth uid, so for a Manager/Staff account: reads returned zero rows
+// (state.categories always []), every picker silently fell back to the
+// generic Supermarket template regardless of the tenant's real industry, and
+// writes (insertCategory, deleteCategoryDb, seedCategoriesForIndustry)
+// created orphan business_categories rows under the staff/manager's own auth
+// uid — invisible to the owner and to every other session. Found in the RBAC
+// feature's final whole-branch review.
 async function uidOrThrow(): Promise<string> {
   const { data } = await supabase.auth.getUser()
   const uid = data.user?.id
   if (!uid) throw new Error('Not authenticated')
-  return uid
+  const { data: businessId, error } = await supabase.rpc('business_id_for', { uid })
+  return resolveScopeId(uid, (businessId as string) ?? null, !!error) as string
 }
 
 export async function fetchCategories(): Promise<BusinessCategory[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
+  const { data: businessId, error: scopeError } = await supabase.rpc('business_id_for', { uid: user.id })
+  const scopedUid = resolveScopeId(user.id, (businessId as string) ?? null, !!scopeError)
+  if (!scopedUid) return []
 
   const { data, error } = await supabase
     .from('business_categories')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', scopedUid)
     .order('sort_order', { ascending: true })
 
   if (error) throw error

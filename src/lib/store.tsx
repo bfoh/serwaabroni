@@ -348,6 +348,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        // onAuthStateChange's session?.user branch fires for TOKEN_REFRESHED
+        // and USER_UPDATED (e.g. saving Settings → Edit Profile), not just a
+        // genuine sign-in/account-switch — _event is intentionally ignored
+        // above since Supabase's event set isn't a reliable signal on its
+        // own. Read the prior active uid BEFORE reconcileActiveUser
+        // overwrites it, using the exact same "did the uid actually change"
+        // check reconcileActiveUser applies internally, so role/businessId
+        // are only cleared on a real switch — never on a same-user refresh,
+        // which would otherwise flash role-gated UI (Reports, Settings,
+        // cost price) to denied and back on every token refresh once Task
+        // 9/10 consume state.role.
+        const priorUid = localStorage.getItem(ACTIVE_UID_KEY)
+        const identityChanged = priorUid !== session.user.id
         reconcileActiveUser(session.user.id)
         dispatch({
           type: 'SET_USER',
@@ -369,9 +382,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // already returns false for role=null (deny-everything), so this
         // transient window fails closed (safe) instead of leaking the
         // outgoing identity's permissions.
-        dispatch({ type: 'SET_ROLE', role: null })
-        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
-        resolveRoleAndDispatch(session.user.id)
+        // Also skip the resolve entirely when the identity hasn't changed:
+        // role/businessId already hold the correct value for this same user
+        // from their last resolve, so re-running activate_membership() +
+        // two more RPCs on every token refresh would be pure waste.
+        if (identityChanged) {
+          dispatch({ type: 'SET_ROLE', role: null })
+          dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
+          resolveRoleAndDispatch(session.user.id)
+        }
         const backup = readAdminBackup()
         dispatch({
           type: 'SET_IMPERSONATING',

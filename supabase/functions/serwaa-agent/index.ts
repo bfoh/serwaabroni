@@ -3,10 +3,11 @@
 // plus any tool calls for the client to preview/execute. No DB writes happen here.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, json } from '../_shared/cors.ts'
-import { TOOLS } from './tools.ts'
+import { toolsForRole } from './tools.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!
 const MODEL = 'claude-haiku-4-5-20251001'
 
@@ -50,6 +51,23 @@ Deno.serve(async (req) => {
     const userClient = createClient(SUPABASE_URL, ANON_KEY)
     const { data: userData, error: userErr } = await userClient.auth.getUser(body.userJwt)
     if (userErr || !userData?.user) return json({ error: 'Unauthorized' }, 401)
+    const callerId = userData.user.id
+
+    // Resolve the caller's role via role_for() (migration_023_business_members.sql,
+    // Task 1's canonical owner/manager/staff resolver — SECURITY DEFINER, so it
+    // can see the caller's business_members row even under owner-only RLS) so
+    // the tool schema can be filtered per
+    // docs/superpowers/specs/2026-08-03-staff-rbac-design.md §5. Service role
+    // (not the user's own JWT) because this function has no session for the
+    // caller beyond the raw userJwt string, matching invite-staff/admin-impersonate's
+    // established pattern for this project's edge functions.
+    // Fails closed: any RPC error, or a value that isn't exactly 'owner' |
+    // 'manager' | 'staff', resolves to null, which toolsForRole() below treats
+    // as the MOST restricted role — never the full tool list.
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+    const { data: roleData, error: roleErr } = await admin.rpc('role_for', { uid: callerId })
+    const role: string | null =
+      !roleErr && (roleData === 'owner' || roleData === 'manager' || roleData === 'staff') ? roleData : null
 
     // Keep context small: last 4 turns only.
     const recent = body.messages.slice(-4)
@@ -65,7 +83,7 @@ Deno.serve(async (req) => {
         model: MODEL,
         max_tokens: 400,
         system: systemPrompt(body.snapshot),
-        tools: TOOLS,
+        tools: toolsForRole(role),
         messages: recent.map((m) => ({ role: m.role, content: m.content })),
       }),
     })

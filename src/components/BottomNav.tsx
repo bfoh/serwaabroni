@@ -2,8 +2,10 @@ import { LayoutGrid, Package, CirclePlus, ScrollText, BarChart3, Settings } from
 import { Link, useNavigate, useLocation } from 'react-router'
 import { useStore } from '@/lib/store'
 import type { Tab } from '@/lib/store'
+import { usePermission } from '@/hooks/usePermission'
+import { visibleMainTabKeys } from '@/lib/permissions'
 
-const mainTabs: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
+const allMainTabs: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
   { key: 'home', label: 'HOME', icon: LayoutGrid },
   { key: 'stock', label: 'STOCK', icon: Package },
   { key: 'debts', label: 'DEBTS', icon: ScrollText },
@@ -12,8 +14,10 @@ const mainTabs: { key: Tab; label: string; icon: typeof LayoutGrid }[] = [
 
 export default function BottomNav() {
   const { state, setTab, dispatch } = useStore()
+  const { role } = usePermission()
   const navigate = useNavigate()
   const location = useLocation()
+  const mainTabs = allMainTabs.filter((t) => visibleMainTabKeys(role).includes(t.key))
 
   const handleTabClick = (key: Tab) => {
     setTab(key)

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router'
 import { useState, useEffect } from 'react'
 import { Mic } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { usePermission } from '@/hooks/usePermission'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
 import Debts from '@/pages/Debts'
@@ -25,7 +26,8 @@ import CashFlow from '@/pages/CashFlow'
 import AgentSheet from '@/components/agent/AgentSheet'
 
 function MainApp() {
-  const { state } = useStore()
+  const { state, setTab } = useStore()
+  const { canView } = usePermission()
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
   const [showCustomers, setShowCustomers] = useState(false)
@@ -37,6 +39,13 @@ function MainApp() {
     setShowExpenses(false)
     setShowCustomers(false)
   }, [state.activeTab])
+
+  // Defense in depth: if a role loses Reports access (or a stale tab
+  // selection survives a role change), bounce back to Home instead of
+  // rendering a tab BottomNav no longer shows a link for.
+  useEffect(() => {
+    if (state.activeTab === 'reports' && !canView('reports')) setTab('home')
+  }, [state.activeTab, canView, setTab])
 
   const renderPage = () => {
     switch (state.activeTab) {
@@ -101,6 +110,7 @@ function MainApp() {
 
 export default function App() {
   const { state } = useStore()
+  const { canView } = usePermission()
 
   if (state.authLoading) {
     return (
@@ -173,21 +183,27 @@ export default function App() {
           />
           <Route
             path="/capital"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><Capital /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !canView('capital') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><Capital /></div>
+            }
           />
           <Route
             path="/capital/:id"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !canView('capital') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
+            }
           />
           <Route
             path="/cash"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !canView('cashFlow') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
+            }
           />
           <Route
             path="/*"

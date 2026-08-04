@@ -515,8 +515,12 @@ export async function getDashboardSummary(role?: Role | null): Promise<{
     cashInHand = bal.cash
     cashInBank = bal.bank
   } catch { /* ledger unavailable (pre-migration / offline) — keep fallback */ }
-  const stockValue = products.reduce((sum: number, p: Record<string, number>) => sum + (p.cost_price || 0) * (p.quantity || 0), 0)
-  const projectedProfit = products.reduce((sum: number, p: Record<string, number>) => sum + ((p.selling_price || 0) - (p.cost_price || 0)) * (p.quantity || 0), 0)
+  // Explicitly 0 for staff rather than relying on the formula to degrade:
+  // stockValue's single cost_price term naturally zeroes when the field is
+  // absent, but projectedProfit's (selling_price - cost_price) only loses
+  // its cost_price term, leaving total revenue behind — not the intended 0.
+  const stockValue = isStaff ? 0 : products.reduce((sum: number, p: Record<string, number>) => sum + (p.cost_price || 0) * (p.quantity || 0), 0)
+  const projectedProfit = isStaff ? 0 : products.reduce((sum: number, p: Record<string, number>) => sum + ((p.selling_price || 0) - (p.cost_price || 0)) * (p.quantity || 0), 0)
 
   return { totalSales, totalProfit, totalExpenses, todaySales, todayProfit, pendingDebts, owingDebts, creditSalesOutstanding, cashInHand, cashInBank, stockValue, projectedProfit }
 }

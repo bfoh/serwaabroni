@@ -24,6 +24,15 @@
 -- (postMovement discards it), and a staff caller has no other way to read
 -- cash_movements at all — returning the full row would be a needless extra
 -- exposure of owner-only data through a side channel.
+--
+-- The DROP FUNCTION IF EXISTS below matters here specifically: this file was
+-- edited in place across two rounds while landing (RETURNS cash_movements ->
+-- RETURNS void), and CREATE OR REPLACE FUNCTION cannot change an existing
+-- function's return type — it errors on any database where an earlier
+-- version of this exact signature was already applied. Dropping first makes
+-- the file idempotent regardless of which version (if any) a given database
+-- has already run.
+DROP FUNCTION IF EXISTS post_cash_movement(text, text, numeric, text, text, text, uuid, text, timestamptz);
 CREATE OR REPLACE FUNCTION post_cash_movement(
   p_account      text,
   p_direction    text,

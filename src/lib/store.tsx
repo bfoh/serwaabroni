@@ -24,6 +24,8 @@ import {
 } from '@/services/supabaseApi'
 import type { BusinessProfileResult } from '@/services/supabaseApi'
 import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
+import { activateMembership, fetchRole, fetchBusinessId } from '@/services/roleApi'
+import type { Role } from '@/lib/permissions'
 import {
   fetchCategories, insertCategory, renameCategoryDb, deleteCategoryDb,
   seedCategoriesForIndustry, updateProductsCategoryBulk,
@@ -73,6 +75,8 @@ export interface AppState {
   adminChecked: boolean
   suspended: boolean
   impersonating: { tenantId: string; tenantName: string } | null
+  role: Role | null
+  businessId: string | null
 }
 
 type Action =
@@ -118,6 +122,8 @@ type Action =
   | { type: 'SET_ADMIN_CHECKED'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
+  | { type: 'SET_ROLE'; role: Role | null }
+  | { type: 'SET_BUSINESS_ID'; businessId: string | null }
   | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
   | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; categories: BusinessCategory[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
@@ -157,6 +163,8 @@ const initialState: AppState = {
   adminChecked: false,
   suspended: false,
   impersonating: null,
+  role: null,
+  businessId: null,
 }
 
 // Helper: persist current data to localStorage (for offline access)
@@ -235,6 +243,8 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
     case 'SET_ADMIN_CHECKED': return { ...state, adminChecked: action.value }
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
+    case 'SET_ROLE': return { ...state, role: action.role }
+    case 'SET_BUSINESS_ID': return { ...state, businessId: action.businessId }
     case 'RESET_TENANT_DATA': return {
       ...state,
       products: [], sales: [], debts: [], expenses: [], customers: [], categories: [], alerts: [],
@@ -310,14 +320,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const resolveRoleAndDispatch = async (uid: string) => {
+    await activateMembership()
+    const [role, businessId] = await Promise.all([fetchRole(uid), fetchBusinessId(uid)])
+    dispatch({ type: 'SET_ROLE', role })
+    dispatch({ type: 'SET_BUSINESS_ID', businessId })
+  }
+
   // Check auth on mount — Supabase Auth is the single source of truth
   useEffect(() => {
     checkAuth().then((session) => {
       reconcileActiveUser(session?.id ?? null)
       dispatch({ type: 'SET_USER', user: session })
+      if (session?.id) {
+        resolveRoleAndDispatch(session.id)
+      } else {
+        dispatch({ type: 'SET_ROLE', role: null })
+        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
+      }
     }).catch(() => {
       reconcileActiveUser(null)
       dispatch({ type: 'SET_USER', user: null })
+      dispatch({ type: 'SET_ROLE', role: null })
+      dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
     })
 
     // Listen for Supabase auth state changes
@@ -334,6 +359,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             logo: session.user.user_metadata?.logo || localStorage.getItem('serwaabroni_logo') || undefined,
           },
         })
+        resolveRoleAndDispatch(session.user.id)
         const backup = readAdminBackup()
         dispatch({
           type: 'SET_IMPERSONATING',
@@ -343,6 +369,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         reconcileActiveUser(null)
         dispatch({ type: 'SET_USER', user: null })
         dispatch({ type: 'SET_IMPERSONATING', value: null })
+        dispatch({ type: 'SET_ROLE', role: null })
+        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
       }
     })
 
@@ -426,7 +454,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       const results = await Promise.allSettled([
-        fetchProducts(),
+        fetchProducts(state.role),
         fetchSales(),
         fetchDebts(),
         fetchExpenses(),
@@ -563,7 +591,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_DATA_LOADING', loading: false })
       dispatch({ type: 'SET_ADMIN_CHECKED', value: true })
     }
-  }, [syncPending])
+  }, [syncPending, state.role])
 
   // Load data after auth is confirmed, and RE-load whenever the user changes
   // (account switch / impersonation) so the view always reflects the active user.
@@ -590,7 +618,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
-  }, [state.authLoading, state.isAuthenticated, state.user?.id, refreshData, syncPending])
+  }, [state.authLoading, state.isAuthenticated, state.user?.id, state.role, refreshData, syncPending])
 
   // Flush the offline write queue when the network returns or the tab regains
   // focus, then re-sync from the server. This is what makes a payment recorded

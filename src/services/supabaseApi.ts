@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { Product, Sale, Debt, Expense, Customer } from '@/lib/supabase'
 import { consumeForSale, reverseConsumptions } from '@/services/batchApi'
 import { resolveScopeId } from '@/services/scopeId'
+import type { Role } from '@/lib/permissions'
 
 // Get the real Supabase user UUID — this is the tenant key
 async function getCurrentUserId(): Promise<string | null> {
@@ -23,7 +24,11 @@ async function getCurrentUserId(): Promise<string | null> {
 // ============================================
 // PRODUCTS (scoped to user)
 // ============================================
-export async function fetchProducts(): Promise<Product[]> {
+// _role is unused for now — reserved for Task 13's cost_price masking for
+// Staff callers. Accepted here so refreshData's call site (which needs to
+// re-fetch whenever the resolved role changes, per Task 8) compiles ahead
+// of Task 13 actually implementing the masking body.
+export async function fetchProducts(_role?: Role | null): Promise<Product[]> {
   const uid = await getCurrentUserId()
   if (!uid) return []
 

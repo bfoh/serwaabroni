@@ -1,5 +1,14 @@
 -- migration_025: re-target expenses/customers/stock_batches/batch_consumptions
 -- RLS to business_id_for(). See migration_024 for the same pattern + rationale.
+--
+-- WARNING: do not re-run this file after migration_029. migration_029 adds a
+-- role_for(auth.uid()) IN ('owner','manager') gate on top of the four
+-- expenses policies this file declares, reusing the SAME policy names
+-- (DROP POLICY IF EXISTS + CREATE POLICY). Re-running migration_025 after
+-- migration_029 would silently strip that gate back out — no error, just a
+-- quiet return to Staff having full expenses CRUD. Run each numbered
+-- migration file exactly once, in order; never re-run an earlier one after a
+-- later one has already applied.
 
 -- ---- expenses ----
 DROP POLICY IF EXISTS "Users can view own expenses" ON expenses;

@@ -20,12 +20,19 @@ ALTER TABLE business_members ENABLE ROW LEVEL SECURITY;
 -- Staff/manager management is owner-only — a member can never read or edit
 -- their own row directly; activate_membership() below is their one narrow
 -- SECURITY DEFINER escape hatch for self-activation on first login.
+-- DROP POLICY IF EXISTS guards (not just plain CREATE POLICY) so a partial
+-- re-run of this file — plausible given the operator hand-runs 9 migration
+-- files in the SQL Editor — doesn't error out on "policy already exists".
+DROP POLICY IF EXISTS "Owner can view own staff" ON business_members;
 CREATE POLICY "Owner can view own staff" ON business_members
   FOR SELECT USING (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Owner can insert own staff" ON business_members;
 CREATE POLICY "Owner can insert own staff" ON business_members
   FOR INSERT WITH CHECK (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Owner can update own staff" ON business_members;
 CREATE POLICY "Owner can update own staff" ON business_members
   FOR UPDATE USING (auth.uid() = business_id);
+DROP POLICY IF EXISTS "Owner can delete own staff" ON business_members;
 CREATE POLICY "Owner can delete own staff" ON business_members
   FOR DELETE USING (auth.uid() = business_id);
 

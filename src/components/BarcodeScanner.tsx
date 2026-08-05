@@ -17,6 +17,7 @@ import { useStore } from '@/lib/store'
 import type { Product } from '@/lib/supabase'
 import { uid, formatCurrency } from '@/lib/data'
 import { templateForIndustry } from '@/lib/categories'
+import { unitOptionsForIndustry } from '@/lib/unitOptions'
 
 // ============================================================
 // TYPES
@@ -90,16 +91,6 @@ async function lookupProduct(barcode: string): Promise<ProductInfo | null> {
   return (await lookupOpenFoodFacts(barcode)) || (await lookupUPCItemDB(barcode))
 }
 
-// Mirror Inventory's Add Product options so scanned items capture the same data.
-const UNIT_OPTIONS = [
-  { value: 'piece', label: 'Pc' },
-  { value: 'tin', label: 'Tin' },
-  { value: 'bag', label: 'Bag' },
-  { value: 'bottle', label: 'Btl' },
-  { value: 'pack', label: 'Pack' },
-  { value: 'loaf', label: 'Loaf' },
-  { value: 'kg', label: 'Kg' },
-]
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -122,6 +113,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
   // Finding 2.
   const categoryNamesRef = useRef(categoryNames)
   categoryNamesRef.current = categoryNames
+  const unitOptions = useMemo(() => unitOptionsForIndustry(state.businessProfile?.industry), [state.businessProfile?.industry])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Live camera + decode loop is owned by the shared useScanCamera hook.
@@ -840,7 +832,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                   onChange={(e) => setManualUnit(e.target.value)}
                   className="w-full h-12 bg-white harsh-border rounded-sm px-3 font-body text-base text-ink"
                 >
-                  {UNIT_OPTIONS.map((u) => (
+                  {unitOptions.map((u) => (
                     <option key={u.value} value={u.value}>{u.label}</option>
                   ))}
                 </select>
@@ -1074,7 +1066,7 @@ export default function BarcodeScanner({ isOpen, onClose }: BarcodeScannerProps)
                       onChange={(e) => setCurrentItem((prev) => prev ? { ...prev, unit: e.target.value } : null)}
                       className="w-full h-12 bg-white harsh-border rounded-sm px-3 font-body text-base text-ink"
                     >
-                      {UNIT_OPTIONS.map((u) => (
+                      {unitOptions.map((u) => (
                         <option key={u.value} value={u.value}>{u.label}</option>
                       ))}
                     </select>

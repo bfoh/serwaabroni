@@ -11,6 +11,7 @@ import BulkAddSheet from '@/components/inventory/BulkAddSheet'
 import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
 import { templateForIndustry } from '@/lib/categories'
+import { unitOptionsForIndustry, smallUnitOptionsForIndustry } from '@/lib/unitOptions'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt, removeDebt } = useStore()
@@ -20,6 +21,8 @@ export default function Inventory() {
       : templateForIndustry('Supermarket').map((c) => c.name)),
     [state.categories],
   )
+  const unitOptions = useMemo(() => unitOptionsForIndustry(state.businessProfile?.industry), [state.businessProfile?.industry])
+  const smallUnitOptions = useMemo(() => smallUnitOptionsForIndustry(state.businessProfile?.industry), [state.businessProfile?.industry])
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
@@ -591,24 +594,9 @@ export default function Inventory() {
                       onChange={(e) => setInlineEditUnit(e.target.value)}
                       className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                     >
-                      {isMultiUnit(product) ? (
-                        <>
-                          <option value="tin">Tin</option>
-                          <option value="bag">Bag</option>
-                          <option value="sachet">Sachet</option>
-                          <option value="piece">Piece</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="piece">Piece</option>
-                          <option value="tin">Tin</option>
-                          <option value="bag">Bag</option>
-                          <option value="bottle">Bottle</option>
-                          <option value="pack">Pack</option>
-                          <option value="loaf">Loaf</option>
-                          <option value="kg">Kg</option>
-                        </>
-                      )}
+                      {(isMultiUnit(product) ? smallUnitOptions : unitOptions).map((u) => (
+                        <option key={u.value} value={u.value}>{u.label}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -1000,12 +988,12 @@ export default function Inventory() {
                         checked={newProduct.multiUnit}
                         onChange={(e) => {
                           const on = e.target.checked
-                          const packUnits = ['tin', 'bag', 'sachet', 'piece']
+                          const smallUnitValues = smallUnitOptions.map((u) => u.value)
                           setNewProduct({
                             ...newProduct,
                             multiUnit: on,
                             qtyUnitKind: on ? newProduct.qtyUnitKind : 'base',
-                            unit: on && !packUnits.includes(newProduct.unit) ? 'sachet' : newProduct.unit,
+                            unit: on && !smallUnitValues.includes(newProduct.unit) ? (smallUnitOptions[0]?.value || 'piece') : newProduct.unit,
                           })
                         }}
                       />
@@ -1020,8 +1008,9 @@ export default function Inventory() {
                             onChange={(e) => setNewProduct({ ...newProduct, packUnit: e.target.value })}
                             className="w-full h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
                           >
-                            <option value="box">Box</option>
-                            <option value="bag">Bag</option>
+                            {unitOptions.map((u) => (
+                              <option key={u.value} value={u.value}>{u.label}</option>
+                            ))}
                           </select>
                         </div>
                         <div>
@@ -1062,24 +1051,9 @@ export default function Inventory() {
                         onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       >
-                        {newProduct.multiUnit ? (
-                          <>
-                            <option value="tin">Tin</option>
-                            <option value="bag">Bag</option>
-                            <option value="sachet">Sachet</option>
-                            <option value="piece">Piece</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="piece">Piece</option>
-                            <option value="tin">Tin</option>
-                            <option value="bag">Bag</option>
-                            <option value="bottle">Bottle</option>
-                            <option value="pack">Pack</option>
-                            <option value="loaf">Loaf</option>
-                            <option value="kg">Kg</option>
-                          </>
-                        )}
+                        {(newProduct.multiUnit ? smallUnitOptions : unitOptions).map((u) => (
+                          <option key={u.value} value={u.value}>{u.label}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

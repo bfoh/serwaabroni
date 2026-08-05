@@ -122,12 +122,20 @@ export default function Inventory() {
     ? baseFilteredProducts.filter(p => injectionSummary.rows.some(r => r.product_id === p.id))
     : baseFilteredProducts
 
-  const totalStockValue = filterInjectionId && injectionSummary 
-    ? injectionSummary.totalCost 
+  const totalStockValue = filterInjectionId && injectionSummary
+    ? injectionSummary.totalCost
     : state.products.reduce((s, p) => s + p.cost_price * p.quantity, 0)
 
-  const projectedProfit = filterInjectionId && injectionSummary 
-    ? injectionSummary.projectedProfit 
+  // Explicitly 0 for staff rather than letting the formula degrade:
+  // maskCostPriceForRole() zeroes cost_price (not omits it), so
+  // (selling_price - cost_price) silently computes full revenue as
+  // "profit" instead of the intended 0 — the exact same bug pattern
+  // already fixed in getDashboardSummary(), missed here since this page
+  // computes its own aggregate straight from state.products. Found live
+  // in production RBAC testing: a Staff account's Stock page showed a
+  // real-looking "Proj. Profit" figure (== full revenue) instead of 0.
+  const projectedProfit = state.role === 'staff' ? 0 : filterInjectionId && injectionSummary
+    ? injectionSummary.projectedProfit
     : state.products.reduce((s, p) => s + (p.selling_price - p.cost_price) * p.quantity, 0)
 
   const itemsCount = filterInjectionId && injectionSummary
@@ -670,25 +678,32 @@ export default function Inventory() {
                   </div>
                 </div>
 
-                {/* Profit bar */}
-                <div className="px-4 pb-3">
-                  <div className="flex items-center justify-between text-[10px] text-muted-text mb-1">
-                    <span>Profit per unit</span>
-                    <span className="text-accent-green font-medium">
-                      {formatCurrency(product.selling_price - product.cost_price)}
-                    </span>
+                {/* Profit bar — hidden for staff: maskCostPriceForRole() zeroes
+                    cost_price (rather than omitting it), so both the profit
+                    figure and the bar's percentage width would otherwise
+                    silently compute from a fake $0 cost (full revenue shown
+                    as "profit", and a divide-by-zero width). Found live in
+                    production RBAC testing. */}
+                {state.role !== 'staff' && (
+                  <div className="px-4 pb-3">
+                    <div className="flex items-center justify-between text-[10px] text-muted-text mb-1">
+                      <span>Profit per unit</span>
+                      <span className="text-accent-green font-medium">
+                        {formatCurrency(product.selling_price - product.cost_price)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-warm-gray rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min(100, ((product.selling_price - product.cost_price) / product.cost_price) * 100)}%`,
+                        }}
+                        transition={{ duration: 0.5, delay: index * 0.05 }}
+                        className="h-full bg-accent-green rounded-full"
+                      />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-warm-gray rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${Math.min(100, ((product.selling_price - product.cost_price) / product.cost_price) * 100)}%`,
-                      }}
-                      transition={{ duration: 0.5, delay: index * 0.05 }}
-                      className="h-full bg-accent-green rounded-full"
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Action buttons row: Re-stock | Edit | Delete */}
                 {editingProduct === product.id ? (

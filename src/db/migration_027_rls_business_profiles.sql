@@ -34,10 +34,25 @@ CREATE POLICY "Users can insert own profile" ON business_profiles
     AND is_tenant_active(auth.uid())
   );
 
+-- The client's upsertBusinessProfile() always calls .upsert() (never a plain
+-- .update()), which PostgREST sends as `Prefer: resolution=merge-duplicates`
+-- — an INSERT ... ON CONFLICT DO UPDATE. Postgres requires BOTH the INSERT
+-- and UPDATE row-security policies to permit that statement shape, not just
+-- whichever branch actually runs at the row level. A brand-new owner's very
+-- first save has no existing business_profiles row yet, so business_id_for()
+-- correctly resolves NULL (the same bootstrap case the INSERT policy above
+-- already handles) — but comparing that NULL directly against user_id/
+-- auth.uid() is NULL (never true), which blocked the WHOLE upsert statement
+-- even though no actual conflicting row exists and a plain insert would have
+-- succeeded on its own. Found live in production testing: a fresh signup's
+-- very first "Continue" on the industry picker 403'd with "new row violates
+-- row-level security policy for table business_profiles" despite the INSERT
+-- policy alone permitting it. Same COALESCE(...,auth.uid()) bootstrap
+-- fallback as the INSERT policy fixes it here too.
 DROP POLICY IF EXISTS "Users can update own profile" ON business_profiles;
 CREATE POLICY "Users can update own profile" ON business_profiles
   FOR UPDATE USING (
-    business_id_for(auth.uid()) = user_id
-    AND business_id_for(auth.uid()) = auth.uid()
-    AND is_tenant_active(business_id_for(auth.uid()))
+    COALESCE(business_id_for(auth.uid()), auth.uid()) = user_id
+    AND COALESCE(business_id_for(auth.uid()), auth.uid()) = auth.uid()
+    AND is_tenant_active(COALESCE(business_id_for(auth.uid()), auth.uid()))
   );

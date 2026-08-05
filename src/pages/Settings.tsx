@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield, Camera, Share2 } from 'lucide-react'
+import { X, ChevronRight, LogOut, Download, Trash2, User, Store, Globe, Bell, HelpCircle, Shield, Camera, Share2, Tag } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useNavigate } from 'react-router'
 import { exportToCSV } from '@/lib/export'
 import type { BusinessProfile } from '@/lib/supabase'
+import { usePermission } from '@/hooks/usePermission'
+import { fetchStaff, inviteStaff, updateStaffRole, revokeStaff, type StaffMember } from '@/services/staffApi'
+import CategoriesManager from '@/components/CategoriesManager'
 
 interface SettingsProps {
   onClose: () => void
@@ -23,6 +26,40 @@ export default function Settings({ onClose }: SettingsProps) {
   const [logoUrl, setLogoUrl] = useState(state.user?.logo || state.businessProfile?.logo_url || localStorage.getItem('serwaabroni_logo') || '')
   const [smsSenderId, setSmsSenderId] = useState(state.businessProfile?.sms_sender_id || '')
   const [saving, setSaving] = useState(false)
+  const { settingsAccess } = usePermission()
+  const [showStaff, setShowStaff] = useState(false)
+  const [staff, setStaff] = useState<StaffMember[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<'manager' | 'staff'>('staff')
+  const [inviting, setInviting] = useState(false)
+  const [showCategories, setShowCategories] = useState(false)
+
+  const loadStaff = async () => {
+    try { setStaff(await fetchStaff()) } catch { showToast('Could not load staff', 'error') }
+  }
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return
+    setInviting(true)
+    try {
+      await inviteStaff(inviteEmail, inviteRole)
+      setInviteEmail('')
+      await loadStaff()
+      showToast('Invite sent', 'success')
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not send invite', 'error')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleRoleChange = async (id: string, role: 'manager' | 'staff') => {
+    try { await updateStaffRole(id, role); await loadStaff() } catch { showToast('Could not update role', 'error') }
+  }
+
+  const handleRevoke = async (id: string) => {
+    try { await revokeStaff(id); await loadStaff() } catch { showToast('Could not revoke access', 'error') }
+  }
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -79,10 +116,19 @@ export default function Settings({ onClose }: SettingsProps) {
       created_at: state.businessProfile?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    await updateBusinessProfile(profile)
-    showToast('Profile saved!', 'success')
-    setShowProfile(false)
-    setSaving(false)
+    // updateBusinessProfile() now throws on failure (owner-only gate, or a
+    // genuine write error) instead of silently faking success — found live
+    // in production testing this always showed "Profile saved!" even when
+    // the underlying write was rejected.
+    try {
+      await updateBusinessProfile(profile)
+      showToast('Profile saved!', 'success')
+      setShowProfile(false)
+    } catch {
+      showToast('Could not save profile — check your connection and try again', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Notification preference helpers. Undefined fields fall back to their DB defaults
@@ -93,6 +139,10 @@ export default function Settings({ onClose }: SettingsProps) {
   }
 
   const toggleNotif = (key: keyof BusinessProfile, fallback = true) => {
+    if (settingsAccess !== 'edit') {
+      showToast('Only the business owner can change this', 'error')
+      return
+    }
     if (!state.businessProfile) {
       showToast('Set up your shop profile first', 'error')
       return
@@ -137,20 +187,41 @@ export default function Settings({ onClose }: SettingsProps) {
     ...(state.isSuperAdmin
       ? [{ icon: Shield, label: 'Super Admin', action: () => navigate('/admin') }]
       : []),
-    { icon: User, label: 'Edit Profile', action: () => setShowProfile(true) },
+    ...(settingsAccess === 'edit'
+      ? [{ icon: User, label: 'Staff', action: () => { setShowStaff(true); loadStaff() } }]
+      : []),
+    // Edit Profile writes via updateBusinessProfile(), which is now
+    // owner-only (throws otherwise) — see that function's own comment for
+    // why. Hidden entirely for non-edit access rather than shown read-only,
+    // matching the existing Staff/Reset-All-Data precedent below. Found
+    // live in production RBAC testing: a Manager could type into and
+    // "save" this form; the write was correctly rejected by RLS, but the
+    // app showed a false "Profile saved!" success toast and visibly
+    // changed their own session's business name — see updateBusinessProfile.
+    ...(settingsAccess === 'edit'
+      ? [{ icon: User, label: 'Edit Profile', action: () => setShowProfile(true) }]
+      : []),
+    { icon: Tag, label: 'Manage Categories', badge: String(state.categories.length), action: () => setShowCategories(true) },
     { icon: Download, label: 'Export All Data (CSV)', action: handleExport },
     { icon: Bell, label: 'Notifications', badge: anyChannelOn ? 'On' : 'Off', action: () => setShowNotifications(true) },
     { icon: Globe, label: 'Language', badge: state.language === 'tw' ? 'Twi' : 'English', action: () => dispatch({ type: 'SET_LANGUAGE', lang: state.language === 'tw' ? 'en' : 'tw' }) },
     { icon: Share2, label: 'Community Catalog',
       badge: state.businessProfile?.catalog_contribute === false ? 'Off' : 'On',
       action: () => {
+        if (settingsAccess !== 'edit') { showToast('Only the business owner can change this', 'error'); return }
         if (!state.businessProfile) { showToast('Set up your shop profile first', 'error'); return }
         const enabled = state.businessProfile.catalog_contribute !== false
         updateBusinessProfile({ ...state.businessProfile, catalog_contribute: !enabled })
       } },
     { icon: Shield, label: 'Privacy & Security', action: () => showToast('All data stored securely on Supabase', 'success') },
     { icon: HelpCircle, label: 'Help & Support', action: () => showToast('Contact: support@serwaabroni.com', 'success') },
-    { icon: Trash2, label: 'Reset All Data', danger: true, action: () => setShowConfirmReset(true) },
+    // Owner-only: this wipes every product, sale, debt, expense, and customer
+    // in one tap. Manager's settingsAccess is 'view', not 'edit' — a
+    // catastrophic destructive action is never appropriate for view-only
+    // access regardless of what else 'view' might reasonably permit.
+    ...(settingsAccess === 'edit'
+      ? [{ icon: Trash2, label: 'Reset All Data', danger: true, action: () => setShowConfirmReset(true) }]
+      : []),
     { icon: LogOut, label: 'Log Out', danger: true, action: () => setShowConfirmLogout(true) },
   ]
 
@@ -380,6 +451,99 @@ export default function Settings({ onClose }: SettingsProps) {
                 <button onClick={handleLogout} className="flex-1 h-10 bg-ink text-white rounded-sm font-display text-xs uppercase flex items-center justify-center gap-1.5">
                   <LogOut size={12} /> Log Out
                 </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Manage Categories Modal */}
+      <AnimatePresence>
+        {showCategories && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowCategories(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+              exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[90vw] max-w-sm max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b-2 border-ink sticky top-0 bg-sand">
+                <h2 className="font-display text-lg text-ink uppercase">Categories</h2>
+                <button onClick={() => setShowCategories(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
+              </div>
+              <div className="p-4">
+                <CategoriesManager />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Staff Management Modal */}
+      <AnimatePresence>
+        {showStaff && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 z-[60]" onClick={() => setShowStaff(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+              exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-sand harsh-border rounded-sm z-[61] w-[90vw] max-w-sm max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b-2 border-ink sticky top-0 bg-sand">
+                <h2 className="font-display text-lg text-ink uppercase">Staff</h2>
+                <button onClick={() => setShowStaff(false)} className="w-8 h-8 flex items-center justify-center rounded-sm bg-warm-gray"><X size={16} /></button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider">Invite</p>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="staff@example.com"
+                    className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'manager' | 'staff')}
+                    className="w-full h-10 px-3 bg-light harsh-border rounded-sm text-sm"
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                  <button
+                    onClick={handleInvite}
+                    disabled={inviting || !inviteEmail.trim()}
+                    className="w-full h-11 bg-ink text-white font-display text-sm uppercase tracking-wider rounded-sm disabled:opacity-50"
+                  >
+                    {inviting ? '...' : 'Send Invite'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-text uppercase tracking-wider">Team</p>
+                  {staff.length === 0 && <p className="text-xs text-muted-text">No staff invited yet.</p>}
+                  {staff.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 px-3 py-2.5 bg-light harsh-border rounded-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-ink truncate">{m.invited_email}</p>
+                        <p className="text-[10px] text-muted-text uppercase">{m.status}</p>
+                      </div>
+                      <select
+                        value={m.role}
+                        onChange={(e) => handleRoleChange(m.id, e.target.value as 'manager' | 'staff')}
+                        className="h-8 px-2 bg-warm-gray rounded-sm text-xs"
+                      >
+                        <option value="staff">Staff</option>
+                        <option value="manager">Manager</option>
+                      </select>
+                      <button onClick={() => handleRevoke(m.id)} className="h-8 px-2 bg-accent-red/10 text-accent-red rounded-sm text-xs">
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </motion.div>
           </>

@@ -618,10 +618,17 @@ export default function AddSaleSheet() {
                           <span className="text-white/60 text-micro">TOTAL · {itemCount} {itemCount === 1 ? 'ITEM' : 'ITEMS'}</span>
                           <span className="font-display text-3xl text-white">{formatCurrency(total)}</span>
                         </div>
-                        <div className="flex justify-between items-baseline mt-1">
-                          <span className="text-white/40 text-xs">PROFIT</span>
-                          <span className="text-accent-green text-sm font-medium">+{formatCurrency(profit)}</span>
-                        </div>
+                        {/* Hidden for staff: cost_price is zeroed (not omitted)
+                            by maskCostPriceForRole(), so `profit` here would
+                            silently compute as full revenue instead of the
+                            intended 0. Found live in production RBAC testing
+                            — same bug pattern as Inventory.tsx's profit bar. */}
+                        {state.role !== 'staff' && (
+                          <div className="flex justify-between items-baseline mt-1">
+                            <span className="text-white/40 text-xs">PROFIT</span>
+                            <span className="text-accent-green text-sm font-medium">+{formatCurrency(profit)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

@@ -103,6 +103,16 @@ export interface Customer {
   created_at: string
 }
 
+export interface BusinessCategory {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  sort_order: number
+  is_builtin: boolean
+  created_at: string
+}
+
 export interface StockBatch {
   id: string
   user_id: string
@@ -173,6 +183,7 @@ export interface BusinessProfile {
   logo_url?: string | null
   currency: string
   language: string
+  industry?: string | null
   status?: 'active' | 'suspended'
   suspended_at?: string | null
   suspended_reason?: string | null

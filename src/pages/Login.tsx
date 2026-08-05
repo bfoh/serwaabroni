@@ -7,7 +7,7 @@ import { signUp, signIn } from '@/services/auth'
 type AuthMode = 'login' | 'signup'
 
 export default function Login() {
-  const { showToast, refreshData, dispatch } = useStore()
+  const { showToast, dispatch } = useStore()
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,9 +24,17 @@ export default function Login() {
     if (error) {
       showToast(error, 'error')
     } else if (user) {
+      // Do NOT call refreshData() here directly: state.role/state.businessId
+      // are still unresolved at this instant (resolveRoleAndDispatch() runs
+      // off the Supabase onAuthStateChange listener, asynchronously, slightly
+      // after this), so an immediate fetch would scope every query to this
+      // caller's own raw uid — empty for Staff/Manager. The store's own
+      // roleResolved-gated effect (see store.tsx) fires the real, correctly
+      // scoped fetch once role resolves; this dispatch just gets the UI past
+      // the login screen in the meantime. Found in the RBAC feature's final
+      // whole-branch review, fix-wave re-review round 4.
       dispatch({ type: 'SET_USER', user })
       showToast('Welcome back!', 'success')
-      refreshData()
     }
     setLoading(false)
   }
@@ -42,9 +50,10 @@ export default function Login() {
     if (error) {
       showToast(error, 'error')
     } else if (user) {
+      // See handleLogin's comment above — same reason refreshData() isn't
+      // called directly here.
       dispatch({ type: 'SET_USER', user })
       showToast('Account created! Welcome to SerwaaBroni!', 'success')
-      refreshData()
     }
     setLoading(false)
   }

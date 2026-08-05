@@ -73,14 +73,17 @@ export async function deleteTenant(userId: string): Promise<void> {
 }
 
 // Read-only drill-in. Allowed by the admin SELECT RLS policies added in migration_005.
+// sales.profit is revoked for `authenticated` (migration_033) — admin_get_sales
+// is the SECURITY DEFINER escape hatch, gated on is_super_admin() itself.
 export async function getTenantDetail(userId: string): Promise<TenantDetail> {
   const [salesRes, expensesRes] = await Promise.all([
-    supabase.from('sales').select('*').eq('user_id', userId)
-      .order('created_at', { ascending: false }),
+    supabase.rpc('admin_get_sales', { target_user_id: userId }),
     supabase.from('expenses').select('*').eq('user_id', userId)
       .order('created_at', { ascending: false }),
   ])
-  const sales = (salesRes.data as Sale[]) ?? []
+  const sales = ((salesRes.data as Sale[]) ?? []).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
   const expenses = (expensesRes.data as Expense[]) ?? []
   return {
     sales,

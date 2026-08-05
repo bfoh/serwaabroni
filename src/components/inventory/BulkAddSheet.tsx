@@ -7,6 +7,7 @@ import { downloadTemplate } from '@/lib/bulkImport/template'
 import { rowsFromMatrix, normalizeRow, type DraftRow } from '@/lib/bulkImport/rows'
 import { saveBulkRows, type CashMode, type BulkSaveApi } from '@/lib/bulkImport/save'
 import { extractRowsFromImage } from '@/lib/bulkImport/vision'
+import { templateForIndustry } from '@/lib/categories'
 import BulkReviewTable from './BulkReviewTable'
 
 export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -190,7 +191,14 @@ export default function BulkAddSheet({ open, onClose }: { open: boolean; onClose
                 )}
               </div>
 
-              <BulkReviewTable rows={rows} products={state.products} onChange={setRows} onImport={onImport} importing={importing} />
+              <BulkReviewTable
+                rows={rows}
+                products={state.products}
+                categories={state.categories.length > 0 ? state.categories.map((c) => c.name) : templateForIndustry('Supermarket').map((c) => c.name)}
+                onChange={setRows}
+                onImport={onImport}
+                importing={importing}
+              />
             </>
           )}
 

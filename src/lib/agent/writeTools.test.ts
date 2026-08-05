@@ -64,6 +64,15 @@ describe('buildPreview', () => {
     expect(r.newProduct).toMatchObject({ name: 'Rice 5kg', costPrice: 40, sellPrice: 55, qty: 10, payment: 'cash' })
   })
 
+  it('defaults category to Uncategorized when not provided', () => {
+    const r = buildPreview(
+      { name: 'new_product', input: { name: 'Rice 5kg', cost_price: 40, sell_price: 55, qty: 10 } },
+      ctx,
+    )
+    if ('error' in r) throw new Error(r.error)
+    expect(r.newProduct?.category).toBe('Uncategorized')
+  })
+
   it('builds an add_stock preview against an existing product', () => {
     const r = buildPreview({ name: 'add_stock', input: { product: 'indomie', qty: 24 } }, ctx)
     if ('error' in r) throw new Error(r.error)

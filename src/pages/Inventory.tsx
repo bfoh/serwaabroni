@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, Search, Package, X, Mic, Pencil, Trash2, AlertTriangle, Clock } from 'lucide-react'
 import { useStore } from '@/lib/store'
@@ -10,9 +10,19 @@ import StockHistorySheet from '@/components/StockHistorySheet'
 import BulkAddSheet from '@/components/inventory/BulkAddSheet'
 import { groupByName, groupTotalLabel } from '@/lib/inventoryGroups'
 import { formatStock, isMultiUnit } from '@/lib/units'
+import { templateForIndustry } from '@/lib/categories'
+import { unitOptionsForIndustry, smallUnitOptionsForIndustry } from '@/lib/unitOptions'
 
 export default function Inventory() {
   const { state, dispatch, showToast, t, addProduct, updateProduct, removeProduct, addDebt, updateDebt, removeDebt } = useStore()
+  const categoryNames = useMemo(
+    () => (state.categories.length > 0
+      ? state.categories.map((c) => c.name)
+      : templateForIndustry('Supermarket').map((c) => c.name)),
+    [state.categories],
+  )
+  const unitOptions = useMemo(() => unitOptionsForIndustry(state.businessProfile?.industry), [state.businessProfile?.industry])
+  const smallUnitOptions = useMemo(() => smallUnitOptionsForIndustry(state.businessProfile?.industry), [state.businessProfile?.industry])
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
@@ -112,12 +122,20 @@ export default function Inventory() {
     ? baseFilteredProducts.filter(p => injectionSummary.rows.some(r => r.product_id === p.id))
     : baseFilteredProducts
 
-  const totalStockValue = filterInjectionId && injectionSummary 
-    ? injectionSummary.totalCost 
+  const totalStockValue = filterInjectionId && injectionSummary
+    ? injectionSummary.totalCost
     : state.products.reduce((s, p) => s + p.cost_price * p.quantity, 0)
 
-  const projectedProfit = filterInjectionId && injectionSummary 
-    ? injectionSummary.projectedProfit 
+  // Explicitly 0 for staff rather than letting the formula degrade:
+  // maskCostPriceForRole() zeroes cost_price (not omits it), so
+  // (selling_price - cost_price) silently computes full revenue as
+  // "profit" instead of the intended 0 — the exact same bug pattern
+  // already fixed in getDashboardSummary(), missed here since this page
+  // computes its own aggregate straight from state.products. Found live
+  // in production RBAC testing: a Staff account's Stock page showed a
+  // real-looking "Proj. Profit" figure (== full revenue) instead of 0.
+  const projectedProfit = state.role === 'staff' ? 0 : filterInjectionId && injectionSummary
+    ? injectionSummary.projectedProfit
     : state.products.reduce((s, p) => s + (p.selling_price - p.cost_price) * p.quantity, 0)
 
   const itemsCount = filterInjectionId && injectionSummary
@@ -194,7 +212,7 @@ export default function Inventory() {
       }
       showToast(addUnpaid ? `Product added — owe ${addSupplierName.trim()}` : (t('product_added') || 'Product added!'), 'success')
       setShowAddProduct(false)
-      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: 'Groceries', multiUnit: false, packUnit: 'box', unitsPerPack: '', qtyUnitKind: 'base' })
+      setNewProduct({ name: '', cost_price: '', selling_price: '', quantity: '', unit: 'piece', category: categoryNames[0] || 'Uncategorized', multiUnit: false, packUnit: 'box', unitsPerPack: '', qtyUnitKind: 'base' })
       setAddProductInjectionId('')
       setAddPayFrom('cash')
       setAddUnpaid(false)
@@ -404,8 +422,6 @@ export default function Inventory() {
     }
   }
 
-  const categories = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
-
   return (
     <div className="min-h-screen bg-sand pb-20">
       {/* Header */}
@@ -420,7 +436,10 @@ export default function Inventory() {
               Bulk add
             </button>
             <button
-              onClick={() => setShowAddProduct(true)}
+              onClick={() => {
+                setNewProduct((prev) => ({ ...prev, category: categoryNames[0] || 'Uncategorized' }))
+                setShowAddProduct(true)
+              }}
               className="btn-tactile w-10 h-10 bg-accent-red flex items-center justify-center rounded-sm"
             >
               <Plus size={20} strokeWidth={2.5} className="text-white" />
@@ -583,24 +602,9 @@ export default function Inventory() {
                       onChange={(e) => setInlineEditUnit(e.target.value)}
                       className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                     >
-                      {isMultiUnit(product) ? (
-                        <>
-                          <option value="tin">Tin</option>
-                          <option value="bag">Bag</option>
-                          <option value="sachet">Sachet</option>
-                          <option value="piece">Piece</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="piece">Piece</option>
-                          <option value="tin">Tin</option>
-                          <option value="bag">Bag</option>
-                          <option value="bottle">Bottle</option>
-                          <option value="pack">Pack</option>
-                          <option value="loaf">Loaf</option>
-                          <option value="kg">Kg</option>
-                        </>
-                      )}
+                      {(isMultiUnit(product) ? smallUnitOptions : unitOptions).map((u) => (
+                        <option key={u.value} value={u.value}>{u.label}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -626,7 +630,7 @@ export default function Inventory() {
                     onChange={(e) => setInlineEditCategory(e.target.value)}
                     className="w-full h-11 px-3 bg-white harsh-border rounded-sm text-base font-body"
                   >
-                    {categories.map((cat) => (
+                    {categoryNames.map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
@@ -651,7 +655,7 @@ export default function Inventory() {
               <>
                 <div className="p-4 flex items-center gap-3">
                   <div className="w-12 h-12 bg-warm-gray rounded-sm flex items-center justify-center flex-shrink-0">
-                    <ProductIcon category={product.category} size={28} />
+                    <ProductIcon category={product.category} iconKey={state.categories.find((c) => c.name === product.category)?.icon} size={28} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -674,25 +678,32 @@ export default function Inventory() {
                   </div>
                 </div>
 
-                {/* Profit bar */}
-                <div className="px-4 pb-3">
-                  <div className="flex items-center justify-between text-[10px] text-muted-text mb-1">
-                    <span>Profit per unit</span>
-                    <span className="text-accent-green font-medium">
-                      {formatCurrency(product.selling_price - product.cost_price)}
-                    </span>
+                {/* Profit bar — hidden for staff: maskCostPriceForRole() zeroes
+                    cost_price (rather than omitting it), so both the profit
+                    figure and the bar's percentage width would otherwise
+                    silently compute from a fake $0 cost (full revenue shown
+                    as "profit", and a divide-by-zero width). Found live in
+                    production RBAC testing. */}
+                {state.role !== 'staff' && (
+                  <div className="px-4 pb-3">
+                    <div className="flex items-center justify-between text-[10px] text-muted-text mb-1">
+                      <span>Profit per unit</span>
+                      <span className="text-accent-green font-medium">
+                        {formatCurrency(product.selling_price - product.cost_price)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-warm-gray rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min(100, ((product.selling_price - product.cost_price) / product.cost_price) * 100)}%`,
+                        }}
+                        transition={{ duration: 0.5, delay: index * 0.05 }}
+                        className="h-full bg-accent-green rounded-full"
+                      />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-warm-gray rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${Math.min(100, ((product.selling_price - product.cost_price) / product.cost_price) * 100)}%`,
-                      }}
-                      transition={{ duration: 0.5, delay: index * 0.05 }}
-                      className="h-full bg-accent-green rounded-full"
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Action buttons row: Re-stock | Edit | Delete */}
                 {editingProduct === product.id ? (
@@ -992,12 +1003,12 @@ export default function Inventory() {
                         checked={newProduct.multiUnit}
                         onChange={(e) => {
                           const on = e.target.checked
-                          const packUnits = ['tin', 'bag', 'sachet', 'piece']
+                          const smallUnitValues = smallUnitOptions.map((u) => u.value)
                           setNewProduct({
                             ...newProduct,
                             multiUnit: on,
                             qtyUnitKind: on ? newProduct.qtyUnitKind : 'base',
-                            unit: on && !packUnits.includes(newProduct.unit) ? 'sachet' : newProduct.unit,
+                            unit: on && !smallUnitValues.includes(newProduct.unit) ? (smallUnitOptions[0]?.value || 'piece') : newProduct.unit,
                           })
                         }}
                       />
@@ -1012,8 +1023,9 @@ export default function Inventory() {
                             onChange={(e) => setNewProduct({ ...newProduct, packUnit: e.target.value })}
                             className="w-full h-12 px-3 bg-light harsh-border rounded-sm text-base font-body"
                           >
-                            <option value="box">Box</option>
-                            <option value="bag">Bag</option>
+                            {unitOptions.map((u) => (
+                              <option key={u.value} value={u.value}>{u.label}</option>
+                            ))}
                           </select>
                         </div>
                         <div>
@@ -1054,24 +1066,9 @@ export default function Inventory() {
                         onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
                         className="w-full h-12 px-4 bg-light harsh-border rounded-sm text-base font-body"
                       >
-                        {newProduct.multiUnit ? (
-                          <>
-                            <option value="tin">Tin</option>
-                            <option value="bag">Bag</option>
-                            <option value="sachet">Sachet</option>
-                            <option value="piece">Piece</option>
-                          </>
-                        ) : (
-                          <>
-                            <option value="piece">Piece</option>
-                            <option value="tin">Tin</option>
-                            <option value="bag">Bag</option>
-                            <option value="bottle">Bottle</option>
-                            <option value="pack">Pack</option>
-                            <option value="loaf">Loaf</option>
-                            <option value="kg">Kg</option>
-                          </>
-                        )}
+                        {(newProduct.multiUnit ? smallUnitOptions : unitOptions).map((u) => (
+                          <option key={u.value} value={u.value}>{u.label}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1079,7 +1076,7 @@ export default function Inventory() {
                   <div>
                     <label className="text-micro text-muted-text mb-1.5 block">CATEGORY</label>
                     <div className="grid grid-cols-4 gap-2">
-                      {categories.map((cat) => (
+                      {categoryNames.map((cat) => (
                         <button
                           key={cat}
                           onClick={() => setNewProduct({ ...newProduct, category: cat })}

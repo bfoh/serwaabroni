@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router'
 import { useState, useEffect } from 'react'
 import { Mic } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { usePermission } from '@/hooks/usePermission'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
 import Debts from '@/pages/Debts'
@@ -10,6 +11,8 @@ import SettingsPage from '@/pages/Settings'
 import SalesHistory from '@/pages/SalesHistory'
 import Expenses from '@/pages/Expenses'
 import Login from '@/pages/Login'
+import IndustryPicker from '@/components/IndustryPicker'
+import CategoriesSetupScreen from '@/components/CategoriesSetupScreen'
 import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
@@ -24,7 +27,8 @@ import CashFlow from '@/pages/CashFlow'
 import AgentSheet from '@/components/agent/AgentSheet'
 
 function MainApp() {
-  const { state } = useStore()
+  const { state, setTab } = useStore()
+  const { canView } = usePermission()
   const [showSalesHistory, setShowSalesHistory] = useState(false)
   const [showExpenses, setShowExpenses] = useState(false)
   const [showCustomers, setShowCustomers] = useState(false)
@@ -36,6 +40,13 @@ function MainApp() {
     setShowExpenses(false)
     setShowCustomers(false)
   }, [state.activeTab])
+
+  // Defense in depth: if a role loses Reports access (or a stale tab
+  // selection survives a role change), bounce back to Home instead of
+  // rendering a tab BottomNav no longer shows a link for.
+  useEffect(() => {
+    if (state.activeTab === 'reports' && !canView('reports')) setTab('home')
+  }, [state.activeTab, canView, setTab])
 
   const renderPage = () => {
     switch (state.activeTab) {
@@ -99,7 +110,8 @@ function MainApp() {
 }
 
 export default function App() {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
+  const { canView, settingsAccess } = usePermission()
 
   if (state.authLoading) {
     return (
@@ -121,6 +133,64 @@ export default function App() {
     )
   }
 
+  // Right after sign-up/login, role resolution and the first business-profile
+  // fetch both take a network round trip. Without this, businessProfileStatus
+  // sits at its initial 'unknown' value during that window — which fails the
+  // IndustryPicker gate below (it requires 'missing') — so the normal route
+  // tree (the dashboard) rendered first and then got replaced by IndustryPicker
+  // a moment later once the fetch resolved. Show a spinner for that window
+  // instead of flashing the dashboard. Bounded so it can't spin forever: once
+  // role has resolved AND the fetch has finished, businessProfileStatus stops
+  // being 'unknown' either way (it becomes 'missing' or 'found' on success, and
+  // stays 'unknown' only on a genuine fetch error — at which point dataLoading
+  // is also false, so this condition clears and the app proceeds normally).
+  if (state.isAuthenticated && !state.suspended && (!state.roleResolved || (state.dataLoading && state.businessProfileStatus === 'unknown'))) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-sand">
+        <div className="w-12 h-12 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  // Every real tenant has a business_profiles row after migration_022 (see
+  // that migration's backfill). A logged-in user with none is a brand-new
+  // signup who hasn't picked their industry yet — but `businessProfile === null`
+  // is also what a transient fetch failure (offline cold start, network blip,
+  // RLS hiccup) looks like, since it's indistinguishable at that point. Gate on
+  // the definitive 'missing' status instead (set only when the fetch actually
+  // confirms zero rows, never on error) and require online, so an existing
+  // tenant can never get locked out of their own data by this screen.
+  //
+  // ALSO require role === null: migration_027 correctly restricts
+  // business_profiles SELECT to Owner/Manager only (Staff has zero DB access
+  // to it, by design) — so an active Staff account's businessProfileStatus is
+  // ALWAYS 'missing', even though their employer's business genuinely exists.
+  // role_for() is SECURITY DEFINER and resolves correctly regardless of that
+  // SELECT restriction (it queries business_members directly, unaffected by
+  // RLS on a different table) — role !== null there means "this uid belongs
+  // to a real business already," which is the actual signal a genuinely new,
+  // unaffiliated signup can never produce (their role is null too, precisely
+  // because they own no profile and belong to no business_members row yet).
+  // Without this, every Staff login would be permanently stuck on this screen.
+  if (state.isAuthenticated && !state.dataLoading && !state.suspended && state.isOnline && state.businessProfileStatus === 'missing' && state.role === null) {
+    return (
+      <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
+        <IndustryPicker />
+      </div>
+    )
+  }
+
+  // Right after a brand-new owner picks their industry, chooseIndustry()
+  // sets this flag so they land on a category review/setup step instead of
+  // going straight to the dashboard. Cleared once they click Continue there.
+  if (state.isAuthenticated && state.showCategoriesSetup) {
+    return (
+      <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
+        <CategoriesSetupScreen onDone={() => dispatch({ type: 'SET_SHOW_CATEGORIES_SETUP', value: false })} />
+      </div>
+    )
+  }
+
   return (
     <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden relative">
       <ImpersonationBanner />
@@ -132,11 +202,32 @@ export default function App() {
           />
           <Route
             path="/settings"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-hidden bg-sand relative">
-                <SettingsPage onClose={() => window.history.back()} />
-              </div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              // role hasn't resolved yet (fresh login / hard refresh on this
+              // route) — settingsAccess is computed from state.role, which is
+              // still null at this instant for EVERY role, not just Staff.
+              // Bouncing home here would incorrectly evict a genuine
+              // Owner/Manager mid-resolve; show a spinner instead, same as the
+              // /admin route below. Found in the RBAC feature's final
+              // whole-branch review, fix-wave re-review round 2.
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
+              // Staff has zero business-settings access per the permission
+              // matrix (settingsAccess === 'none') — Settings is where the
+              // catastrophic "Reset All Data" action lives, among other
+              // owner/manager-only actions, so Staff never reaches this page
+              // at all rather than relying on in-page gating alone.
+              : settingsAccess === 'none' ? <Navigate to="/" replace />
+              : (
+                <div className="h-full w-full overflow-hidden bg-sand relative">
+                  <SettingsPage onClose={() => window.history.back()} />
+                </div>
+              )
+            }
           />
           <Route
             path="/admin"
@@ -154,23 +245,51 @@ export default function App() {
                     : <Navigate to="/" replace />
             }
           />
+          {/* /capital, /capital/:id, /cash: same "don't bounce on an unresolved
+              role" spinner /settings uses (see !state.roleResolved above) —
+              canView(role, area) returns false for role===null regardless of
+              whether that null means "genuinely denied" or "still resolving,"
+              so a deep-link/hard-refresh here used to evict a genuine Owner
+              before their role finished loading. Found in the RBAC feature's
+              final whole-branch review, fix-wave re-review round 3. */}
           <Route
             path="/capital"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><Capital /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
+              : !canView('capital') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><Capital /></div>
+            }
           />
           <Route
             path="/capital/:id"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
+              : !canView('capital') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><InjectionDetail /></div>
+            }
           />
           <Route
             path="/cash"
-            element={state.isAuthenticated ? (
-              <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
-            ) : <Navigate to="/login" replace />}
+            element={
+              !state.isAuthenticated ? <Navigate to="/login" replace />
+              : !state.roleResolved ? (
+                <div className="h-full w-full flex items-center justify-center bg-sand">
+                  <div className="w-10 h-10 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+                </div>
+              )
+              : !canView('cashFlow') ? <Navigate to="/" replace />
+              : <div className="h-full w-full overflow-y-auto bg-sand relative"><CashFlow /></div>
+            }
           />
           <Route
             path="/*"

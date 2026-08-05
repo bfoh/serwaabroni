@@ -1,4 +1,4 @@
-import type { Product, Sale, Debt, Expense } from './supabase'
+import type { Product, Sale, Debt, Expense, BusinessCategory } from './supabase'
 
 export function uid(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -37,6 +37,7 @@ interface StoredData {
   debts: Debt[]
   expenses: Expense[]
   customers: any[]
+  categories: BusinessCategory[]
   businessName: string
   ownerName: string
 }
@@ -67,6 +68,7 @@ export function loadData(): StoredData {
     debts: seedDebts,
     expenses: seedExpenses,
     customers: [],
+    categories: [],
     businessName: "Maame Doku's Shop",
     ownerName: 'Maame Doku',
     version: DATA_VERSION,

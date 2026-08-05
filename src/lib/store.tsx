@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { supabase } from './supabase'
-import type { Product, Sale, Debt, Expense, BusinessProfile, Customer } from './supabase'
+import type { Product, Sale, Debt, Expense, BusinessProfile, Customer, BusinessCategory } from './supabase'
 import { cacheOfflineData, clearOfflineData, queueOperation, syncQueue, getQueue, getQueueLength, mergeDebts, setupAutoSync } from '@/services/offline'
 import { t as translate } from './i18n'
 import type { Language } from './i18n'
@@ -18,11 +18,19 @@ import {
   fetchSales, recordSale, recordSaleBatch, deleteSaleGroup,
   fetchDebts, insertDebt, updateDebtDb, deleteDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
-  fetchBusinessProfile, upsertBusinessProfile,
+  fetchBusinessProfile, fetchBusinessName, upsertBusinessProfile,
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
+import type { BusinessProfileResult } from '@/services/supabaseApi'
 import { amISuperAdmin, impersonateTenant, stopImpersonation, readAdminBackup } from '@/services/adminApi'
+import { activateMembership, fetchRole, fetchBusinessId } from '@/services/roleApi'
+import type { Role } from '@/lib/permissions'
+import {
+  fetchCategories, insertCategory, renameCategoryDb, deleteCategoryDb,
+  seedCategoriesForIndustry, updateProductsCategoryBulk,
+} from '@/services/categoriesApi'
+import { canDeleteCategory, applyCategoryRename } from '@/lib/categoriesLogic'
 import { contributeCatalog } from '@/services/catalogApi'
 import { postMovement as postCashMovement, deleteMovementsByRef as deleteCashByRef } from '@/services/cashApi'
 import type { CashAccount } from '@/lib/cashBalances'
@@ -49,6 +57,7 @@ export interface AppState {
   debts: Debt[]
   expenses: Expense[]
   customers: Customer[]
+  categories: BusinessCategory[]
   alerts: Alert[]
   showAddSheet: boolean
   selectedProductId: string | null
@@ -58,6 +67,12 @@ export interface AppState {
   authLoading: boolean
   language: Language
   businessProfile: BusinessProfile | null
+  // Staff can't read business_profiles (RLS), so this is their only source
+  // of their employer's real business name for display — see
+  // fetchBusinessName()/business_name_for(). Null for owner/manager, who
+  // already get the real name via businessProfile.
+  businessDisplayName: string | null
+  businessProfileStatus: 'unknown' | 'missing' | 'found'
   dataLoading: boolean
   isOnline: boolean
   pendingSync: number
@@ -65,6 +80,16 @@ export interface AppState {
   adminChecked: boolean
   suspended: boolean
   impersonating: { tenantId: string; tenantName: string } | null
+  role: Role | null
+  businessId: string | null
+  roleResolved: boolean
+  // Set true by chooseIndustry() right after a brand-new owner picks their
+  // industry and starter categories are seeded; App.tsx shows
+  // CategoriesSetupScreen while this is true, then it's cleared once they
+  // click Continue. Session-only (not persisted) — a reload mid-setup just
+  // drops straight to the dashboard, matching IndustryPicker's own
+  // non-persisted gating.
+  showCategoriesSetup: boolean
 }
 
 type Action =
@@ -91,6 +116,10 @@ type Action =
   | { type: 'SET_CUSTOMERS'; customers: Customer[] }
   | { type: 'ADD_CUSTOMER'; customer: Customer }
   | { type: 'UPDATE_CUSTOMER'; customer: Customer }
+  | { type: 'SET_CATEGORIES'; categories: BusinessCategory[] }
+  | { type: 'ADD_CATEGORY'; category: BusinessCategory }
+  | { type: 'UPDATE_CATEGORY'; category: BusinessCategory }
+  | { type: 'DELETE_CATEGORY'; id: string }
   | { type: 'TOGGLE_ADD_SHEET'; show: boolean }
   | { type: 'SELECT_PRODUCT'; id: string | null }
   | { type: 'SHOW_TOAST'; message: string; toastType: 'success' | 'error' }
@@ -98,6 +127,8 @@ type Action =
   | { type: 'SET_USER'; user: UserState | null }
   | { type: 'SET_LANGUAGE'; lang: Language }
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
+  | { type: 'SET_BUSINESS_DISPLAY_NAME'; value: string | null }
+  | { type: 'SET_BUSINESS_PROFILE_STATUS'; status: 'unknown' | 'missing' | 'found' }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
   | { type: 'SET_PENDING_SYNC'; value: number }
@@ -105,9 +136,12 @@ type Action =
   | { type: 'SET_ADMIN_CHECKED'; value: boolean }
   | { type: 'SET_SUSPENDED'; value: boolean }
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
+  | { type: 'SET_ROLE'; role: Role | null; resolved?: boolean }
+  | { type: 'SET_BUSINESS_ID'; businessId: string | null }
+  | { type: 'SET_SHOW_CATEGORIES_SETUP'; value: boolean }
   | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
-  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
+  | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; categories: BusinessCategory[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
 
 function getStoredLang(): Language {
   try { return (localStorage.getItem('serwaabroni_language') as Language) || 'en' }
@@ -126,6 +160,7 @@ const initialState: AppState = {
   debts: [],
   expenses: [],
   customers: [],
+  categories: [],
   alerts: [],
   showAddSheet: false,
   selectedProductId: null,
@@ -135,6 +170,8 @@ const initialState: AppState = {
   authLoading: true,
   language: getStoredLang(),
   businessProfile: null,
+  businessDisplayName: null,
+  businessProfileStatus: 'unknown',
   dataLoading: false,
   isOnline: navigator.onLine,
   pendingSync: 0,
@@ -142,19 +179,29 @@ const initialState: AppState = {
   adminChecked: false,
   suspended: false,
   impersonating: null,
+  role: null,
+  businessId: null,
+  roleResolved: false,
+  showCategoriesSetup: false,
 }
 
 // Helper: persist current data to localStorage (for offline access)
-function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses' | 'customers'>) {
+function persistFromState(state: Pick<AppState, 'products' | 'sales' | 'debts' | 'expenses' | 'customers' | 'categories'>) {
   saveData({
     products: state.products,
     sales: state.sales,
     debts: state.debts,
     expenses: state.expenses,
     customers: state.customers,
+    categories: state.categories,
     businessName: '',
     ownerName: '',
   })
+}
+
+// Categories display order: explicit sort_order, then name as a tiebreak.
+function byCategorySortOrder(a: BusinessCategory, b: BusinessCategory): number {
+  return a.sort_order - b.sort_order || a.name.localeCompare(b.name)
 }
 
 function appReducer(state: AppState, action: Action): AppState {
@@ -182,12 +229,16 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_CUSTOMERS': return { ...state, customers: action.customers }
     case 'ADD_CUSTOMER': return { ...state, customers: [action.customer, ...state.customers] }
     case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map((c) => (c.id === action.customer.id ? action.customer : c)) }
+    case 'SET_CATEGORIES': return { ...state, categories: [...action.categories].sort(byCategorySortOrder) }
+    case 'ADD_CATEGORY': return { ...state, categories: [...state.categories, action.category].sort(byCategorySortOrder) }
+    case 'UPDATE_CATEGORY': return { ...state, categories: state.categories.map((c) => (c.id === action.category.id ? action.category : c)) }
+    case 'DELETE_CATEGORY': return { ...state, categories: state.categories.filter((c) => c.id !== action.id) }
     case 'TOGGLE_ADD_SHEET': return { ...state, showAddSheet: action.show }
     case 'SELECT_PRODUCT': return { ...state, selectedProductId: action.id }
     case 'SHOW_TOAST': return { ...state, toast: { message: action.message, type: action.toastType } }
     case 'HIDE_TOAST': return { ...state, toast: null }
     case 'SET_USER': {
-      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false, isSuperAdmin: false, adminChecked: false }
+      if (!action.user) return { ...state, user: null, isAuthenticated: false, authLoading: false, isSuperAdmin: false, adminChecked: false, roleResolved: false }
       return {
         ...state,
         user: {
@@ -203,20 +254,40 @@ function appReducer(state: AppState, action: Action): AppState {
     }
     case 'SET_LANGUAGE': return { ...state, language: action.lang }
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
+    case 'SET_BUSINESS_DISPLAY_NAME': return { ...state, businessDisplayName: action.value }
+    case 'SET_BUSINESS_PROFILE_STATUS': return { ...state, businessProfileStatus: action.status }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
     case 'SET_PENDING_SYNC': return { ...state, pendingSync: action.value }
     case 'SET_SUPER_ADMIN': return { ...state, isSuperAdmin: action.value }
     case 'SET_ADMIN_CHECKED': return { ...state, adminChecked: action.value }
     case 'SET_IMPERSONATING': return { ...state, impersonating: action.value }
+    // roleResolved flips true the first time we learn a definitive role for the
+    // active session (including a legitimate "resolved to null" — logged-out or
+    // unaffiliated) so callers like App.tsx's /settings route can tell "still
+    // resolving, show a spinner" apart from "resolved, actually denied" instead
+    // of conflating both with role === null. Mirrors the existing adminChecked
+    // pattern. Found in the RBAC feature's final whole-branch review, fix-wave
+    // re-review round 2 (a brand-new owner or a hard-refresh on /settings was
+    // being bounced home during this window instead of shown a loading state).
+    // `resolved` defaults true; the account-switch synchronous pre-clear below
+    // (search identityChanged) passes resolved: false explicitly — that
+    // dispatch clears the OUTGOING identity's role before an async re-resolve
+    // starts, it is not itself a resolution, and round 3 found that treating
+    // it as one made refreshData's roleResolved-gated effect (see below)
+    // permanently skip fetching for the incoming identity whenever their role
+    // happens to resolve to null (a brand-new owner mid-signup, in particular).
+    case 'SET_ROLE': return { ...state, role: action.role, roleResolved: action.resolved ?? true }
+    case 'SET_BUSINESS_ID': return { ...state, businessId: action.businessId }
+    case 'SET_SHOW_CATEGORIES_SETUP': return { ...state, showCategoriesSetup: action.value }
     case 'RESET_TENANT_DATA': return {
       ...state,
-      products: [], sales: [], debts: [], expenses: [], customers: [], alerts: [],
+      products: [], sales: [], debts: [], expenses: [], customers: [], categories: [], alerts: [],
       balance: 0, bankBalance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
     }
     case 'SET_SUSPENDED': return { ...state, suspended: action.value }
     case 'SET_ALERTS': return { ...state, alerts: action.alerts }
-    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
+    case 'LOAD_ALL_DATA': return { ...state, products: action.products, sales: action.sales, debts: action.debts, expenses: action.expenses, customers: action.customers, categories: action.categories, alerts: action.alerts, balance: action.balance, todaySales: action.todaySales, todayProfit: action.todayProfit, pendingDebts: action.pendingDebts }
     default: return state
   }
 }
@@ -245,6 +316,12 @@ interface StoreContextType {
   removeExpense: (id: string) => Promise<void>
   addCustomer: (customer: Omit<Customer, 'user_id'>) => Promise<void>
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>
+  addCategory: (name: string, icon: string) => Promise<void>
+  renameCategory: (id: string, newName: string) => Promise<void>
+  removeCategory: (id: string) => Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }>
+  loadStarterCategories: (industry: string) => Promise<void>
+  reassignAndDeleteCategory: (id: string, fromName: string, toName: string) => Promise<void>
+  chooseIndustry: (industry: string) => Promise<void>
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>
   resetAllData: () => Promise<void>
   logout: () => Promise<void>
@@ -278,19 +355,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const resolveRoleAndDispatch = async (uid: string) => {
+    await activateMembership()
+    const [role, businessId] = await Promise.all([fetchRole(uid), fetchBusinessId(uid)])
+    dispatch({ type: 'SET_ROLE', role })
+    dispatch({ type: 'SET_BUSINESS_ID', businessId })
+  }
+
   // Check auth on mount — Supabase Auth is the single source of truth
   useEffect(() => {
     checkAuth().then((session) => {
       reconcileActiveUser(session?.id ?? null)
       dispatch({ type: 'SET_USER', user: session })
+      if (session?.id) {
+        resolveRoleAndDispatch(session.id)
+      } else {
+        dispatch({ type: 'SET_ROLE', role: null })
+        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
+      }
     }).catch(() => {
       reconcileActiveUser(null)
       dispatch({ type: 'SET_USER', user: null })
+      dispatch({ type: 'SET_ROLE', role: null })
+      dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
     })
 
     // Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        // onAuthStateChange's session?.user branch fires for TOKEN_REFRESHED
+        // and USER_UPDATED (e.g. saving Settings → Edit Profile), not just a
+        // genuine sign-in/account-switch — _event is intentionally ignored
+        // above since Supabase's event set isn't a reliable signal on its
+        // own. Read the prior active uid BEFORE reconcileActiveUser
+        // overwrites it, using the exact same "did the uid actually change"
+        // check reconcileActiveUser applies internally, so role/businessId
+        // are only cleared on a real switch — never on a same-user refresh,
+        // which would otherwise flash role-gated UI (Reports, Settings,
+        // cost price) to denied and back on every token refresh once Task
+        // 9/10 consume state.role.
+        const priorUid = localStorage.getItem(ACTIVE_UID_KEY)
+        const identityChanged = priorUid !== session.user.id
         reconcileActiveUser(session.user.id)
         dispatch({
           type: 'SET_USER',
@@ -302,6 +407,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             logo: session.user.user_metadata?.logo || localStorage.getItem('serwaabroni_logo') || undefined,
           },
         })
+        // Clear synchronously before the async resolve below, mirroring
+        // reconcileActiveUser's synchronous RESET_TENANT_DATA above: an
+        // account switch that bypasses a SIGNED_OUT event first (impersonation
+        // uses verifyOtp/setSession directly — see enterImpersonation/
+        // exitImpersonation in adminApi.ts) would otherwise let the PREVIOUS
+        // identity's role/businessId stay visible until the RPC round-trip in
+        // resolveRoleAndDispatch resolves. permissions.ts's canView(role, area)
+        // already returns false for role=null (deny-everything), so this
+        // transient window fails closed (safe) instead of leaking the
+        // outgoing identity's permissions.
+        // Also skip the resolve entirely when the identity hasn't changed:
+        // role/businessId already hold the correct value for this same user
+        // from their last resolve, so re-running activate_membership() +
+        // two more RPCs on every token refresh would be pure waste.
+        if (identityChanged) {
+          dispatch({ type: 'SET_ROLE', role: null, resolved: false })
+          dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
+          resolveRoleAndDispatch(session.user.id)
+        }
         const backup = readAdminBackup()
         dispatch({
           type: 'SET_IMPERSONATING',
@@ -311,6 +435,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         reconcileActiveUser(null)
         dispatch({ type: 'SET_USER', user: null })
         dispatch({ type: 'SET_IMPERSONATING', value: null })
+        dispatch({ type: 'SET_ROLE', role: null })
+        dispatch({ type: 'SET_BUSINESS_ID', businessId: null })
       }
     })
 
@@ -358,7 +484,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (state.dataLoading) return // don't persist during initial load
     persistFromState(state)
-  }, [state.products, state.sales, state.debts, state.expenses, state.customers])
+  }, [state.products, state.sales, state.debts, state.expenses, state.customers, state.categories])
 
   const setTab = useCallback((tab: Tab) => { dispatch({ type: 'SET_TAB', tab }) }, [])
 
@@ -398,9 +524,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchSales(),
         fetchDebts(),
         fetchExpenses(),
-        getDashboardSummary(),
+        getDashboardSummary(state.role),
         fetchBusinessProfile(),
         fetchCustomers(),
+        fetchCategories(),
+        fetchBusinessName(),
       ])
 
       const remoteProducts = results[0].status === 'fulfilled' ? results[0].value : []
@@ -408,16 +536,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const remoteDebts = results[2].status === 'fulfilled' ? results[2].value : []
       const remoteExpenses = results[3].status === 'fulfilled' ? results[3].value : []
       const summary = results[4].status === 'fulfilled' ? results[4].value : { totalSales: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0, totalExpenses: 0, cashInHand: 0, cashInBank: 0 }
-      const profile = results[5].status === 'fulfilled' ? results[5].value : null
+      const profileResult: BusinessProfileResult = results[5].status === 'fulfilled' ? results[5].value : { status: 'error' }
+      const profile = profileResult.status === 'found' ? profileResult.profile : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
+      const remoteCategories = results[7].status === 'fulfilled' ? results[7].value : []
+      // Staff can't read business_profiles (fetchBusinessProfile always
+      // returns 'missing' for them) so this narrow business_name_for() RPC is
+      // their only source of their employer's real business name — without
+      // it, Dashboard's header fell back to a hardcoded placeholder name for
+      // every Staff account, permanently. Found live in production testing.
+      const businessDisplayName = results[8].status === 'fulfilled' ? results[8].value : null
 
-      // Defensive tenant guard: only keep rows owned by the active session user
-      // (or not-yet-synced local rows). Server queries already scope by user_id;
-      // this stops any stale/mismatched row from ever reaching the UI.
+      // Defensive tenant guard: only keep rows owned the active session's TENANT
+      // (or not-yet-synced local rows). Every row's user_id is business_id_for()
+      // — the OWNER's id — never the raw caller uid, so an active Manager/Staff
+      // session must compare against state.businessId, not their own session
+      // uid: comparing against the raw uid (as this used to) filtered out every
+      // single remote row for Staff/Manager, since business_id_for(staff) !==
+      // staff's own auth uid. Falls back to the raw uid only while businessId
+      // hasn't resolved yet (matches an owner's businessId, which always equals
+      // their own uid) — found in the RBAC feature's final whole-branch review,
+      // fix-wave re-review round 2.
       const { data: sessData } = await supabase.auth.getSession()
       const uid = sessData.session?.user?.id ?? null
+      const scopeUid = state.businessId ?? uid
       const ownsRow = <T extends { user_id: string }>(x: T) =>
-        !uid || x.user_id === uid || x.user_id === 'local'
+        !scopeUid || x.user_id === scopeUid || x.user_id === 'local'
 
       // Merge offline-created data that hasn't synced and sort newest first
       const products = [...local.products.filter(p => p.user_id === 'local'), ...remoteProducts]
@@ -436,6 +580,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const customers = [...(local.customers || []).filter(c => c.user_id === 'local'), ...remoteCustomers]
         .filter(ownsRow)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const categories = [...(local.categories || []).filter((c) => c.user_id === 'local'), ...remoteCategories]
+        .filter(ownsRow)
+        .sort(byCategorySortOrder)
 
       const generatedAlerts = generateAlerts(products, sales, debts, expenses)
 
@@ -446,6 +593,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts,
         expenses,
         customers,
+        categories,
         alerts: generatedAlerts,
         balance: summary.cashInHand || 0,
         todaySales: summary.todaySales || 0,
@@ -453,9 +601,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pendingDebts: summary.pendingDebts || 0,
       })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank || 0 })
+      dispatch({ type: 'SET_BUSINESS_DISPLAY_NAME', value: businessDisplayName })
 
-      if (profile) {
+      if (profileResult.status === 'found') {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })
+        dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
 
         // Push critical alerts to the owner (SMS/email). Per-day de-dupe lives in the
         // edge function, so repeated app loads won't re-send the same alert.
@@ -470,7 +620,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             })
           }
         }
+      } else if (profileResult.status === 'missing') {
+        // Genuinely no business_profiles row (confirmed via PGRST116, not just an
+        // errored fetch) — this is the only case the signup industry-picker gate
+        // in App.tsx is allowed to treat as "new tenant."
+        dispatch({ type: 'SET_BUSINESS_PROFILE', profile: null })
+        dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'missing' })
       }
+      // status 'error': dispatch nothing — never downgrade a previously-known
+      // 'found'/'missing' status back to 'unknown' due to one failed refresh, and
+      // never clobber a real profile with null on a transient fetch failure (e.g.
+      // an offline cold start). See final-review fix wave, Finding 1.
 
       // Admin + suspension flags
       const admin = await amISuperAdmin()
@@ -502,6 +662,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        categories: local.categories || [],
         alerts: localAlerts,
         balance: totalSales - totalExpenses - creditSalesOutstanding,
         todaySales,
@@ -512,13 +673,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_DATA_LOADING', loading: false })
       dispatch({ type: 'SET_ADMIN_CHECKED', value: true })
     }
-  }, [syncPending])
+  }, [syncPending, state.role, state.businessId])
 
   // Load data after auth is confirmed, and RE-load whenever the user changes
   // (account switch / impersonation) so the view always reflects the active user.
   useEffect(() => {
     if (state.authLoading) return // wait for auth check
+    // Also wait for role/businessId to resolve before the first fetch: without
+    // this, an authenticated Staff/Manager session fires refreshData() TWICE —
+    // once immediately (state.businessId still null, so scopeUid falls back to
+    // the caller's own raw uid, which owns none of the remote rows) and once
+    // more after role resolves a moment later. Whichever response lands LAST
+    // wins the dispatch, so a slow-syncing offline queue on the first pass can
+    // let its empty result overwrite the second pass's correct data — the
+    // exact "empty app" failure this state.businessId fix was meant to close.
+    // Found in the RBAC feature's final whole-branch review, fix-wave
+    // re-review round 3.
+    if (state.isAuthenticated && !state.roleResolved) return
     isFirstLoad.current = false
+    // state.roleResolved MUST be in this effect's own dependency array (not
+    // just relied on via the guard above): when role resolves to null — a
+    // brand-new signup with no business_profiles/business_members row yet,
+    // an offline/RPC-failure session, or a super-admin with no shop — neither
+    // state.role nor state.businessId changes value, so without roleResolved
+    // as an explicit dep this effect would never re-run and refreshData()
+    // would never fire for that session. Found in the RBAC feature's final
+    // whole-branch review, fix-wave re-review round 4.
 
     if (state.isAuthenticated) {
       // User is logged in — fetch their data from Supabase
@@ -534,11 +714,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         debts: local.debts,
         expenses: local.expenses,
         customers: local.customers || [],
+        categories: local.categories || [],
         alerts: generateAlerts(local.products, local.sales, local.debts, local.expenses),
         balance: 0, todaySales: 0, todayProfit: 0, pendingDebts: 0,
       })
     }
-  }, [state.authLoading, state.isAuthenticated, state.user?.id, refreshData, syncPending])
+  }, [state.authLoading, state.isAuthenticated, state.user?.id, state.role, state.roleResolved, refreshData, syncPending])
 
   // Flush the offline write queue when the network returns or the tab regains
   // focus, then re-sync from the server. This is what makes a payment recorded
@@ -606,9 +787,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state])
 
   const removeProduct = useCallback(async (id: string) => {
-    try { await deleteProductDb(id) } catch { /* may not exist in db */ }
+    // A product created while offline exists only locally (user_id === 'local')
+    // and was never synced to the server — nothing to delete there, so skip
+    // straight to the local removal instead of calling deleteProductDb, which
+    // would otherwise throw "no rows affected" for a row that legitimately
+    // never existed server-side.
+    const existing = state.products.find((p) => p.id === id)
+    if (existing?.user_id === 'local') {
+      dispatch({ type: 'DELETE_PRODUCT', id })
+      showToast('Product deleted', 'success')
+      return
+    }
+    // Optimistic remove so the UI feels instant.
     dispatch({ type: 'DELETE_PRODUCT', id })
-    showToast('Product deleted', 'success')
+    try {
+      await deleteProductDb(id)
+      showToast('Product deleted', 'success')
+    } catch {
+      // Blocked by RLS (e.g. a non-owner, now that DELETE on products is
+      // owner-only) or a real network failure — restore the real server
+      // state instead of faking a delete that never happened.
+      try {
+        const products = await fetchProducts()
+        dispatch({ type: 'SET_PRODUCTS', products })
+      } catch { /* leave optimistic state if even the re-fetch fails */ }
+      showToast('Could not delete product', 'error')
+    }
   }, [state, showToast])
 
   const addSale = useCallback(async (sale: Omit<Sale, 'user_id'>, productId: string, quantitySold: number) => {
@@ -617,7 +821,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'ADD_SALE', sale: recorded })
       const products = await fetchProducts()
       dispatch({ type: 'SET_PRODUCTS', products })
-      const summary = await getDashboardSummary()
+      const summary = await getDashboardSummary(state.role)
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
       dispatch({ type: 'SET_TODAY_SALES', value: summary.todaySales })
@@ -642,7 +846,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const recorded = await recordSaleBatch(sales, items)
       recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
       // Refresh the product cache and dashboard in parallel (one round-trip).
-      const [products, summary] = await Promise.all([fetchProducts(), getDashboardSummary()])
+      const [products, summary] = await Promise.all([fetchProducts(), getDashboardSummary(state.role)])
       dispatch({ type: 'SET_PRODUCTS', products })
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
@@ -673,7 +877,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Re-sync derived data in parallel (one wall-clock round-trip, not three).
       const [products, summary, customers] = await Promise.all([
         fetchProducts(),
-        getDashboardSummary(),
+        getDashboardSummary(state.role),
         fetchCustomers(),
       ])
       dispatch({ type: 'SET_PRODUCTS', products })
@@ -819,6 +1023,151 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [state])
 
+  const addCategory = useCallback(async (name: string, icon: string) => {
+    const trimmed = name.trim()
+    // Catch a duplicate name before hitting the DB: the catch block below can't
+    // tell "offline" apart from "unique-constraint violation" without this,
+    // and used to silently fabricate a phantom local category that could never
+    // sync on a genuine name conflict. See final-review fix wave, Finding 5.
+    if (state.categories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      showToast(`A category named "${trimmed}" already exists`, 'error')
+      return
+    }
+    try {
+      const sortOrder = state.categories.length
+      const inserted = await insertCategory({ name: trimmed, icon, sortOrder })
+      dispatch({ type: 'ADD_CATEGORY', category: inserted })
+      showToast('Category added', 'success')
+    } catch {
+      if (!state.isOnline) {
+        const localCategory: BusinessCategory = {
+          id: `local-${Date.now()}`,
+          user_id: 'local',
+          name: trimmed,
+          icon,
+          sort_order: state.categories.length,
+          is_builtin: false,
+          created_at: new Date().toISOString(),
+        }
+        dispatch({ type: 'ADD_CATEGORY', category: localCategory })
+        showToast('Saved locally (will sync when online)', 'success')
+      } else {
+        showToast('Could not add category — check your connection and try again', 'error')
+      }
+    }
+  }, [state.categories, state.isOnline, showToast])
+
+  const renameCategory = useCallback(async (id: string, newName: string) => {
+    const existing = state.categories.find((c) => c.id === id)
+    if (!existing) return
+    const oldName = existing.name
+    try {
+      const updated = await renameCategoryDb(id, newName)
+      dispatch({ type: 'UPDATE_CATEGORY', category: updated })
+      dispatch({ type: 'SET_PRODUCTS', products: applyCategoryRename(state.products, oldName, newName) })
+      showToast('Category renamed', 'success')
+    } catch {
+      showToast('Could not rename category — check your connection', 'error')
+    }
+  }, [state.categories, state.products, showToast])
+
+  const removeCategory = useCallback(async (id: string): Promise<{ blocked: boolean; count: number; reason?: 'builtin' | 'in-use' }> => {
+    const cat = state.categories.find((c) => c.id === id)
+    if (!cat) return { blocked: false, count: 0 }
+    if (cat.is_builtin) {
+      showToast("Uncategorized can't be deleted", 'error')
+      return { blocked: true, count: 0, reason: 'builtin' }
+    }
+    const { allowed, count } = canDeleteCategory(cat.name, state.products)
+    if (!allowed) return { blocked: true, count, reason: 'in-use' }
+    try {
+      await deleteCategoryDb(id)
+      dispatch({ type: 'DELETE_CATEGORY', id })
+      showToast('Category deleted', 'success')
+    } catch {
+      showToast('Could not delete category', 'error')
+    }
+    return { blocked: false, count: 0 }
+  }, [state.categories, state.products, showToast])
+
+  const loadStarterCategories = useCallback(async (industry: string) => {
+    try {
+      const categories = await seedCategoriesForIndustry(industry)
+      dispatch({ type: 'SET_CATEGORIES', categories })
+      showToast('Starter categories loaded', 'success')
+    } catch {
+      showToast('Could not load starter categories', 'error')
+    }
+  }, [showToast])
+
+  const reassignAndDeleteCategory = useCallback(async (id: string, fromName: string, toName: string) => {
+    try {
+      await updateProductsCategoryBulk(fromName, toName)
+      dispatch({ type: 'SET_PRODUCTS', products: applyCategoryRename(state.products, fromName, toName) })
+      await deleteCategoryDb(id)
+      dispatch({ type: 'DELETE_CATEGORY', id })
+      showToast('Products moved, category deleted', 'success')
+    } catch {
+      showToast('Could not delete category', 'error')
+    }
+  }, [state.products, showToast])
+
+  const chooseIndustry = useCallback(async (industry: string) => {
+    const profile: BusinessProfile = {
+      id: state.user?.id || 'local',
+      user_id: state.user?.id || 'local',
+      business_name: state.user?.business_name || 'My Shop',
+      owner_name: null,
+      phone: state.user?.phone || null,
+      email: state.user?.email || null,
+      currency: 'GHS',
+      language: state.language,
+      industry,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    try {
+      const saved = await upsertBusinessProfile(profile)
+      dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
+      // role_for()/business_id_for() now resolve this caller to 'owner'/their own
+      // id (the business_profiles row they just created is what those RPCs key
+      // off of) — but state.role/state.businessId were set before this row
+      // existed and resolveRoleAndDispatch only re-runs on mount/identity
+      // change, not here. Without this, a brand-new owner stays role===null for
+      // the rest of the session: settingsAccessFor(null)==='none', which hides
+      // Settings — the app's only Log Out entry point — until they reload.
+      // Found in the RBAC feature's final whole-branch review, fix-wave
+      // re-review round 2.
+      dispatch({ type: 'SET_ROLE', role: 'owner' })
+      dispatch({ type: 'SET_BUSINESS_ID', businessId: saved.user_id })
+    } catch {
+      // Do NOT optimistically dispatch the locally-built `profile` here: unlike
+      // every other upsertBusinessProfile caller (which edits an already-fetched
+      // real profile, preserving its real `id`), this profile's `id` is a
+      // fabricated placeholder (state.user?.id, not the row's real gen_random_uuid
+      // primary key). If this write failed because a real profile already exists
+      // (e.g. this gate fired for an existing tenant due to a transient
+      // fetchBusinessProfile glitch rather than a genuine new signup), silently
+      // "succeeding" here would show fabricated data (owner_name wiped, currency
+      // hardcoded to GHS) that looks real but was never saved. Surface the
+      // failure instead and leave state.businessProfile as-is so the next
+      // refreshData() can recover the tenant's real profile.
+      showToast('Could not save your business type — check your connection and try again', 'error')
+      return
+    }
+    try {
+      const seeded = await seedCategoriesForIndustry(industry)
+      dispatch({ type: 'SET_CATEGORIES', categories: seeded })
+    } catch {
+      showToast('Could not load starter categories — try again from Settings', 'error')
+    }
+    // Show the category review/setup step next instead of dropping straight
+    // to the dashboard — even if seeding above failed, CategoriesManager
+    // lets them add categories manually right here.
+    dispatch({ type: 'SET_SHOW_CATEGORIES_SETUP', value: true })
+  }, [state.user, state.language, showToast])
+
   const logout = useCallback(async () => {
     await supabaseSignOut()
     dispatch({ type: 'SET_USER', user: null })
@@ -834,7 +1183,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // onAuthStateChange (from setSession) restores admin + clears impersonating.
   }, [])
 
+  // Owner-only: settingsAccessFor(role) === 'edit' only for 'owner'. Found
+  // live in production RBAC testing: a Manager (settingsAccess === 'view')
+  // could still type into and "save" the Edit Profile form. The real write
+  // was correctly rejected by migration_027's UPDATE policy (auth.uid()
+  // never equals the row's user_id for a non-owner) — RLS held — but this
+  // function's OWN behavior made the failure invisible and actively
+  // misleading: (1) step 1 unconditionally updates the CALLER's OWN auth
+  // metadata, no role check, always succeeds regardless of who's calling,
+  // silently overwriting their session's local user_metadata.business_name;
+  // (2) step 2's catch block optimistically dispatched the locally-built,
+  // UNSAVED `profile` object as if it were the real saved one and marked
+  // businessProfileStatus 'found' — the exact "fake success on failure"
+  // anti-pattern chooseIndustry() was specifically fixed to avoid earlier in
+  // this same review, missed here. Together those meant a Manager's Settings
+  // header visibly changed to their typed-in (never persisted) business name
+  // with a "Profile saved!" toast, no error surfaced anywhere. Now: bail
+  // before either step for a non-owner, and let a genuine step-2 failure
+  // propagate instead of faking success.
   const updateBusinessProfile = useCallback(async (profile: BusinessProfile) => {
+    if (state.role !== 'owner') throw new Error('Only the business owner can edit the business profile')
+
     // 1. Always save to Supabase Auth user metadata as a bulletproof fallback
     try {
       await updateProfile({
@@ -850,18 +1219,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       console.warn('Auth metadata update failed', e)
     }
 
-    // 2. Try to save to the dedicated business_profiles table
-    try {
-      const saved = await upsertBusinessProfile(profile)
-      dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
-    } catch {
-      dispatch({ type: 'SET_BUSINESS_PROFILE', profile }) // local fallback
-    }
-  }, [state.user])
+    // 2. Save to the dedicated business_profiles table — let a failure here
+    // propagate to the caller instead of faking success.
+    const saved = await upsertBusinessProfile(profile)
+    dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+    dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
+  }, [state.user, state.role])
 
   const resetAllData = useCallback(async () => {
     try {
-      await resetAllUserData()
+      await resetAllUserData(state.role)
       dispatch({ type: 'SET_PRODUCTS', products: [] })
       dispatch({ type: 'SET_SALES', sales: [] })
       dispatch({ type: 'SET_DEBTS', debts: [] })
@@ -874,7 +1241,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       showToast('Failed to reset data', 'error')
     }
-  }, [])
+  }, [state.role, showToast])
 
   return (
     <StoreContext.Provider value={{
@@ -882,6 +1249,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addProduct, updateProduct, removeProduct,
       addSale, addSaleBatch, deleteSale, addDebt, updateDebt, removeDebt, addExpense, removeExpense,
       addCustomer, updateCustomer,
+      addCategory, renameCategory, removeCategory, loadStarterCategories, reassignAndDeleteCategory, chooseIndustry,
       updateBusinessProfile,
       resetAllData,
       logout,

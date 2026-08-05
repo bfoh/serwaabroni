@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { X, Search, Receipt, User, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { usePermission } from '@/hooks/usePermission'
 import { formatCurrency, formatTime, formatDate, groupSales, type SaleGroup } from '@/lib/data'
 import ProductIcon from '@/components/ProductIcon'
 import ReceiptModal from '@/components/ReceiptModal'
@@ -15,6 +16,7 @@ interface SalesHistoryProps {
 
 export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
   const { state, deleteSale } = useStore()
+  const { canView } = usePermission()
   const [search, setSearch] = useState('')
   const [selectedSales, setSelectedSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
@@ -97,10 +99,12 @@ export default function SalesHistory({ isOpen, onClose }: SalesHistoryProps) {
           <p className="text-[9px] text-white/50 uppercase">Revenue</p>
           <p className="font-display text-lg text-white">{formatCurrency(summary.total)}</p>
         </div>
-        <div className="flex-1 bg-warm-gray rounded-sm px-3 py-2.5">
-          <p className="text-[9px] text-ink/50 uppercase">Profit</p>
-          <p className="font-display text-lg text-ink">{formatCurrency(summary.profit)}</p>
-        </div>
+        {canView('reports') && (
+          <div className="flex-1 bg-warm-gray rounded-sm px-3 py-2.5">
+            <p className="text-[9px] text-ink/50 uppercase">Profit</p>
+            <p className="font-display text-lg text-ink">{formatCurrency(summary.profit)}</p>
+          </div>
+        )}
       </div>
 
       {/* Cash vs Credit split */}

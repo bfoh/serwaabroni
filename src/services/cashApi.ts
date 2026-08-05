@@ -46,32 +46,50 @@ export async function fetchBalances(): Promise<CashBalances> {
   return computeBalances((data as { account: CashAccount; direction: 'in' | 'out'; amount: number }[]) || [])
 }
 
+// Posts via a SECURITY DEFINER RPC, not a direct insert: cash_movements is
+// owner-only RLS (migration_026), but Manager/Staff can record sales/debts/
+// expenses, each of which posts a cash entry here. The RPC always writes
+// under the caller's resolved business id (never their own id for a
+// staff/manager caller), so this is the one legitimate way a non-owner
+// action reaches the owner's cash ledger. See migration_028_cash_post_rpc.sql.
 export async function postMovement(m: NewMovement): Promise<void> {
-  const uid = await uidOrThrow()
   if (!m.amount || m.amount <= 0) return // never post a zero/negative row
-  const { error } = await supabase.from('cash_movements').insert({
-    user_id: uid,
-    account: m.account,
-    direction: m.direction,
-    amount: Math.round(m.amount * 100) / 100,
-    category: m.category,
-    ref_table: m.ref_table ?? null,
-    ref_id: m.ref_id ?? null,
-    transfer_id: m.transfer_id ?? null,
-    note: m.note ?? null,
-    created_at: m.created_at ?? new Date().toISOString(),
+  const { error } = await supabase.rpc('post_cash_movement', {
+    p_account: m.account,
+    p_direction: m.direction,
+    p_amount: Math.round(m.amount * 100) / 100,
+    p_category: m.category,
+    p_ref_table: m.ref_table ?? null,
+    p_ref_id: m.ref_id ?? null,
+    p_transfer_id: m.transfer_id ?? null,
+    p_note: m.note ?? null,
+    p_created_at: m.created_at ?? new Date().toISOString(),
   })
   if (error) throw error
 }
 
 export async function deleteMovementsByRef(refTable: string, refId: string): Promise<void> {
-  const uid = await uidOrThrow()
-  const { error } = await supabase
-    .from('cash_movements')
-    .delete()
-    .eq('user_id', uid)
-    .eq('ref_table', refTable)
-    .eq('ref_id', refId)
+  const { error } = await supabase.rpc('delete_cash_movements_by_ref', {
+    p_ref_table: refTable,
+    p_ref_id: refId,
+  })
+  if (error) throw error
+}
+
+// Reverses ONE payment's movement, not every movement sharing a ref: unlike a
+// sale's sale_group_id (unique per cash entry), debts.id is shared by every
+// partial payment ever made on that debt — deleteMovementsByRef would wipe
+// all of them. Used when deleting/undoing a single debt payment. Callers
+// that only have the amount to match on (not the movement's own id) should
+// use this instead of reading cash_movements client-side: staff/manager
+// can never read that table directly (owner-only RLS), so the old
+// fetch-then-match-then-delete pattern silently no-op'd for them.
+export async function deleteMovementByRefAndAmount(refTable: string, refId: string, amount: number): Promise<void> {
+  const { error } = await supabase.rpc('delete_cash_movement_by_ref_amount', {
+    p_ref_table: refTable,
+    p_ref_id: refId,
+    p_amount: Math.round(amount * 100) / 100,
+  })
   if (error) throw error
 }
 

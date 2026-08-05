@@ -102,7 +102,7 @@ export function buildPreview(call: ToolCall, ctx: PreviewContext): ConfirmPrevie
     if (qty === undefined || Number.isNaN(qty) || qty < 0) return { error: `How many ${name} did you buy?` }
     const payment =
       input.payment === 'bank' ? 'bank' : input.payment === 'supplier_credit' ? 'supplier_credit' : 'cash'
-    const category = String(input.category ?? 'default')
+    const category = String(input.category ?? 'Uncategorized')
     return {
       kind: 'new_product',
       title: 'Confirm new product',

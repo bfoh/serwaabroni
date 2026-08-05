@@ -2,7 +2,6 @@ import type { Product } from '@/lib/supabase'
 import { matchProduct } from '@/lib/agent/match'
 import { uid } from '@/lib/data'
 
-export const CATEGORIES = ['Groceries', 'Dairy', 'Beverages', 'Cooking', 'Grains', 'Canned', 'Noodles', 'Bakery']
 export const UNITS = ['piece', 'sachet', 'bag', 'tin', 'bottle', 'box', 'pack', 'kg']
 
 export interface RawRow {
@@ -79,7 +78,7 @@ export function normalizeRow(raw: RawRow): DraftRow {
     unit: (raw.unit ?? 'piece').trim() || 'piece',
     costPrice: Number(raw.cost_price ?? 0),
     sellPrice: Number(raw.selling_price ?? 0),
-    category: (raw.category ?? 'Groceries').trim() || 'Groceries',
+    category: (raw.category ?? 'Uncategorized').trim() || 'Uncategorized',
     packUnit: raw.pack_unit ? raw.pack_unit.trim() : null,
     unitsPerPack: Number(raw.units_per_pack ?? 1) || 1,
     lowStockThreshold:

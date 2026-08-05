@@ -11,6 +11,7 @@ import ReceiptModal from '@/components/ReceiptModal'
 import NotificationsSheet from '@/components/NotificationsSheet'
 import CapitalSummaryCard from '@/components/CapitalSummaryCard'
 import type { Sale } from '@/lib/supabase'
+import { usePermission } from '@/hooks/usePermission'
 
 interface DashboardProps {
   onOpenSalesHistory: () => void
@@ -20,13 +21,19 @@ interface DashboardProps {
 
 export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCustomers }: DashboardProps) {
   const { state, t, setTab } = useStore()
+  const { canView } = usePermission()
   const navigate = useNavigate()
   const [showScanner, setShowScanner] = useState(false)
   const [receiptSales, setReceiptSales] = useState<Sale[]>([])
   const [showReceipt, setShowReceipt] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
 
-  const businessName = state.businessProfile?.business_name || state.user?.business_name || "Maame Doku's Shop"
+  // businessDisplayName is Staff's only source of their employer's real
+  // business name (they have zero SELECT access to business_profiles) — see
+  // fetchBusinessName()/business_name_for(). Found live: this used to fall
+  // back to a hardcoded placeholder name, permanently, for every Staff
+  // account. 'My Shop' matches chooseIndustry()'s own generic default.
+  const businessName = state.businessProfile?.business_name || state.businessDisplayName || state.user?.business_name || 'My Shop'
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 
   const recentGroups = useMemo(() => groupSales(state.sales).slice(0, 6), [state.sales])
@@ -72,18 +79,22 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
         </div>
       </header>
 
-      {/* Total Balance Hero */}
+      {/* Total Balance Hero — cash-in-hand is exactly the figure cashFlow
+          gates everywhere else on this page (bank balance link, Cash Flow
+          button below); this was the one spot showing it unconditionally. */}
       <section className="px-5 pt-6 pb-4">
-        <div className="text-center">
-          <p className="text-micro text-muted-text mb-2">{t('total_cash')}</p>
-          <Odometer value={state.balance} />
-          <button
-            onClick={() => navigate('/cash')}
-            className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-text active:opacity-60"
-          >
-            <span className="font-display text-ink">{formatCurrency(state.bankBalance)}</span> in bank →
-          </button>
-        </div>
+        {canView('cashFlow') && (
+          <div className="text-center">
+            <p className="text-micro text-muted-text mb-2">{t('total_cash')}</p>
+            <Odometer value={state.balance} />
+            <button
+              onClick={() => navigate('/cash')}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-text active:opacity-60"
+            >
+              <span className="font-display text-ink">{formatCurrency(state.bankBalance)}</span> in bank →
+            </button>
+          </div>
+        )}
 
         {/* Sub stats */}
         <div className="flex gap-3 mt-5">
@@ -127,13 +138,15 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
           <Receipt size={24} className="text-accent-green" />
           <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Sales<br/>History</span>
         </button>
-        <button
-          onClick={onOpenExpenses}
-          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
-        >
-          <ExpenseIcon size={24} className="text-accent-red" />
-          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Expenses</span>
-        </button>
+        {canView('expenses') && (
+          <button
+            onClick={onOpenExpenses}
+            className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
+          >
+            <ExpenseIcon size={24} className="text-accent-red" />
+            <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Expenses</span>
+          </button>
+        )}
         <button
           onClick={onOpenCustomers}
           className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
@@ -141,14 +154,16 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Customers</span>
         </button>
-        <CapitalSummaryCard />
-        <button
-          onClick={() => navigate('/cash')}
-          className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
-        >
-          <Wallet size={24} className="text-ink" />
-          <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Cash<br/>Flow</span>
-        </button>
+        {canView('capital') && <CapitalSummaryCard />}
+        {canView('cashFlow') && (
+          <button
+            onClick={() => navigate('/cash')}
+            className="btn-tactile bg-warm-gray rounded-sm px-3 py-3 flex flex-col items-center gap-2"
+          >
+            <Wallet size={24} className="text-ink" />
+            <span className="font-display text-[10px] text-ink uppercase tracking-wider text-center leading-tight">Cash<br/>Flow</span>
+          </button>
+        )}
       </section>
 
       {/* Voice Search */}

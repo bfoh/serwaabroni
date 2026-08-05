@@ -2,11 +2,28 @@ import { describe, it, expect } from 'vitest'
 import { INDUSTRIES, INDUSTRY_TEMPLATES, CURATED_ICONS, templateForIndustry, mergeSeedNames } from './categories'
 
 describe('INDUSTRIES', () => {
-  it('lists exactly the 7 approved industries in order', () => {
+  it('lists exactly the 15 approved industries in order, General/Other last', () => {
     expect(INDUSTRIES).toEqual([
-      'Supermarket', 'Hardware/Plumbing', 'Hair & Beauty', 'Fashion/Clothing',
-      'Electronics', 'Pharmacy', 'General/Other',
+      'Supermarket', 'Hardware/Plumbing', 'Building Materials', 'Hair & Beauty',
+      'Fashion/Clothing', 'Second-Hand Goods', 'Electronics', 'Telecom & Mobile Money',
+      'Pharmacy', 'Food & Beverages', 'Auto Parts & Spares', 'Agro & Farm Supplies',
+      'Furniture & Woodworking', 'Stationery & Books', 'General/Other',
     ])
+  })
+
+  it('has a template for every industry', () => {
+    for (const industry of INDUSTRIES) {
+      expect(INDUSTRY_TEMPLATES[industry]).toBeDefined()
+      expect(INDUSTRY_TEMPLATES[industry].length).toBeGreaterThan(0)
+    }
+  })
+
+  it('every template entry uses a curated icon key', () => {
+    for (const industry of INDUSTRIES) {
+      for (const entry of INDUSTRY_TEMPLATES[industry]) {
+        expect(CURATED_ICONS).toContain(entry.icon)
+      }
+    }
   })
 })
 
@@ -35,8 +52,8 @@ describe('mergeSeedNames', () => {
 })
 
 describe('CURATED_ICONS', () => {
-  it('has exactly 42 unique icon keys', () => {
-    expect(CURATED_ICONS.length).toBe(42)
-    expect(new Set(CURATED_ICONS).size).toBe(42)
+  it('has exactly 69 unique icon keys', () => {
+    expect(CURATED_ICONS.length).toBe(69)
+    expect(new Set(CURATED_ICONS).size).toBe(69)
   })
 })

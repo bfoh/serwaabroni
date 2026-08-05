@@ -84,6 +84,64 @@ const UNIT_OPTIONS_BY_INDUSTRY: Record<string, UnitOption[]> = {
     { value: 'box', label: 'Box' },
     { value: 'carton', label: 'Carton' },
   ],
+  'Building Materials': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'bag', label: 'Bag' },
+    { value: 'sheet', label: 'Sheet' },
+    { value: 'rod', label: 'Rod' },
+    { value: 'bundle', label: 'Bundle' },
+    { value: 'litre', label: 'Litre' },
+    { value: 'kg', label: 'Kg' },
+  ],
+  'Second-Hand Goods': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'bale', label: 'Bale' },
+    { value: 'bundle', label: 'Bundle' },
+    { value: 'set', label: 'Set' },
+    { value: 'pair', label: 'Pair' },
+  ],
+  'Telecom & Mobile Money': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'pack', label: 'Pack' },
+    { value: 'set', label: 'Set' },
+  ],
+  'Food & Beverages': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'plate', label: 'Plate' },
+    { value: 'bottle', label: 'Bottle' },
+    { value: 'pack', label: 'Pack' },
+    { value: 'crate', label: 'Crate' },
+    { value: 'litre', label: 'Litre' },
+    { value: 'kg', label: 'Kg' },
+  ],
+  'Auto Parts & Spares': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'set', label: 'Set' },
+    { value: 'pair', label: 'Pair' },
+    { value: 'litre', label: 'Litre' },
+    { value: 'box', label: 'Box' },
+  ],
+  'Agro & Farm Supplies': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'bag', label: 'Bag' },
+    { value: 'sack', label: 'Sack' },
+    { value: 'litre', label: 'Litre' },
+    { value: 'kg', label: 'Kg' },
+    { value: 'box', label: 'Box' },
+  ],
+  'Furniture & Woodworking': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'set', label: 'Set' },
+    { value: 'pack', label: 'Pack' },
+    { value: 'sheet', label: 'Sheet' },
+  ],
+  'Stationery & Books': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'pack', label: 'Pack' },
+    { value: 'box', label: 'Box' },
+    { value: 'ream', label: 'Ream' },
+    { value: 'set', label: 'Set' },
+  ],
   'General/Other': GENERAL_UNITS,
 }
 
@@ -122,6 +180,37 @@ const SMALL_UNIT_OPTIONS_BY_INDUSTRY: Record<string, UnitOption[]> = {
     { value: 'strip', label: 'Strip' },
     { value: 'sachet', label: 'Sachet' },
     { value: 'tube', label: 'Tube' },
+  ],
+  'Building Materials': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'sheet', label: 'Sheet' },
+    { value: 'rod', label: 'Rod' },
+  ],
+  'Second-Hand Goods': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'pair', label: 'Pair' },
+  ],
+  'Telecom & Mobile Money': [
+    { value: 'piece', label: 'Piece' },
+  ],
+  'Food & Beverages': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'plate', label: 'Plate' },
+    { value: 'bottle', label: 'Bottle' },
+  ],
+  'Auto Parts & Spares': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'pair', label: 'Pair' },
+  ],
+  'Agro & Farm Supplies': [
+    { value: 'piece', label: 'Piece' },
+    { value: 'kg', label: 'Kg' },
+  ],
+  'Furniture & Woodworking': [
+    { value: 'piece', label: 'Piece' },
+  ],
+  'Stationery & Books': [
+    { value: 'piece', label: 'Piece' },
   ],
   'General/Other': GENERAL_SMALL_UNITS,
 }

@@ -24,32 +24,30 @@ async function getCurrentUserId(): Promise<string | null> {
 // ============================================
 // PRODUCTS (scoped to user)
 // ============================================
-// Staff never receives cost_price from the server; see
-// docs/superpowers/specs/2026-08-03-staff-rbac-design.md §2/§5 for why this
-// one control is app-layer (RLS is row-scoped, not column-scoped).
-const STAFF_SAFE_PRODUCT_COLUMNS: string =
-  'id, user_id, name, selling_price, quantity, unit, pack_unit, units_per_pack, category, low_stock_threshold, barcode, qr_code, created_at, updated_at'
-
-export async function fetchProducts(role?: Role | null): Promise<Product[]> {
-  const uid = await getCurrentUserId()
-  if (!uid) return []
-
-  const { data, error } = await supabase
-    .from('products')
-    .select(role === 'staff' ? STAFF_SAFE_PRODUCT_COLUMNS : '*')
-    .eq('user_id', uid)
-    .order('created_at', { ascending: false })
-
+// Staff never receives cost_price from the server. This was originally an
+// app-layer-only control (a narrower .select() column list) — found live in
+// production testing to be trivially bypassed by any caller issuing their
+// own REST call with select=*, since RLS is row-scoped, not column-scoped,
+// and never actually restricted this column. migration_033 closes that:
+// REVOKEs SELECT on products.cost_price from `authenticated` entirely (no
+// app role can read it via a direct table query anymore) and this RPC is
+// the only sanctioned read path — it's SECURITY DEFINER, so it isn't
+// subject to that revoke, and applies the real role-based masking itself.
+export async function fetchProducts(): Promise<Product[]> {
+  const { data, error } = await supabase.rpc('get_products')
   if (error) throw error
-  return maskCostPriceForRole((data as unknown as Product[]) || [], role)
+  return (data as unknown as Product[]) || []
 }
 
-// Pure: masks cost_price client-side too so every consumer keeps a complete
-// Product shape without ever holding the real value for a Staff caller.
-export function maskCostPriceForRole(products: Product[], role?: Role | null): Product[] {
-  if (role !== 'staff') return products
-  return products.map((p) => ({ ...p, cost_price: 0 }))
-}
+// Every Product column except cost_price — migration_033 revokes SELECT on
+// that column for `authenticated` entirely, so an unqualified .select()
+// (implicit select=*) after insert/update now fails for EVERY caller, not
+// just Staff. The caller already knows the cost_price they just sent (they
+// typed it in, or it's unchanged from what they already had), so it's
+// merged back into the returned object below instead of round-tripping a
+// read the database will no longer allow.
+const PRODUCT_COLUMNS_SANS_COST: string =
+  'id, user_id, name, selling_price, quantity, unit, pack_unit, units_per_pack, category, low_stock_threshold, barcode, qr_code, created_at, updated_at'
 
 export async function insertProduct(product: Omit<Product, 'user_id'>): Promise<Product> {
   const uid = await getCurrentUserId()
@@ -58,11 +56,11 @@ export async function insertProduct(product: Omit<Product, 'user_id'>): Promise<
   const { data, error } = await supabase
     .from('products')
     .insert({ ...product, user_id: uid })
-    .select()
+    .select(PRODUCT_COLUMNS_SANS_COST)
     .single()
 
   if (error) throw error
-  return data as Product
+  return { ...(data as unknown as Product), cost_price: product.cost_price }
 }
 
 export async function updateProductDb(id: string, updates: Partial<Product>): Promise<Product> {
@@ -74,11 +72,14 @@ export async function updateProductDb(id: string, updates: Partial<Product>): Pr
     .update(updates)
     .eq('id', id)
     .eq('user_id', uid) // ensure tenant isolation
-    .select()
+    .select(PRODUCT_COLUMNS_SANS_COST)
     .single()
 
   if (error) throw error
-  return data as Product
+  // updates.cost_price is only present when the caller is actually changing
+  // it (e.g. re-stocking at a new unit cost) — when absent, callers already
+  // hold the pre-update value in state.products and merge it themselves.
+  return { ...(data as unknown as Product), cost_price: updates.cost_price ?? 0 }
 }
 
 export async function deleteProductDb(id: string): Promise<void> {
@@ -106,37 +107,26 @@ export async function deleteProductDb(id: string): Promise<void> {
 // ============================================
 // SALES (scoped to user, auto-reduce stock)
 // ============================================
-// Staff never receives profit (revenue minus cost) — same rationale and
-// pattern as fetchProducts' cost_price exclusion above (RLS is row-scoped,
-// not column-scoped, so this is necessarily an app-layer control). Found in
-// the RBAC feature's final whole-branch review: fetchSales() was the one
-// remaining unrestricted select('*') exposing the exact derived value Task
-// 13's cost_price work exists to protect.
-const STAFF_SAFE_SALE_COLUMNS: string =
-  'id, user_id, product_id, product_name, quantity, unit_price, sale_unit, sale_unit_qty, total, customer_name, customer_phone, payment_method, qr_invoice, sale_group_id, created_at'
-
-export async function fetchSales(role?: Role | null): Promise<Sale[]> {
-  const uid = await getCurrentUserId()
-  if (!uid) return []
-
-  const { data, error } = await supabase
-    .from('sales')
-    .select(role === 'staff' ? STAFF_SAFE_SALE_COLUMNS : '*')
-    .eq('user_id', uid)
-    .order('created_at', { ascending: false })
-    .limit(200)
-
+// Staff never receives sales.profit. Same history as fetchProducts()'s
+// cost_price exclusion above — was an app-layer-only narrower .select(),
+// found live in production RBAC testing to be trivially bypassable via a
+// raw REST call with select=*, since RLS is row-scoped, not column-scoped.
+// migration_033's get_sales() RPC is SECURITY DEFINER (unaffected by the
+// REVOKE SELECT (profit) it also adds to `authenticated`) and applies the
+// real masking server-side instead.
+export async function fetchSales(): Promise<Sale[]> {
+  const { data, error } = await supabase.rpc('get_sales')
   if (error) throw error
-  return maskProfitForRole((data as unknown as Sale[]) || [], role)
+  return (data as unknown as Sale[]) || []
 }
 
-// Pure: masks profit client-side too, mirroring maskCostPriceForRole, so
-// every consumer keeps a complete Sale shape without ever holding the real
-// value for a Staff caller.
-export function maskProfitForRole(sales: Sale[], role?: Role | null): Sale[] {
-  if (role !== 'staff') return sales
-  return sales.map((s) => ({ ...s, profit: 0 }))
-}
+// Every Sale column except profit — same reasoning as PRODUCT_COLUMNS_SANS_COST:
+// migration_033 revokes SELECT on sales.profit for `authenticated`, so an
+// unqualified .select() after insert/update now fails for EVERY caller. The
+// caller already knows the profit value it just sent/computed, so it's
+// merged back locally instead of read back from the (now-forbidden) column.
+const SALE_COLUMNS_SANS_PROFIT: string =
+  'id, user_id, product_id, product_name, quantity, unit_price, sale_unit, sale_unit_qty, total, customer_name, customer_phone, payment_method, qr_invoice, sale_group_id, created_at'
 
 export async function recordSale(
   sale: Omit<Sale, 'user_id'>,
@@ -147,13 +137,14 @@ export async function recordSale(
   if (!uid) throw new Error('Not authenticated')
 
   // Insert sale scoped to user
-  const { data: saleData, error: saleError } = await supabase
+  const { data: saleRow, error: saleError } = await supabase
     .from('sales')
     .insert({ ...sale, user_id: uid })
-    .select()
+    .select(SALE_COLUMNS_SANS_PROFIT)
     .single()
 
   if (saleError) throw saleError
+  const saleData = { ...(saleRow as unknown as Sale), profit: sale.profit }
 
   // Consume batches FIFO → writes consumption rows + decrements batch stock.
   // The sale's profit becomes the true sum of the draws (batch-accurate).
@@ -176,10 +167,9 @@ export async function recordSale(
         .eq('id', productId).eq('user_id', uid)
     }
     if (trueProfit !== saleData.profit) {
-      const { data: fixed } = await supabase
+      const { error: fixError } = await supabase
         .from('sales').update({ profit: trueProfit }).eq('id', saleData.id).eq('user_id', uid)
-        .select().single()
-      if (fixed) return fixed as Sale
+      if (!fixError) return { ...saleData, profit: trueProfit }
     }
   }
 
@@ -197,15 +187,19 @@ export async function recordSaleBatch(
   if (!uid) throw new Error('Not authenticated')
 
   // Insert all sale rows scoped to user
-  const { data: saleData, error: saleError } = await supabase
+  const { data: saleRows, error: saleError } = await supabase
     .from('sales')
     .insert(sales.map((s) => ({ ...s, user_id: uid })))
-    .select()
+    .select(SALE_COLUMNS_SANS_PROFIT)
 
   if (saleError) throw saleError
 
-  // Map each inserted sale row to its product so we can attribute its profit.
-  const inserted = (saleData as Sale[]) || []
+  // Merge back each row's caller-provided profit (order-preserving insert) —
+  // profit is no longer readable via the .select() above post-migration_033.
+  const inserted = ((saleRows as unknown as Sale[]) || []).map((row, i) => ({
+    ...row,
+    profit: sales[i]?.profit ?? 0,
+  }))
   for (const { productId, qty } of items) {
     if (!productId) continue
     const saleRow = inserted.find((s) => s.product_id === productId)
@@ -495,26 +489,20 @@ export async function getDashboardSummary(role?: Role | null): Promise<{
 
   const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00'
 
-  // Staff never receives cost_price from the server (see fetchProducts above)
-  // — this query ran unmasked in parallel with it, so a Staff session could
-  // read raw cost_price straight off the network response even though the
-  // products list itself was already correctly narrowed. stockValue/
-  // projectedProfit are both cost_price-derived, so for Staff they're 0
-  // rather than computed from data the caller was never supposed to receive.
+  // sales.profit/products.cost_price now come back already masked (0) for
+  // Staff straight from the get_sales()/get_products() RPCs (migration_033
+  // — SECURITY DEFINER, applies the real server-side masking, not just a
+  // narrower client-requested column list). But a masked cost_price of 0
+  // doesn't make DERIVED formulas below (e.g. selling_price - cost_price)
+  // come out to 0 on its own — it makes them compute full revenue as if it
+  // were pure profit, the same bug this isStaff guard exists to prevent.
+  // Still needed even though the raw fields are safe now.
   const isStaff = role === 'staff'
-  // : string widening matches the same fetchProducts() workaround — supabase-js's
-  // typed .select() rejects a ternary of string literals.
-  const PRODUCT_SUMMARY_COLUMNS: string = isStaff ? 'selling_price, quantity' : 'cost_price, selling_price, quantity'
-  // sales.profit is exactly the derived quantity (revenue - cost) Task 13's
-  // cost_price work exists to keep from Staff — dropped from the SELECT the
-  // same way, not just masked after the fact. Found alongside fetchSales()'s
-  // equivalent gap in the RBAC feature's final whole-branch review.
-  const SALES_SUMMARY_COLUMNS: string = isStaff ? 'total, created_at' : 'total, profit, created_at'
   const [salesRes, expensesRes, debtsRes, productsRes] = await Promise.all([
-    supabase.from('sales').select(SALES_SUMMARY_COLUMNS).eq('user_id', uid),
+    supabase.rpc('get_sales'),
     supabase.from('expenses').select('amount').eq('user_id', uid),
     supabase.from('debts').select('amount, amount_paid, type, is_paid, sale_group_id').eq('user_id', uid),
-    supabase.from('products').select(PRODUCT_SUMMARY_COLUMNS).eq('user_id', uid),
+    supabase.rpc('get_products'),
   ])
 
   const sales = (salesRes.data as unknown as Record<string, string | number>[]) || []

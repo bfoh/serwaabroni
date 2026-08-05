@@ -520,8 +520,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       const results = await Promise.allSettled([
-        fetchProducts(state.role),
-        fetchSales(state.role),
+        fetchProducts(),
+        fetchSales(),
         fetchDebts(),
         fetchExpenses(),
         getDashboardSummary(state.role),
@@ -808,7 +808,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // owner-only) or a real network failure — restore the real server
       // state instead of faking a delete that never happened.
       try {
-        const products = await fetchProducts(state.role)
+        const products = await fetchProducts()
         dispatch({ type: 'SET_PRODUCTS', products })
       } catch { /* leave optimistic state if even the re-fetch fails */ }
       showToast('Could not delete product', 'error')
@@ -819,7 +819,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const recorded = await recordSale(sale, productId, quantitySold)
       dispatch({ type: 'ADD_SALE', sale: recorded })
-      const products = await fetchProducts(state.role)
+      const products = await fetchProducts()
       dispatch({ type: 'SET_PRODUCTS', products })
       const summary = await getDashboardSummary(state.role)
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
@@ -846,7 +846,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const recorded = await recordSaleBatch(sales, items)
       recorded.forEach((sale) => dispatch({ type: 'ADD_SALE', sale }))
       // Refresh the product cache and dashboard in parallel (one round-trip).
-      const [products, summary] = await Promise.all([fetchProducts(state.role), getDashboardSummary(state.role)])
+      const [products, summary] = await Promise.all([fetchProducts(), getDashboardSummary(state.role)])
       dispatch({ type: 'SET_PRODUCTS', products })
       dispatch({ type: 'SET_BALANCE', value: summary.cashInHand })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank })
@@ -876,7 +876,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await deleteSaleGroup(group.sales)
       // Re-sync derived data in parallel (one wall-clock round-trip, not three).
       const [products, summary, customers] = await Promise.all([
-        fetchProducts(state.role),
+        fetchProducts(),
         getDashboardSummary(state.role),
         fetchCustomers(),
       ])
@@ -914,7 +914,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Online but the server rejected the delete — restore the row so the UI
       // matches the server instead of faking a delete that never happened.
       try {
-        const sales = await fetchSales(state.role)
+        const sales = await fetchSales()
         dispatch({ type: 'SET_SALES', sales })
       } catch { /* leave optimistic state if even the re-fetch fails */ }
       showToast('Could not delete sale', 'error')

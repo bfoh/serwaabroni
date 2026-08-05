@@ -2,11 +2,33 @@
 -- Manager: view-only. Staff: no access at all (role_for() must be 'owner' or
 -- 'manager' just to SELECT). See docs/superpowers/specs/2026-08-03-staff-rbac-design.md §5.
 
+-- COALESCE(...,auth.uid())/COALESCE(...,'owner') bootstrap fallbacks: found
+-- live in production. supabase-js's upsertBusinessProfile() does
+-- .insert(...).select().single(), which PostgREST sends as
+-- `Prefer: return=representation` — the INSERT's RETURNING clause ALSO
+-- requires this SELECT policy to pass for the newly-inserted row, not just
+-- the INSERT policy's WITH CHECK. But business_id_for()/role_for() each do
+-- their own SELECT against business_profiles internally, and Postgres's
+-- command-counter visibility rules mean a row inserted earlier IN THE SAME
+-- COMMAND is invisible to a separate scan within that same command — so on
+-- a brand-new signup's very first insert, both functions resolve NULL at
+-- exactly the moment PostgREST tries to read back the row it just inserted,
+-- even though the row genuinely exists. Without this fallback, the INSERT
+-- itself succeeds (confirmed via extensive live debugging: the INSERT
+-- policy's WITH CHECK independently verified true at the exact failing
+-- moment) but PostgREST's read-back then fails this SELECT policy, and
+-- reports the SAME generic "new row violates row-level security policy for
+-- table business_profiles" message — misleadingly identical to an actual
+-- INSERT rejection. Safe: the fallback only ever matches user_id =
+-- auth.uid() (never another tenant's row), and only takes effect when
+-- business_id_for() has ALREADY resolved NULL — which the INSERT policy
+-- guarantees only happens for a caller who is themselves becoming the
+-- owner of that exact row.
 DROP POLICY IF EXISTS "Users can view own profile" ON business_profiles;
 CREATE POLICY "Users can view own profile" ON business_profiles
   FOR SELECT USING (
-    business_id_for(auth.uid()) = user_id
-    AND role_for(auth.uid()) IN ('owner', 'manager')
+    COALESCE(business_id_for(auth.uid()), auth.uid()) = user_id
+    AND COALESCE(role_for(auth.uid()), 'owner') IN ('owner', 'manager')
   );
 
 -- INSERT/UPDATE stay owner-only: Manager can view but never edit, Staff can't

@@ -78,6 +78,13 @@ export interface AppState {
   role: Role | null
   businessId: string | null
   roleResolved: boolean
+  // Set true by chooseIndustry() right after a brand-new owner picks their
+  // industry and starter categories are seeded; App.tsx shows
+  // CategoriesSetupScreen while this is true, then it's cleared once they
+  // click Continue. Session-only (not persisted) — a reload mid-setup just
+  // drops straight to the dashboard, matching IndustryPicker's own
+  // non-persisted gating.
+  showCategoriesSetup: boolean
 }
 
 type Action =
@@ -125,6 +132,7 @@ type Action =
   | { type: 'SET_IMPERSONATING'; value: { tenantId: string; tenantName: string } | null }
   | { type: 'SET_ROLE'; role: Role | null; resolved?: boolean }
   | { type: 'SET_BUSINESS_ID'; businessId: string | null }
+  | { type: 'SET_SHOW_CATEGORIES_SETUP'; value: boolean }
   | { type: 'RESET_TENANT_DATA' }
   | { type: 'SET_ALERTS'; alerts: Alert[] }
   | { type: 'LOAD_ALL_DATA'; products: Product[]; sales: Sale[]; debts: Debt[]; expenses: Expense[]; customers: Customer[]; categories: BusinessCategory[]; alerts: Alert[]; balance: number; todaySales: number; todayProfit: number; pendingDebts: number }
@@ -167,6 +175,7 @@ const initialState: AppState = {
   role: null,
   businessId: null,
   roleResolved: false,
+  showCategoriesSetup: false,
 }
 
 // Helper: persist current data to localStorage (for offline access)
@@ -262,6 +271,7 @@ function appReducer(state: AppState, action: Action): AppState {
     // happens to resolve to null (a brand-new owner mid-signup, in particular).
     case 'SET_ROLE': return { ...state, role: action.role, roleResolved: action.resolved ?? true }
     case 'SET_BUSINESS_ID': return { ...state, businessId: action.businessId }
+    case 'SET_SHOW_CATEGORIES_SETUP': return { ...state, showCategoriesSetup: action.value }
     case 'RESET_TENANT_DATA': return {
       ...state,
       products: [], sales: [], debts: [], expenses: [], customers: [], categories: [], alerts: [],
@@ -1136,6 +1146,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       showToast('Could not load starter categories — try again from Settings', 'error')
     }
+    // Show the category review/setup step next instead of dropping straight
+    // to the dashboard — even if seeding above failed, CategoriesManager
+    // lets them add categories manually right here.
+    dispatch({ type: 'SET_SHOW_CATEGORIES_SETUP', value: true })
   }, [state.user, state.language, showToast])
 
   const logout = useCallback(async () => {

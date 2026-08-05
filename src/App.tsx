@@ -12,6 +12,7 @@ import SalesHistory from '@/pages/SalesHistory'
 import Expenses from '@/pages/Expenses'
 import Login from '@/pages/Login'
 import IndustryPicker from '@/components/IndustryPicker'
+import CategoriesSetupScreen from '@/components/CategoriesSetupScreen'
 import BottomNav from '@/components/BottomNav'
 import AddSaleSheet from '@/components/AddSaleSheet'
 import Toast from '@/components/Toast'
@@ -109,7 +110,7 @@ function MainApp() {
 }
 
 export default function App() {
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   const { canView, settingsAccess } = usePermission()
 
   if (state.authLoading) {
@@ -156,6 +157,17 @@ export default function App() {
     return (
       <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
         <IndustryPicker />
+      </div>
+    )
+  }
+
+  // Right after a brand-new owner picks their industry, chooseIndustry()
+  // sets this flag so they land on a category review/setup step instead of
+  // going straight to the dashboard. Cleared once they click Continue there.
+  if (state.isAuthenticated && state.showCategoriesSetup) {
+    return (
+      <div className="h-[100dvh] w-full bg-sand flex flex-col overflow-hidden">
+        <CategoriesSetupScreen onDone={() => dispatch({ type: 'SET_SHOW_CATEGORIES_SETUP', value: false })} />
       </div>
     )
   }

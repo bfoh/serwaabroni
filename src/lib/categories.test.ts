@@ -35,8 +35,8 @@ describe('mergeSeedNames', () => {
 })
 
 describe('CURATED_ICONS', () => {
-  it('has exactly 24 unique icon keys', () => {
-    expect(CURATED_ICONS.length).toBe(24)
-    expect(new Set(CURATED_ICONS).size).toBe(24)
+  it('has exactly 42 unique icon keys', () => {
+    expect(CURATED_ICONS.length).toBe(42)
+    expect(new Set(CURATED_ICONS).size).toBe(42)
   })
 })

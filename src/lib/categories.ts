@@ -27,7 +27,9 @@ export const CURATED_ICONS: string[] = [
   'box', 'milk', 'cup-soda', 'wheat', 'package', 'soup', 'croissant', 'utensils',
   'wrench', 'hammer', 'droplet', 'scissors', 'sparkles', 'shirt', 'footprints',
   'watch', 'cpu', 'smartphone', 'laptop', 'plug', 'battery', 'pill', 'syringe',
-  'stethoscope',
+  'stethoscope', 'zap', 'palette', 'settings', 'shield', 'brush', 'flower-2',
+  'shopping-bag', 'gem', 'scroll', 'cable', 'headphones', 'refrigerator',
+  'flask-conical', 'bandage', 'baby', 'shapes', 'chef-hat', 'shopping-basket',
 ]
 
 // Builtin category every tenant gets, never deletable. Not part of any
@@ -36,10 +38,10 @@ export const UNCATEGORIZED: CategoryTemplateEntry = { name: 'Uncategorized', ico
 
 export const INDUSTRY_TEMPLATES: Record<Industry, CategoryTemplateEntry[]> = {
   'Supermarket': [
-    { name: 'Groceries', icon: 'box', sortOrder: 0 },
+    { name: 'Groceries', icon: 'shopping-basket', sortOrder: 0 },
     { name: 'Dairy', icon: 'milk', sortOrder: 1 },
     { name: 'Beverages', icon: 'cup-soda', sortOrder: 2 },
-    { name: 'Cooking', icon: 'utensils', sortOrder: 3 },
+    { name: 'Cooking', icon: 'chef-hat', sortOrder: 3 },
     { name: 'Grains', icon: 'wheat', sortOrder: 4 },
     { name: 'Canned', icon: 'package', sortOrder: 5 },
     { name: 'Noodles', icon: 'soup', sortOrder: 6 },
@@ -48,48 +50,48 @@ export const INDUSTRY_TEMPLATES: Record<Industry, CategoryTemplateEntry[]> = {
   'Hardware/Plumbing': [
     { name: 'Pipes & Fittings', icon: 'wrench', sortOrder: 0 },
     { name: 'Tools', icon: 'hammer', sortOrder: 1 },
-    { name: 'Paints & Sealants', icon: 'droplet', sortOrder: 2 },
-    { name: 'Electrical', icon: 'plug', sortOrder: 3 },
-    { name: 'Fasteners & Hardware', icon: 'box', sortOrder: 4 },
-    { name: 'Safety Gear', icon: 'shirt', sortOrder: 5 },
+    { name: 'Paints & Sealants', icon: 'palette', sortOrder: 2 },
+    { name: 'Electrical', icon: 'zap', sortOrder: 3 },
+    { name: 'Fasteners & Hardware', icon: 'settings', sortOrder: 4 },
+    { name: 'Safety Gear', icon: 'shield', sortOrder: 5 },
   ],
   'Hair & Beauty': [
     { name: 'Hair Care', icon: 'scissors', sortOrder: 0 },
-    { name: 'Extensions & Wigs', icon: 'shirt', sortOrder: 1 },
+    { name: 'Extensions & Wigs', icon: 'brush', sortOrder: 1 },
     { name: 'Skin Care', icon: 'droplet', sortOrder: 2 },
     { name: 'Makeup', icon: 'sparkles', sortOrder: 3 },
-    { name: 'Fragrances', icon: 'sparkles', sortOrder: 4 },
+    { name: 'Fragrances', icon: 'flower-2', sortOrder: 4 },
     { name: 'Tools & Equipment', icon: 'plug', sortOrder: 5 },
   ],
   'Fashion/Clothing': [
     { name: 'Clothing', icon: 'shirt', sortOrder: 0 },
     { name: 'Footwear', icon: 'footprints', sortOrder: 1 },
     { name: 'Accessories', icon: 'watch', sortOrder: 2 },
-    { name: 'Bags', icon: 'package', sortOrder: 3 },
-    { name: 'Jewelry', icon: 'sparkles', sortOrder: 4 },
-    { name: 'Fabrics', icon: 'box', sortOrder: 5 },
+    { name: 'Bags', icon: 'shopping-bag', sortOrder: 3 },
+    { name: 'Jewelry', icon: 'gem', sortOrder: 4 },
+    { name: 'Fabrics', icon: 'scroll', sortOrder: 5 },
   ],
   'Electronics': [
     { name: 'Phones', icon: 'smartphone', sortOrder: 0 },
     { name: 'Computers', icon: 'laptop', sortOrder: 1 },
-    { name: 'Accessories', icon: 'plug', sortOrder: 2 },
+    { name: 'Accessories', icon: 'cable', sortOrder: 2 },
     { name: 'Components', icon: 'cpu', sortOrder: 3 },
-    { name: 'Audio', icon: 'battery', sortOrder: 4 },
-    { name: 'Home Appliances', icon: 'box', sortOrder: 5 },
+    { name: 'Audio', icon: 'headphones', sortOrder: 4 },
+    { name: 'Home Appliances', icon: 'refrigerator', sortOrder: 5 },
   ],
   'Pharmacy': [
     { name: 'Medicines', icon: 'pill', sortOrder: 0 },
-    { name: 'Supplements', icon: 'pill', sortOrder: 1 },
-    { name: 'First Aid', icon: 'stethoscope', sortOrder: 2 },
+    { name: 'Supplements', icon: 'flask-conical', sortOrder: 1 },
+    { name: 'First Aid', icon: 'bandage', sortOrder: 2 },
     { name: 'Injections', icon: 'syringe', sortOrder: 3 },
-    { name: 'Baby Care', icon: 'milk', sortOrder: 4 },
+    { name: 'Baby Care', icon: 'baby', sortOrder: 4 },
     { name: 'Personal Care', icon: 'droplet', sortOrder: 5 },
   ],
   'General/Other': [
     { name: 'General', icon: 'box', sortOrder: 0 },
     { name: 'Services', icon: 'wrench', sortOrder: 1 },
     { name: 'Supplies', icon: 'package', sortOrder: 2 },
-    { name: 'Miscellaneous', icon: 'sparkles', sortOrder: 3 },
+    { name: 'Miscellaneous', icon: 'shapes', sortOrder: 3 },
   ],
 }
 

@@ -1,7 +1,9 @@
 import {
   Box, Milk, CupSoda, Wheat, Package, Soup, Croissant, Utensils, Wrench, Hammer,
   Droplet, Scissors, Sparkles, Shirt, Footprints, Watch, Cpu, Smartphone, Laptop,
-  Plug, Battery, Pill, Syringe, Stethoscope, type LucideIcon,
+  Plug, Battery, Pill, Syringe, Stethoscope, Zap, Palette, Settings, Shield,
+  Brush, Flower2, ShoppingBag, Gem, Scroll, Cable, Headphones, Refrigerator,
+  FlaskConical, Bandage, Baby, Shapes, ChefHat, ShoppingBasket, type LucideIcon,
 } from 'lucide-react'
 
 // Maps a business_categories.icon key (see CURATED_ICONS in
@@ -31,4 +33,22 @@ export const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   'pill': Pill,
   'syringe': Syringe,
   'stethoscope': Stethoscope,
+  'zap': Zap,
+  'palette': Palette,
+  'settings': Settings,
+  'shield': Shield,
+  'brush': Brush,
+  'flower-2': Flower2,
+  'shopping-bag': ShoppingBag,
+  'gem': Gem,
+  'scroll': Scroll,
+  'cable': Cable,
+  'headphones': Headphones,
+  'refrigerator': Refrigerator,
+  'flask-conical': FlaskConical,
+  'bandage': Bandage,
+  'baby': Baby,
+  'shapes': Shapes,
+  'chef-hat': ChefHat,
+  'shopping-basket': ShoppingBasket,
 }

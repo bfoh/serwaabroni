@@ -133,6 +133,25 @@ export default function App() {
     )
   }
 
+  // Right after sign-up/login, role resolution and the first business-profile
+  // fetch both take a network round trip. Without this, businessProfileStatus
+  // sits at its initial 'unknown' value during that window — which fails the
+  // IndustryPicker gate below (it requires 'missing') — so the normal route
+  // tree (the dashboard) rendered first and then got replaced by IndustryPicker
+  // a moment later once the fetch resolved. Show a spinner for that window
+  // instead of flashing the dashboard. Bounded so it can't spin forever: once
+  // role has resolved AND the fetch has finished, businessProfileStatus stops
+  // being 'unknown' either way (it becomes 'missing' or 'found' on success, and
+  // stays 'unknown' only on a genuine fetch error — at which point dataLoading
+  // is also false, so this condition clears and the app proceeds normally).
+  if (state.isAuthenticated && !state.suspended && (!state.roleResolved || (state.dataLoading && state.businessProfileStatus === 'unknown'))) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-sand">
+        <div className="w-12 h-12 border-4 border-ink border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   // Every real tenant has a business_profiles row after migration_022 (see
   // that migration's backfill). A logged-in user with none is a brand-new
   // signup who hasn't picked their industry yet — but `businessProfile === null`

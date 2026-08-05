@@ -18,7 +18,7 @@ import {
   fetchSales, recordSale, recordSaleBatch, deleteSaleGroup,
   fetchDebts, insertDebt, updateDebtDb, deleteDebtDb,
   fetchExpenses, insertExpense, deleteExpenseDb,
-  fetchBusinessProfile, upsertBusinessProfile,
+  fetchBusinessProfile, fetchBusinessName, upsertBusinessProfile,
   fetchCustomers, insertCustomer, updateCustomer as updateCustomerDb,
   getDashboardSummary, resetAllUserData,
 } from '@/services/supabaseApi'
@@ -67,6 +67,11 @@ export interface AppState {
   authLoading: boolean
   language: Language
   businessProfile: BusinessProfile | null
+  // Staff can't read business_profiles (RLS), so this is their only source
+  // of their employer's real business name for display — see
+  // fetchBusinessName()/business_name_for(). Null for owner/manager, who
+  // already get the real name via businessProfile.
+  businessDisplayName: string | null
   businessProfileStatus: 'unknown' | 'missing' | 'found'
   dataLoading: boolean
   isOnline: boolean
@@ -122,6 +127,7 @@ type Action =
   | { type: 'SET_USER'; user: UserState | null }
   | { type: 'SET_LANGUAGE'; lang: Language }
   | { type: 'SET_BUSINESS_PROFILE'; profile: BusinessProfile | null }
+  | { type: 'SET_BUSINESS_DISPLAY_NAME'; value: string | null }
   | { type: 'SET_BUSINESS_PROFILE_STATUS'; status: 'unknown' | 'missing' | 'found' }
   | { type: 'SET_DATA_LOADING'; loading: boolean }
   | { type: 'SET_ONLINE'; online: boolean }
@@ -164,6 +170,7 @@ const initialState: AppState = {
   authLoading: true,
   language: getStoredLang(),
   businessProfile: null,
+  businessDisplayName: null,
   businessProfileStatus: 'unknown',
   dataLoading: false,
   isOnline: navigator.onLine,
@@ -247,6 +254,7 @@ function appReducer(state: AppState, action: Action): AppState {
     }
     case 'SET_LANGUAGE': return { ...state, language: action.lang }
     case 'SET_BUSINESS_PROFILE': return { ...state, businessProfile: action.profile }
+    case 'SET_BUSINESS_DISPLAY_NAME': return { ...state, businessDisplayName: action.value }
     case 'SET_BUSINESS_PROFILE_STATUS': return { ...state, businessProfileStatus: action.status }
     case 'SET_DATA_LOADING': return { ...state, dataLoading: action.loading }
     case 'SET_ONLINE': return { ...state, isOnline: action.online }
@@ -520,6 +528,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchBusinessProfile(),
         fetchCustomers(),
         fetchCategories(),
+        fetchBusinessName(),
       ])
 
       const remoteProducts = results[0].status === 'fulfilled' ? results[0].value : []
@@ -531,6 +540,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const profile = profileResult.status === 'found' ? profileResult.profile : null
       const remoteCustomers = results[6].status === 'fulfilled' ? results[6].value : []
       const remoteCategories = results[7].status === 'fulfilled' ? results[7].value : []
+      // Staff can't read business_profiles (fetchBusinessProfile always
+      // returns 'missing' for them) so this narrow business_name_for() RPC is
+      // their only source of their employer's real business name — without
+      // it, Dashboard's header fell back to a hardcoded placeholder name for
+      // every Staff account, permanently. Found live in production testing.
+      const businessDisplayName = results[8].status === 'fulfilled' ? results[8].value : null
 
       // Defensive tenant guard: only keep rows owned the active session's TENANT
       // (or not-yet-synced local rows). Every row's user_id is business_id_for()
@@ -586,6 +601,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pendingDebts: summary.pendingDebts || 0,
       })
       dispatch({ type: 'SET_BANK_BALANCE', value: summary.cashInBank || 0 })
+      dispatch({ type: 'SET_BUSINESS_DISPLAY_NAME', value: businessDisplayName })
 
       if (profileResult.status === 'found') {
         dispatch({ type: 'SET_BUSINESS_PROFILE', profile })

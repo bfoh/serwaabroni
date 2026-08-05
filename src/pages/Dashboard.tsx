@@ -28,7 +28,12 @@ export default function Dashboard({ onOpenSalesHistory, onOpenExpenses, onOpenCu
   const [showReceipt, setShowReceipt] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
 
-  const businessName = state.businessProfile?.business_name || state.user?.business_name || "Maame Doku's Shop"
+  // businessDisplayName is Staff's only source of their employer's real
+  // business name (they have zero SELECT access to business_profiles) — see
+  // fetchBusinessName()/business_name_for(). Found live: this used to fall
+  // back to a hardcoded placeholder name, permanently, for every Staff
+  // account. 'My Shop' matches chooseIndustry()'s own generic default.
+  const businessName = state.businessProfile?.business_name || state.businessDisplayName || state.user?.business_name || 'My Shop'
   const initials = businessName.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 
   const recentGroups = useMemo(() => groupSales(state.sales).slice(0, 6), [state.sales])

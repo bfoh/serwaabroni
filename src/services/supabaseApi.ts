@@ -568,6 +568,25 @@ export type BusinessProfileResult =
   | { status: 'missing' }
   | { status: 'error' }
 
+// Staff can't read business_profiles at all (migration_027 restricts SELECT
+// to owner/manager) so fetchBusinessProfile() below always returns 'missing'
+// for them — this is the narrow fallback that gives them just their
+// employer's business name (not the rest of the profile) for display,
+// via the SECURITY DEFINER business_name_for() (migration_032). Found live:
+// without this, Dashboard's header fell back to a hardcoded placeholder
+// name for every Staff account, permanently.
+export async function fetchBusinessName(): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    const { data, error } = await supabase.rpc('business_name_for', { uid: user.id })
+    if (error) return null
+    return (data as string) || null
+  } catch {
+    return null
+  }
+}
+
 // Distinguishes "no profile row exists" (status: 'missing') from a transient
 // fetch failure (status: 'error') — callers that need to gate onboarding UI on
 // a genuinely-missing profile (not just an errored fetch) depend on this

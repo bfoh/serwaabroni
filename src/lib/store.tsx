@@ -1183,7 +1183,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // onAuthStateChange (from setSession) restores admin + clears impersonating.
   }, [])
 
+  // Owner-only: settingsAccessFor(role) === 'edit' only for 'owner'. Found
+  // live in production RBAC testing: a Manager (settingsAccess === 'view')
+  // could still type into and "save" the Edit Profile form. The real write
+  // was correctly rejected by migration_027's UPDATE policy (auth.uid()
+  // never equals the row's user_id for a non-owner) — RLS held — but this
+  // function's OWN behavior made the failure invisible and actively
+  // misleading: (1) step 1 unconditionally updates the CALLER's OWN auth
+  // metadata, no role check, always succeeds regardless of who's calling,
+  // silently overwriting their session's local user_metadata.business_name;
+  // (2) step 2's catch block optimistically dispatched the locally-built,
+  // UNSAVED `profile` object as if it were the real saved one and marked
+  // businessProfileStatus 'found' — the exact "fake success on failure"
+  // anti-pattern chooseIndustry() was specifically fixed to avoid earlier in
+  // this same review, missed here. Together those meant a Manager's Settings
+  // header visibly changed to their typed-in (never persisted) business name
+  // with a "Profile saved!" toast, no error surfaced anywhere. Now: bail
+  // before either step for a non-owner, and let a genuine step-2 failure
+  // propagate instead of faking success.
   const updateBusinessProfile = useCallback(async (profile: BusinessProfile) => {
+    if (state.role !== 'owner') throw new Error('Only the business owner can edit the business profile')
+
     // 1. Always save to Supabase Auth user metadata as a bulletproof fallback
     try {
       await updateProfile({
@@ -1199,16 +1219,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       console.warn('Auth metadata update failed', e)
     }
 
-    // 2. Try to save to the dedicated business_profiles table
-    try {
-      const saved = await upsertBusinessProfile(profile)
-      dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
-      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
-    } catch {
-      dispatch({ type: 'SET_BUSINESS_PROFILE', profile }) // local fallback
-      dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
-    }
-  }, [state.user])
+    // 2. Save to the dedicated business_profiles table — let a failure here
+    // propagate to the caller instead of faking success.
+    const saved = await upsertBusinessProfile(profile)
+    dispatch({ type: 'SET_BUSINESS_PROFILE', profile: saved })
+    dispatch({ type: 'SET_BUSINESS_PROFILE_STATUS', status: 'found' })
+  }, [state.user, state.role])
 
   const resetAllData = useCallback(async () => {
     try {

@@ -116,10 +116,19 @@ export default function Settings({ onClose }: SettingsProps) {
       created_at: state.businessProfile?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    await updateBusinessProfile(profile)
-    showToast('Profile saved!', 'success')
-    setShowProfile(false)
-    setSaving(false)
+    // updateBusinessProfile() now throws on failure (owner-only gate, or a
+    // genuine write error) instead of silently faking success — found live
+    // in production testing this always showed "Profile saved!" even when
+    // the underlying write was rejected.
+    try {
+      await updateBusinessProfile(profile)
+      showToast('Profile saved!', 'success')
+      setShowProfile(false)
+    } catch {
+      showToast('Could not save profile — check your connection and try again', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Notification preference helpers. Undefined fields fall back to their DB defaults
@@ -130,6 +139,10 @@ export default function Settings({ onClose }: SettingsProps) {
   }
 
   const toggleNotif = (key: keyof BusinessProfile, fallback = true) => {
+    if (settingsAccess !== 'edit') {
+      showToast('Only the business owner can change this', 'error')
+      return
+    }
     if (!state.businessProfile) {
       showToast('Set up your shop profile first', 'error')
       return
@@ -177,7 +190,17 @@ export default function Settings({ onClose }: SettingsProps) {
     ...(settingsAccess === 'edit'
       ? [{ icon: User, label: 'Staff', action: () => { setShowStaff(true); loadStaff() } }]
       : []),
-    { icon: User, label: 'Edit Profile', action: () => setShowProfile(true) },
+    // Edit Profile writes via updateBusinessProfile(), which is now
+    // owner-only (throws otherwise) — see that function's own comment for
+    // why. Hidden entirely for non-edit access rather than shown read-only,
+    // matching the existing Staff/Reset-All-Data precedent below. Found
+    // live in production RBAC testing: a Manager could type into and
+    // "save" this form; the write was correctly rejected by RLS, but the
+    // app showed a false "Profile saved!" success toast and visibly
+    // changed their own session's business name — see updateBusinessProfile.
+    ...(settingsAccess === 'edit'
+      ? [{ icon: User, label: 'Edit Profile', action: () => setShowProfile(true) }]
+      : []),
     { icon: Tag, label: 'Manage Categories', badge: String(state.categories.length), action: () => setShowCategories(true) },
     { icon: Download, label: 'Export All Data (CSV)', action: handleExport },
     { icon: Bell, label: 'Notifications', badge: anyChannelOn ? 'On' : 'Off', action: () => setShowNotifications(true) },
@@ -185,6 +208,7 @@ export default function Settings({ onClose }: SettingsProps) {
     { icon: Share2, label: 'Community Catalog',
       badge: state.businessProfile?.catalog_contribute === false ? 'Off' : 'On',
       action: () => {
+        if (settingsAccess !== 'edit') { showToast('Only the business owner can change this', 'error'); return }
         if (!state.businessProfile) { showToast('Set up your shop profile first', 'error'); return }
         const enabled = state.businessProfile.catalog_contribute !== false
         updateBusinessProfile({ ...state.businessProfile, catalog_contribute: !enabled })

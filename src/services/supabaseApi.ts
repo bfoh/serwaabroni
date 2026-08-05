@@ -596,13 +596,45 @@ export async function fetchBusinessProfile(): Promise<BusinessProfileResult> {
   }
 }
 
+// Deliberately NOT .upsert(): supabase-js sends upsert as
+// `Prefer: resolution=merge-duplicates`, i.e. INSERT ... ON CONFLICT DO
+// UPDATE. Found in live production testing: for a brand-new signup with
+// zero existing rows, this consistently 403'd with "new row violates
+// row-level security policy" even though the INSERT policy's WITH CHECK
+// (and, after patching, the UPDATE policy's USING) independently verified
+// true — proven both by literal-value SQL tests and by a debug trigger
+// that computed every condition live inside the real request and printed
+// all-true. Disabling RLS made the exact same request succeed, confirming
+// the block was genuinely coming from RLS's interaction with the
+// ON-CONFLICT-DO-UPDATE statement shape, not the policy logic itself.
+// Doing an explicit existence check + plain insert/update avoids that
+// interaction entirely: a plain INSERT only ever needs the INSERT policy,
+// a plain UPDATE only ever needs the UPDATE policy — no combined-statement
+// ambiguity for Postgres to resolve.
 export async function upsertBusinessProfile(profile: any): Promise<any> {
   const uid = await getCurrentUserId()
   if (!uid) throw new Error('Not authenticated')
 
+  const { data: existing } = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('user_id', uid)
+    .maybeSingle()
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .update({ ...profile, user_id: uid })
+      .eq('user_id', uid)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  }
+
   const { data, error } = await supabase
     .from('business_profiles')
-    .upsert({ ...profile, user_id: uid })
+    .insert({ ...profile, user_id: uid })
     .select()
     .single()
 
